@@ -31,8 +31,10 @@ private:
 
   std::map<AudibleAlert, std::pair<QString, bool>> sound_map {
     // AudibleAlert, (file path, inf loop)
-    {AudibleAlert::CHIME_DISENGAGE, {"../assets/sounds/disengaged.wav", false}},
-    {AudibleAlert::CHIME_ENGAGE, {"../assets/sounds/engaged.wav", false}},
+    //{AudibleAlert::CHIME_DISENGAGE, {"../assets/sounds/disengaged.wav", false}},
+    {AudibleAlert::CHIME_DISENGAGE, {"../assets/sounds/disengaged_silent.wav", false}},
+    //{AudibleAlert::CHIME_ENGAGE, {"../assets/sounds/engaged.wav", false}},
+    {AudibleAlert::CHIME_ENGAGE, {"../assets/sounds/engaged_silent.wav", false}},
     {AudibleAlert::CHIME_WARNING1, {"../assets/sounds/warning_1.wav", false}},
     {AudibleAlert::CHIME_WARNING2, {"../assets/sounds/warning_2.wav", false}},
     {AudibleAlert::CHIME_WARNING2_REPEAT, {"../assets/sounds/warning_2.wav", true}},
