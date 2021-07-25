@@ -69,8 +69,10 @@ void OnroadWindow::offroadTransition(bool offroad) {
 
 OnroadAlerts::OnroadAlerts(QWidget *parent) : QWidget(parent) {
   std::tuple<AudibleAlert, QString, bool> sound_list[] = {
-    {AudibleAlert::CHIME_DISENGAGE, "../assets/sounds/disengaged.wav", false},
-    {AudibleAlert::CHIME_ENGAGE, "../assets/sounds/engaged.wav", false},
+    //{AudibleAlert::CHIME_DISENGAGE, "../assets/sounds/disengaged.wav", false},
+    {AudibleAlert::CHIME_DISENGAGE, "../assets/sounds/disengaged_silent.wav", false},
+    //{AudibleAlert::CHIME_ENGAGE, "../assets/sounds/engaged.wav", false},
+    {AudibleAlert::CHIME_ENGAGE, "../assets/sounds/engaged_silent.wav", false},
     {AudibleAlert::CHIME_WARNING1, "../assets/sounds/warning_1.wav", false},
     {AudibleAlert::CHIME_WARNING2, "../assets/sounds/warning_2.wav", false},
     {AudibleAlert::CHIME_WARNING2_REPEAT, "../assets/sounds/warning_2.wav", true},
