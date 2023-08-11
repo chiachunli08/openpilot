@@ -77,7 +77,7 @@ class CarController():
     if (self.frame % 2 == 0):
       fingerprint = self.car_fingerprint
        
-      if CC.latActive and CS.out.vEgo > self.CP.minSteerSpeed:
+      if CC.latActive:
         self.SteerCommand.angle_request = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.angle_request_prev, CS.out.vEgoRaw, CarControllerParams) 
 
         # Create trqlim from angle request (before constraints)
@@ -93,7 +93,7 @@ class CarController():
       # Count no of consequtive samples of zero torque by lka.
       # Try to recover, blocking steering request for 2 seconds.
       if fingerprint in PLATFORM.C1:
-        if CC.latActive and CS.out.vEgo > self.CP.minSteerSpeed:
+        if CC.latActive:
           self.trq_fifo.append(CS.PSCMInfo.LKATorque)
           if len(self.trq_fifo) > self.CCP.N_ZERO_TRQ:
             self.trq_fifo.popleft()
