@@ -123,8 +123,8 @@ class CarController():
     
     
     # Cancel ACC if engaged when OP is not.
-    if not CC.latActive and CS.out.cruiseState.enabled:
-      can_sends.append(volvocan.cancelACC(self.packer, self.car_fingerprint, CS))
+    #if not CC.latActive and CS.out.cruiseState.enabled:
+    #  can_sends.append(volvocan.cancelACC(self.packer, self.car_fingerprint, CS))
 
 
     # Send diagnostic requests
