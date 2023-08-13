@@ -22,7 +22,7 @@ class CarController():
     self.frame = 0
 
     # steering related
-    self.apply_angle_last = 0
+    self.angle_request_prev = 0
     
     # SteerCommand
     self.SteerCommand = SteerCommand
@@ -62,6 +62,10 @@ class CarController():
     self.dids = [x for x in range(startdid, startdid+9)]
 
   def update(self, CC, CS, now_nanos):
+             #actuators, 
+             #visualAlert, leftLaneVisible,
+             #rightLaneVisible, leadVisible,
+             #leftLaneDepart, rightLaneDepart):
     """ Controls thread """
     actuators = CC.actuators
     hud_control = CC.hudControl
@@ -74,7 +78,7 @@ class CarController():
       fingerprint = self.car_fingerprint
        
       if CC.latActive:
-        apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw, CarControllerParams) 
+        self.SteerCommand.angle_request = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.angle_request_prev, CS.out.vEgoRaw, CarControllerParams) 
 
         # Create trqlim from angle request (before constraints)
         self.SteerCommand.trqlim = 0
@@ -83,8 +87,8 @@ class CarController():
       else:
         self.SteerCommand.steer_direction = self.CCP.STEER_NO
         self.SteerCommand.trqlim = 0
-        apply_angle = 0
-        #apply_angle = clip(CS.out.steeringAngleDeg, -359.95, 359.90)  # Cap values at max min values (Cap 2 steps from max min). Max=359.99445, Min=-360.0384 
+        self.SteerCommand.angle_request = 0
+        #self.SteerCommand.angle_request = clip(CS.out.steeringAngleDeg, -359.95, 359.90)  # Cap values at max min values (Cap 2 steps from max min). Max=359.99445, Min=-360.0384 
       
       # Count no of consequtive samples of zero torque by lka.
       # Try to recover, blocking steering request for 2 seconds.
@@ -108,7 +112,7 @@ class CarController():
 
 
       # update stored values
-      self.apply_angle_last = apply_angle
+      self.angle_request_prev = self.SteerCommand.angle_request
       
       # Manipulate data from servo to FSM
       # Avoid fault codes, that will stop LKA
@@ -118,9 +122,9 @@ class CarController():
       can_sends.append(volvocan.create_steering_control(self.packer, self.frame, self.CP.carFingerprint, self.SteerCommand, CS.FSMInfo))
     
     
-    # Cancel ACC
-    if CC.cruiseControl.cancel:
-      can_sends.append(volvocan.cancelACC(self.packer, self.car_fingerprint, CS))
+    # Cancel ACC if engaged when OP is not.
+    #if not CC.latActive and CS.out.cruiseState.enabled:
+    #  can_sends.append(volvocan.cancelACC(self.packer, self.car_fingerprint, CS))
 
 
     # Send diagnostic requests
@@ -177,7 +181,7 @@ class CarController():
 
     # Store old values
     new_actuators = actuators.copy()
-    new_actuators.steeringAngleDeg = apply_angle
+    new_actuators.steeringAngleDeg = self.SteerCommand.angle_request
 
     self.frame += 1
     return new_actuators, can_sends
