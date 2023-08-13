@@ -107,8 +107,8 @@ class CarState(CarStateBase):
     
      # Steering
     ret.steeringAngleDeg = cp.vl["PSCM1"]['SteeringAngleServo']
-    #ret.steeringTorque = cp.vl["PSCM1"]['LKATorque'] # Needed? No signal to check against yet
-    ret.steeringTorque = 0
+    ret.steeringTorque = cp.vl["PSCM1"]['LKATorque'] # Needed? No signal to check against yet
+    ret.steeringPressed = abs(ret.steeringTorque) > 0
     ret.steeringPressed = bool(cp.vl["CCButtons"]['ACCSetBtn'] or \
       cp.vl["CCButtons"]['ACCMinusBtn'] or \
       cp.vl["CCButtons"]['ACCResumeBtn']) 
