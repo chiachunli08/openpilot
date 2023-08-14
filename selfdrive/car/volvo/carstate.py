@@ -216,8 +216,6 @@ class CarState(CarStateBase):
     # this function generates lists for signal, messages and initial values
     signals = [
       # sig_name, sig_address, default
-      ("byte03", "diagFSMResp"),
-      ("byte47", "diagFSMResp"),
     ]
 
     checks = [
