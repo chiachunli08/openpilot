@@ -122,8 +122,8 @@ class CarController():
       can_sends.append(volvocan.create_steering_control(self.packer, self.frame, self.CP.carFingerprint, self.SteerCommand, CS.FSMInfo))
     
     
-    # Cancel ACC if engaged when OP is not.
-    if not CC.latActive and CS.out.cruiseState.enabled:
+    # Cancel ACC if OP wants to.
+    if CC.cruiseControl.cancel:
       can_sends.append(volvocan.cancelACC(self.packer, self.car_fingerprint, CS))
 
 
