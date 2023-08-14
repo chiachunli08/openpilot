@@ -12,7 +12,7 @@ class SteerCommand:
 
 
 class CarController():
-  def __init__(self, dbc_name, CP, VW):
+  def __init__(self, dbc_name, CP, VM):
     # Setup detection helper. Routes commands to
     # an appropriate CAN bus number.
     self.CP = CP
@@ -26,13 +26,11 @@ class CarController():
     
     # SteerCommand
     self.SteerCommand = SteerCommand
-    self.trq_fifo = deque([])  
-    self.fault_frame = -200
 
     # Diag
     self.doDTCRequests = True  # Turn on and off DTC requests
     self.checkPN = False       # Check partnumbers
-    self.clearDtcs = False     # Set false to stop sending diagnostic requests 
+    self.clearDtcs = True      # Clear dtc on startup
     self.timeout = 0           # Set to 0 as init
     self.diagRequest = { 
       "byte0": 0x03,
@@ -62,10 +60,7 @@ class CarController():
     self.dids = [x for x in range(startdid, startdid+9)]
 
   def update(self, CC, CS, now_nanos):
-             #actuators, 
-             #visualAlert, leftLaneVisible,
-             #rightLaneVisible, leadVisible,
-             #leftLaneDepart, rightLaneDepart):
+
     """ Controls thread """
     actuators = CC.actuators
     hud_control = CC.hudControl
@@ -77,40 +72,14 @@ class CarController():
     if (self.frame % 2 == 0):
       fingerprint = self.car_fingerprint
        
-      if CC.latActive:
-        self.SteerCommand.angle_request = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.angle_request_prev, CS.out.vEgoRaw, CarControllerParams) 
-
-        # Create trqlim from angle request (before constraints)
-        self.SteerCommand.trqlim = 0
+      if CC.latActive and CS.out.vEgo > self.CP.minSteerSpeed:
+        self.SteerCommand.angle_request = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.angle_request_prev, CS.out.vEgoRaw, CarControllerParams)
         self.SteerCommand.steer_direction = self.CCP.STEER
 
       else:
-        self.SteerCommand.steer_direction = self.CCP.STEER_NO
-        self.SteerCommand.trqlim = 0
+        self.SteerCommand.steer_direction = self.CCP.NO_STEER
         self.SteerCommand.angle_request = 0
-        #self.SteerCommand.angle_request = clip(CS.out.steeringAngleDeg, -359.95, 359.90)  # Cap values at max min values (Cap 2 steps from max min). Max=359.99445, Min=-360.0384 
-      
-      # Count no of consequtive samples of zero torque by lka.
-      # Try to recover, blocking steering request for 2 seconds.
-      if fingerprint in PLATFORM.C1:
-        if CC.latActive:
-          self.trq_fifo.append(CS.PSCMInfo.LKATorque)
-          if len(self.trq_fifo) > self.CCP.N_ZERO_TRQ:
-            self.trq_fifo.popleft()
-        else:
-          self.trq_fifo.clear()
-          self.fault_frame = -200
-
-        if (self.trq_fifo.count(0) >= self.CCP.N_ZERO_TRQ) and (self.frame == -200):
-          self.frame = self.frame+100
-
-        if CC.latActive and (self.frame < self.fault_frame):
-          self.SteerCommand.steer_direction = self.CCP.STEER_NO
-
-        if self.frame > self.fault_frame+8:  # Ignore steerWarning for another 8 samples.
-          self.fault_frame = -200     
-
-
+   
       # update stored values
       self.angle_request_prev = self.SteerCommand.angle_request
       
@@ -119,12 +88,12 @@ class CarController():
       can_sends.append(volvocan.manipulateServo(self.packer, self.car_fingerprint, CS))
     
       # send can, add to list.
-      can_sends.append(volvocan.create_steering_control(self.packer, self.frame, self.CP.carFingerprint, self.SteerCommand, CS.FSMInfo))
+      can_sends.append(volvocan.create_steering_control(self.packer, self.frame, self.CP.carFingerprint, self.SteerCommand))
     
     
-    # Cancel ACC if engaged when OP is not.
-    #if not CC.latActive and CS.out.cruiseState.enabled:
-    #  can_sends.append(volvocan.cancelACC(self.packer, self.car_fingerprint, CS))
+    # Cancel ACC.
+    if CC.cruiseControl.cancel:
+      can_sends.append(volvocan.cancelACC(self.packer, self.car_fingerprint, CS))
 
 
     # Send diagnostic requests
