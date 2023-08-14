@@ -14,61 +14,6 @@ class diagInfo():
     self.diagPSCMResp = 0
     self.diagCVMResp = 0
 
-class PSCMInfo():
-  def __init__(self):
-    # Common
-    self.byte0 = 0
-    self.byte4 = 0
-    self.byte7 = 0
-    self.LKAActive = 0
-    self.LKATorque = 0
-    self.SteeringAngleServo = 0
-
-    # C1
-    self.byte3 = 0
-
-
-class FSMInfo():
-  def __init__(self):
-    # Common
-    self.TrqLim = 0
-    self.LKAAngleReq = 0
-    self.Checksum = 0
-    self.LKASteerDirection = 0
-    
-    # C1
-    self.SET_X_E3 = 0
-    self.SET_X_B4 = 0
-    self.SET_X_08 = 0
-    self.SET_X_02 = 0
-    self.SET_X_25 = 0
-
-
-class CCButtons():
-  def __init__(self):
-    # Common
-    self.ACCOnOffBtn = 0
-    self.ACCSetBtn = 0
-    self.ACCResumeBtn = 0
-    self.ACCMinusBtn = 0
-    self.TimeGapIncreaseBtn = 0
-    self.TimeGapDecreaseBtn = 0
-
-    # C1
-    self.ACCStopBtn = 0
-    self.byte0 = 0
-    self.byte1 = 0
-    self.byte2 = 0
-    self.byte3 = 0
-    self.byte4 = 0
-    self.byte5 = 0
-    self.byte6 = 0
-    self.B7b0 = 0
-    self.B7b1 = 0
-    self.B7b3 = 0
-    self.B7b6 = 0
-
-
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
@@ -76,12 +21,19 @@ class CarState(CarStateBase):
     self.button_states = {button.event_type: False for button in self.CCP.BUTTONS}
     self.can_define = CANDefine(DBC[CP.carFingerprint]['pt'])
 
-    self.diag = diagInfo() 
-    self.PSCMInfo = PSCMInfo() 
-    self.FSMInfo = FSMInfo()
-    self.CCBtns = CCButtons()
+    self.diag = diagInfo()
+    self.PSCMInfo = {
+      "byte0" : 0,
+      "byte3" : 0,
+      "byte4" : 0,
+      "byte7" : 0,
+      "LKATorque" : 0,
+      "LKAActive" : 0,
+      "SteeringAngleServo" : 0,
+    }
 
-    self.trq_fifo = deque([])
+    self.count_zero_steeringTorque = 0
+    self.cruiseState_enabled_prev = 0
 
   def create_button_events(self, cp, buttons):
     button_events = []
@@ -107,7 +59,7 @@ class CarState(CarStateBase):
     
      # Steering
     ret.steeringAngleDeg = cp.vl["PSCM1"]['SteeringAngleServo']
-    ret.steeringTorque = cp.vl["PSCM1"]['LKATorque'] # Needed? No signal to check against yet
+    ret.steeringTorque = cp.vl["PSCM1"]['LKATorque']
     ret.steeringPressed = abs(ret.steeringTorque) > 0
     #ret.steeringPressed = bool(cp.vl["CCButtons"]['ACCSetBtn'] or \
     #  cp.vl["CCButtons"]['ACCMinusBtn'] or \
@@ -136,13 +88,6 @@ class CarState(CarStateBase):
     
     # Button and blinkers.
     ret.buttonEvents = self.create_button_events(cp, self.CCP.BUTTONS)
-    #self.buttonStates['altButton1'] = bool(cp.vl["CCButtons"]['ACCOnOffBtn'])
-    #self.buttonStates['accelCruise'] = bool(cp.vl["CCButtons"]['ACCSetBtn'])
-    #self.buttonStates['decelCruise'] = bool(cp.vl["CCButtons"]['ACCMinusBtn'])
-    #self.buttonStates['setCruise'] = bool(cp.vl["CCButtons"]['ACCSetBtn'])
-    #self.buttonStates['resumeCruise'] = bool(cp.vl["CCButtons"]['ACCResumeBtn'])
-    #self.buttonStates['cancel'] = bool(cp.vl["CCButtons"]['ACCStopBtn']) No cancel button in V60.
-    #self.buttonStates['gapAdjustCruise'] = bool(cp.vl["CCButtons"]['TimeGapIncreaseBtn']) or bool(cp.vl["CCButtons"]['TimeGapDecreaseBtn'])
     ret.leftBlinker = cp.vl["MiscCarInfo"]['TurnSignal'] == 1
     ret.rightBlinker = cp.vl["MiscCarInfo"]['TurnSignal'] == 3
 
@@ -152,50 +97,40 @@ class CarState(CarStateBase):
     self.diag.diagCVMResp = int(cp.vl["diagCVMResp"]["byte03"])
     self.diag.diagPSCMResp = int(cp.vl["diagPSCMResp"]["byte03"])
 
-    # ACC Buttons
-    if self.CP.carFingerprint in PLATFORM.C1:
-      self.CCBtns.ACCStopBtn = bool(cp.vl["CCButtons"]['ACCStopBtn'])
-  
-    # PSCMInfo
-    # Common
-    self.PSCMInfo.byte0 = int(cp.vl['PSCM1']['byte0']) 
-    self.PSCMInfo.byte4 = int(cp.vl['PSCM1']['byte4']) 
-    self.PSCMInfo.byte7 = int(cp.vl['PSCM1']['byte7']) 
-    self.PSCMInfo.LKATorque = int(cp.vl['PSCM1']['LKATorque']) 
-    self.PSCMInfo.LKAActive = int(cp.vl['PSCM1']['LKAActive']) 
-    self.PSCMInfo.SteeringAngleServo = float(cp.vl['PSCM1']['SteeringAngleServo']) 
+    # Store info from PSCM1
+    # FSM (camera) checks if LKAActive & LKATorque
+    # active when not requested
+    self.PSCMInfo["byte0"] = int(cp.vl['PSCM1']['byte0']) 
+    self.PSCMInfo["byte3"] = int(cp.vl['PSCM1']['byte3']) 
+    self.PSCMInfo["byte4"] = int(cp.vl['PSCM1']['byte4']) 
+    self.PSCMInfo["byte7"] = int(cp.vl['PSCM1']['byte7']) 
+    #self.PSCMInfo["LKATorque"] = int(cp.vl['PSCM1']['LKATorque']) 
+    self.PSCMInfo["LKAActive"] = int(cp.vl['PSCM1']['LKAActive']) 
+    #self.PSCMInfo["SteeringAngleServo"] = float(cp.vl['PSCM1']['SteeringAngleServo']) 
 
-    # Platform specific
-    if self.CP.carFingerprint in PLATFORM.C1:
-      self.PSCMInfo.byte3 = int(cp.vl['PSCM1']['byte3']) 
-
-    # FSMInfo
-    # Common both platforms
-
-    if self.CP.carFingerprint in PLATFORM.C1:
-      # TODO Why use these? In future shold be ok to delete.
-      self.FSMInfo.TrqLim = int(cp_cam.vl['FSM1']['TrqLim']) 
-      self.FSMInfo.LKAAngleReq = float(cp_cam.vl['FSM1']['LKAAngleReq']) 
-      self.FSMInfo.Checksum = int(cp_cam.vl['FSM1']['Checksum']) 
-      self.FSMInfo.LKASteerDirection = int(cp_cam.vl['FSM1']['LKASteerDirection'])
-      self.FSMInfo.SET_X_E3 = int(cp_cam.vl['FSM1']['SET_X_E3']) 
-      self.FSMInfo.SET_X_B4 = int(cp_cam.vl['FSM1']['SET_X_B4']) 
-      self.FSMInfo.SET_X_08 = int(cp_cam.vl['FSM1']['SET_X_08']) 
-      self.FSMInfo.SET_X_02 = int(cp_cam.vl['FSM1']['SET_X_02']) 
-      self.FSMInfo.SET_X_25 = int(cp_cam.vl['FSM1']['SET_X_25']) 
     
     # Check if servo stops responding when acc is active.
     # If N_ZERO_TRQ 0 torque samples in a row is detected,
     # set steerUnavailable. Same logic in carcontroller to
     # decide when to start to recover steering.
-    #if ret.cruiseState.enabled and ret.vEgo > self.CP.minSteerSpeed:
-    #  self.trq_fifo.append(self.PSCMInfo.LKATorque)
-    #  ret.steerFaultTemporary= True if (self.trq_fifo.count(0) >= self.CCP.N_ZERO_TRQ*2) else False  # *2, runs at 100hz
-    #  if len(self.trq_fifo) > self.CCP.N_ZERO_TRQ*2:                                           # vs 50hz in CarController
-    #    self.trq_fifo.popleft()
-    #else:
-    #  self.trq_fifo.clear()
-    ret.steerFaultTemporary = False
+    if ret.cruiseState.enabled and ret.vEgo > self.CP.minSteerSpeed:
+      # Reset counter on entry
+      if self.cruiseState_enabled_prev != ret.cruiseState.enabled:
+        self.count_zero_steeringTorque = 0
+
+      # Count up when no torque from servo detected.
+      if ret.steeringTorque == 0:
+        self.count_zero_steeringTorque += 1
+      else:
+        self.count_zero_steeringTorque = 0
+
+      # Set fault if above threshold
+      if self.count_zero_steeringTorque >= self.CCP.N_ZERO_TRQ:
+        ret.steerFaultTemporary = True
+      else:
+        ret.steerFaultTemporary = False
+
+    self.cruiseState_enabled_prev = ret.cruiseState.enabled
 
     return ret
 
@@ -281,6 +216,8 @@ class CarState(CarStateBase):
     # this function generates lists for signal, messages and initial values
     signals = [
       # sig_name, sig_address, default
+      ("byte03", "diagFSMResp"),
+      ("byte47", "diagFSMResp"),
     ]
 
     checks = [
