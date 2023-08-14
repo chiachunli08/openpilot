@@ -15,15 +15,13 @@ def manipulateServo(packer, car_fingerprint, CS):
   # Set LKATorque and LKAActive to zero otherwise LKA will be disabled. (Check dbc)
   msg = {
       "LKATorque" : 0,
-      "SteeringAngleServo" : CS.PSCMInfo.SteeringAngleServo,
-      "byte0" : CS.PSCMInfo.byte0,
-      "byte4" : CS.PSCMInfo.byte4,
-      "byte7" : CS.PSCMInfo.byte7,
+      "SteeringAngleServo" : CS.PSCMInfo["SteeringAngleServo"],
+      "byte0" : CS.PSCMInfo["byte0"],
+      "byte4" : CS.PSCMInfo["byte4"],
+      "byte7" : CS.PSCMInfo["byte7"],
+      "LKAActive" : CS.PSCMInfo["LKAActive"] & 0xFD,
+      "byte3" : CS.PSCMInfo["byte3"], 
   }
-
-  if car_fingerprint in PLATFORM.C1: 
-    msg["LKAActive"] = CS.PSCMInfo.LKAActive & 0xFD
-    msg["byte3"] = CS.PSCMInfo.byte3
 
   return packer.make_can_msg("PSCM1", 2, msg)
 
@@ -35,9 +33,9 @@ def create_chksum(dat, car_fingerprint):
   # Steering angle request = -360 -> 360
     
   # Extract LKAAngleRequest, LKADirection and Unknown
-  if car_fingerprint in PLATFORM.C1: 
+  if car_fingerprint in PLATFORM.C1:
     steer_angle_request = ((dat[4] & 0x3F) << 8) + dat[5]
-    steering_direction_request = dat[7] & 0x03  
+    steering_direction_request = dat[7] & 0x03
     trqlim = dat[3]
   
   # Sum of all bytes, carry ignored.
@@ -46,7 +44,7 @@ def create_chksum(dat, car_fingerprint):
   return s ^ 0xFF
 
 
-def create_steering_control(packer, frame, car_fingerprint, SteerCommand, FSMInfo):  
+def create_steering_control(packer, frame, car_fingerprint, SteerCommand):
  
   # Set common parameters
   values = {
