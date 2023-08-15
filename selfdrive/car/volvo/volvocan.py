@@ -21,9 +21,8 @@ def manipulateServo(packer, car_fingerprint, CS):
       "byte7" : CS.PSCMInfo.byte7,
   }
 
-  if car_fingerprint in PLATFORM.C1: 
-    msg["LKAActive"] = CS.PSCMInfo.LKAActive & 0xFD
-    msg["byte3"] = CS.PSCMInfo.byte3
+  msg["LKAActive"] = CS.PSCMInfo.LKAActive & 0xFD
+  msg["byte3"] = CS.PSCMInfo.byte3
 
   return packer.make_can_msg("PSCM1", 2, msg)
 
