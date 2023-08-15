@@ -81,10 +81,9 @@ class CarController():
         self.SteerCommand.steer_direction = self.CCP.NO_STEER
         self.SteerCommand.angle_request = 0
       
-      # Cancel ACC if engaged when OP is not, but only above minimum steering speed.
-      if not CC.latActive and CS.out.cruiseState.enabled \
-         and CS.out.vEgo > self.CP.minSteerSpeed:
-        can_sends.append(volvocan.cancelACC(self.packer))
+      # Cancel ACC.
+      if CC.cruiseControl.cancel:
+        can_sends.append(volvocan.cancelACC(self.packer, self.car_fingerprint, CS))
 
       # update stored values
       self.angle_request_prev = self.SteerCommand.angle_request
