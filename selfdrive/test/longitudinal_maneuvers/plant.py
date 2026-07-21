@@ -48,8 +48,8 @@ class Plant:
     time.sleep(0.1)
     self.sm = messaging.SubMaster(['longitudinalPlan'])
 
-    from opendbc.car.honda.values import CAR
-    from opendbc.car.honda.interface import CarInterface
+    from iqdbc.car.honda.values import CAR
+    from iqdbc.car.honda.interface import CarInterface
 
     CP = CarInterface.get_non_essential_params(CAR.HONDA_CIVIC)
     CP_IQ = CarInterface.get_non_essential_params_iq(CP, CAR.HONDA_CIVIC)

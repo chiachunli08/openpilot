@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 import cereal.messaging as messaging
-from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
+from iqdbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import DT_MDL
@@ -11,7 +11,7 @@ from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc, LongitudinalPlanSource
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
-from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan
+from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, DEFAULT_STOPPING_SPEED, get_accel_from_plan
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.issue_debug import log_issue_limited
@@ -72,6 +72,7 @@ def get_cruise_accel(e2e, v_cruise, v_ego, a_cruise_prev, angle_steers, CP, dt, 
 class LongitudinalPlanner(LongitudinalPlannerIQ):
   def __init__(self, CP, CP_IQ, init_v=0.0, init_a=0.0, dt=DT_MDL):
     self.CP = CP
+    self.stopping_speed = CP_IQ.longitudinalStoppingSpeedOverride or DEFAULT_STOPPING_SPEED
     self.mpc = LongitudinalMpc(dt=dt)
     LongitudinalPlannerIQ.__init__(self, self.CP, CP_IQ, self.mpc)
     self.fcw = False
@@ -167,7 +168,7 @@ class LongitudinalPlanner(LongitudinalPlannerIQ):
 
     action_t =  self.CP.longitudinalActuatorDelay + DT_MDL
     output_a_target_mpc, output_should_stop_mpc = get_accel_from_plan(self.v_desired_trajectory, self.a_desired_trajectory, CONTROL_N_T_IDX,
-                                                                        action_t=action_t, vEgoStopping=self.CP.vEgoStopping)
+                                                                        action_t=action_t, stopping_speed=self.stopping_speed)
 
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
@@ -183,7 +184,7 @@ class LongitudinalPlanner(LongitudinalPlannerIQ):
       t_shifted = T_IDXS_MPC + t_cut
       v_shifted = np.interp(t_shifted, T_IDXS_MPC, model_v)
       a_shifted = np.interp(t_shifted, T_IDXS_MPC, model_a)
-      a_launch = get_accel_from_plan(v_shifted, a_shifted, T_IDXS_MPC, action_t=action_t, vEgoStopping=self.CP.vEgoStopping)[0]
+      a_launch = get_accel_from_plan(v_shifted, a_shifted, T_IDXS_MPC, action_t=action_t)[0]
       a_launch_max = np.interp(v_ego, [LAUNCH_MOVING_SPEED, LAUNCH_DISARM_SPEED], [LAUNCH_MAX_ACCEL, 0.])
       output_a_target_e2e = max(output_a_target_e2e, min(a_launch, a_launch_max))
 

@@ -4,7 +4,7 @@ import numpy as np
 from cereal import car
 from openpilot.common.constants import CV
 from cereal import car, custom
-from opendbc.car import structs
+from iqdbc.car import structs
 from openpilot.common.params import Params
 from openpilot.iqpilot.selfdrive.car.long_increments import LongIncrementConfig, read_long_increment_config, resolve_button_step
 

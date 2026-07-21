@@ -76,7 +76,9 @@ class IQUIState:
 
   @property
   def onroad_brightness_timer_expired(self) -> bool:
-    return self.onroad_brightness != OnroadBrightness.AUTO and self.onroad_brightness_timer == 0
+    if self.onroad_brightness == OnroadBrightness.AUTO:
+      return False
+    return self.onroad_brightness_timer == 0
 
   @property
   def auto_onroad_brightness(self) -> bool:
@@ -208,18 +210,20 @@ class IQDevice:
 
   @staticmethod
   def set_min_onroad_brightness(_ui_state, min_brightness: int) -> int:
-    if _ui_state.onroad_brightness == OnroadBrightness.AUTO_DARK:
-      min_brightness = 10
-
-    return min_brightness
+    dark = _ui_state.onroad_brightness == OnroadBrightness.AUTO_DARK
+    return 10 if dark else min_brightness
 
   @staticmethod
   def wake_from_dimmed_onroad_brightness(_ui_state, evs) -> None:
-    if _ui_state.started and (_ui_state.onroad_brightness_timer_expired or _ui_state.onroad_brightness == OnroadBrightness.AUTO_DARK):
-      if any(ev.left_down for ev in evs):
-        if _ui_state.onroad_brightness_timer_expired:
-          gui_app.mouse_events.clear()
-        _ui_state.reset_onroad_sleep_timer()
+    expired = _ui_state.onroad_brightness_timer_expired
+    dimmed = expired or _ui_state.onroad_brightness == OnroadBrightness.AUTO_DARK
+    if not (_ui_state.started and dimmed):
+      return
+    if not any(ev.left_down for ev in evs):
+      return
+    if expired:
+      gui_app.mouse_events.clear()
+    _ui_state.reset_onroad_sleep_timer()
 
 
 class UIStatus(Enum):
