@@ -23,6 +23,10 @@ MAX_ANGLE_FRAMES = 89
 MAX_ANGLE_CONSECUTIVE_FRAMES = 2
 
 
+def _use_stock_lkas_request_path(CP) -> bool:
+  return CP.carFingerprint == CAR.HYUNDAI_PALISADE
+
+
 def process_hud_alert(enabled, fingerprint, hud_control):
   sys_warning = (hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw))
 
@@ -92,12 +96,12 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     else:
       self.apply_torque_last = apply_torque
 
-    if apply_torque == 0 and CC.latActive and CS.out.steeringPressed:
+    if not _use_stock_lkas_request_path(self.CP) and apply_torque == 0 and CC.latActive and CS.out.steeringPressed:
       apply_steer_req = False
 
     # Hold torque with induced temporary fault when cutting the actuation bit
     # FIXME: we don't use this with CAN FD?
-    torque_fault = CC.latActive and not apply_steer_req
+    torque_fault = False if _use_stock_lkas_request_path(self.CP) else (CC.latActive and not apply_steer_req)
 
     # accel + longitudinal
     accel = float(np.clip(actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX))

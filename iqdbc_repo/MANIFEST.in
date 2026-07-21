@@ -1,3 +1,0 @@
-include iqdbc/car/car.capnp
-include iqdbc/car/include/c++.capnp
-recursive-include iqdbc/safety *.h

@@ -43,6 +43,10 @@ class TestVolkswagenPlatformConfigs:
           if len(shared_chassis_codes) == 0:
             continue
 
+          # A shared chassis code is unambiguous when the VIN WMI separates the candidates.
+          if platform.config.wmis.isdisjoint(comp.config.wmis):
+            continue
+
           platform_model_years = getattr(platform.config, "model_years", set())
           comp_model_years = getattr(comp.config, "model_years", set())
           if platform_model_years and comp_model_years and platform_model_years.isdisjoint(comp_model_years):
@@ -51,10 +55,13 @@ class TestVolkswagenPlatformConfigs:
           assert set() == shared_chassis_codes, f"Shared chassis codes: {comp}"
 
   def test_custom_fuzzy_fingerprinting(self, subtests):
-    all_radar_fw = list({fw for ecus in FW_VERSIONS.values() for fw in ecus[Ecu.fwdRadar, 0x757, None]})
+    all_radar_fw = list({fw for ecus in FW_VERSIONS.values() for fw in ecus.get((Ecu.fwdRadar, 0x757, None), [])})
 
     for platform in CAR:
       with subtests.test(platform=platform.name):
+        # Fuzzy matching keys off the radar ECU (CHECK_FUZZY_ECUS), so a platform that
+        # declares no radar ECU can never be VIN-matched and should never be expected to match.
+        platform_has_radar = (Ecu.fwdRadar, 0x757, None) in FW_VERSIONS.get(platform, {})
         for wmi in WMI:
           for chassis_code in platform.config.chassis_codes | {"00"}:
             platform_model_years = getattr(platform.config, "model_years", set())
@@ -70,7 +77,7 @@ class TestVolkswagenPlatformConfigs:
               for radar_fw in random.sample(all_radar_fw, 5) + [b'\xf1\x875Q0907572G \xf1\x890571', b'\xf1\x877H9907572AA\xf1\x890396']:
                 model_year_match = len(platform_model_years) == 0 or model_year in platform_model_years
                 should_match = ((wmi in platform.config.wmis and chassis_code in platform.config.chassis_codes and model_year_match) and
-                                radar_fw in all_radar_fw)
+                                radar_fw in all_radar_fw and platform_has_radar)
 
                 live_fws = {(0x757, None): [radar_fw]}
                 matches = FW_QUERY_CONFIG.match_fw_to_car_fuzzy(live_fws, vin, FW_VERSIONS)
@@ -106,3 +113,17 @@ def test_button_enable_recovers_once_cruise_fault_clears():
   )]
 
   assert state.update_button_enable(button_events)
+
+
+def test_pq_hca_ready_does_not_complete_eps_initialization():
+  state = object.__new__(CarState)
+  state.eps_init_complete = False
+
+  state.frame = 0
+  assert state.update_hca_state("READY", ready_confirms_init=False) == (True, False)
+
+  state.frame = 317
+  assert state.update_hca_state("FAULT", ready_confirms_init=False) == (True, False)
+
+  state.frame = 1001
+  assert state.update_hca_state("FAULT", ready_confirms_init=False) == (False, True)

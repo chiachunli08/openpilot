@@ -1,7 +1,3 @@
-"""
-Copyright © IQ.Lvbs, apart of Project Teal Lvbs, All Rights Reserved, licensed under https://konn3kt.com/tos
-"""
-
 from enum import StrEnum
 from collections import namedtuple
 
@@ -30,7 +26,6 @@ class AolCarController:
     self.lkas_icon = 0
     self.lfa_icon = 0
 
-  # display LFA "white_wheel" and LKAS "White car + lanes" when not CC.latActive
   def aol_status_update(self, CC: structs.CarControl, CC_IQ: structs.IQCarControl, frame: int) -> AolDataIQ:
     enable_aol = CC_IQ.aol.available
 
@@ -55,7 +50,6 @@ class AolCarController:
     else:
       lkas_icon = 2 if enabled else 1
 
-    # Override common signals for KIA_OPTIMA_G4 and KIA_OPTIMA_G4_FL
     if CP.carFingerprint in (CAR.KIA_OPTIMA_G4, CAR.KIA_OPTIMA_G4_FL, CAR.HYUNDAI_KONA_NON_SCC):
       lkas_icon = 3 if (self.aol.lat_active if self.aol.enable_aol else enabled) else 1
 
@@ -85,7 +79,7 @@ class AolCarState(AolCarStateBase):
     pass
 
   def get_main_cruise(self, ret: structs.CarState) -> bool:
-    if self.CP_IQ.flags & HyundaiFlagsIQ.LONGITUDINAL_MAIN_CRUISE_TOGGLEABLE:
+    if self.CP_IQ.flags & HyundaiFlagsIQ.MAIN_BTN_LONG_TOGGLE:
       if any(be.type == ButtonType.mainCruise and be.pressed for be in ret.buttonEvents):
         self.main_cruise_enabled = not self.main_cruise_enabled
     else:

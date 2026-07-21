@@ -51,6 +51,7 @@ class IQCarParams:
   iqSafetyFlags: int = auto_field()
   pcmCruiseSpeed: bool = auto_field()
   enableGasInterceptor: bool = auto_field()
+  longitudinalStoppingSpeedOverride: float = auto_field()
 
   iqLateralNet: 'IQCarParams.LateralNet' = field(default_factory=lambda: IQCarParams.LateralNet())
 

@@ -150,7 +150,7 @@ class HyundaiLongitudinalBase(common.LongitudinalAccelSafetyTest):
       with self.subTest("enable_aol", aol_enabled=enable_aol):
         for main_cruise_toggleable in (True, False):
           with self.subTest("main_cruise_toggleable", main_cruise_toggleable=main_cruise_toggleable):
-            main_cruise_toggleable_flag = HyundaiSafetyFlagsIQ.LONG_MAIN_CRUISE_TOGGLEABLE if main_cruise_toggleable else 0
+            main_cruise_toggleable_flag = HyundaiSafetyFlagsIQ.MAIN_BTN_LONG_TOGGLE if main_cruise_toggleable else 0
             self.safety.set_current_safety_param_iq(default_safety_param_iq | main_cruise_toggleable_flag)
             self.safety.set_safety_hooks(default_safety_mode, default_safety_param)
 
@@ -182,7 +182,7 @@ class HyundaiLongitudinalBase(common.LongitudinalAccelSafetyTest):
 
     for enable_aol in (True, False):
       with self.subTest("enable_aol", aol_enabled=enable_aol):
-        main_cruise_toggleable_flag = HyundaiSafetyFlagsIQ.LONG_MAIN_CRUISE_TOGGLEABLE
+        main_cruise_toggleable_flag = HyundaiSafetyFlagsIQ.MAIN_BTN_LONG_TOGGLE
         self.safety.set_current_safety_param_iq(default_safety_param_iq | main_cruise_toggleable_flag)
         self.safety.set_safety_hooks(default_safety_mode, default_safety_param)
 
@@ -215,7 +215,7 @@ class HyundaiLongitudinalBase(common.LongitudinalAccelSafetyTest):
 
     for enable_aol in (True, False):
       with self.subTest("enable_aol", aol_enabled=enable_aol):
-        main_cruise_toggleable_flag = HyundaiSafetyFlagsIQ.LONG_MAIN_CRUISE_TOGGLEABLE
+        main_cruise_toggleable_flag = HyundaiSafetyFlagsIQ.MAIN_BTN_LONG_TOGGLE
         self.safety.set_current_safety_param_iq(default_safety_param_iq | main_cruise_toggleable_flag)
         self.safety.set_safety_hooks(default_safety_mode, default_safety_param)
 
@@ -256,7 +256,7 @@ class HyundaiLongitudinalBase(common.LongitudinalAccelSafetyTest):
     """Test that mismatch counter resets when states resync"""
     for enable_aol in (True, False):
       with self.subTest("enable_aol", aol_enabled=enable_aol):
-        main_cruise_toggleable_flag = HyundaiSafetyFlagsIQ.LONG_MAIN_CRUISE_TOGGLEABLE
+        main_cruise_toggleable_flag = HyundaiSafetyFlagsIQ.MAIN_BTN_LONG_TOGGLE
         self.safety.set_current_safety_param_iq(default_safety_param_iq | main_cruise_toggleable_flag)
         self.safety.set_safety_hooks(default_safety_mode, default_safety_param)
 

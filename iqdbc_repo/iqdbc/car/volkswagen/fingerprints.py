@@ -681,6 +681,14 @@ FW_VERSIONS = {
       b'\xf1\x873QF907572A \xf1\x890132',
     ],
   },
+  CAR.VOLKSWAGEN_PASSAT_B7: {
+    (Ecu.engine, 0x7e0, None): [
+      b'\xf1\x8703L906018RE\xf1\x899979',
+    ],
+    (Ecu.fwdCamera, 0x74f, None): [
+      b'\xf1\x873AA980654D \xf1\x890300\xf1\x82\x0143',
+    ],
+  },
   CAR.VOLKSWAGEN_POLO_MK6: {
     (Ecu.engine, 0x7e0, None): [
       b'\xf1\x8704C906025H \xf1\x895177',
@@ -706,6 +714,17 @@ FW_VERSIONS = {
     ],
   },
   CAR.VOLKSWAGEN_SHARAN_MK2: {
+    (Ecu.engine, 0x7e0, None): [
+      b'\xf1\x8704L906016HE\xf1\x894635',
+    ],
+    (Ecu.srs, 0x715, None): [
+      b'\xf1\x877N0959655D \xf1\x890016\xf1\x82\x0801100705----10--',
+    ],
+    (Ecu.fwdRadar, 0x757, None): [
+      b'\xf1\x877N0907572C \xf1\x890211\xf1\x82\x0153',
+    ],
+  },
+  CAR.SEAT_ALHAMBRA_MK1: {
     (Ecu.engine, 0x7e0, None): [
       b'\xf1\x8704L906016HE\xf1\x894635',
     ],

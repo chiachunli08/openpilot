@@ -270,5 +270,5 @@ class LatControlCurvature():
     error                  = desired_curvature - actual_curvature
     freeze_integrator      = CC.steerLimited or CS.vEgo < 5
     output_curvature       = self.pid.update(error, feedforward=desired_curvature_corr, speed=CS.vEgo,
-                                             freeze_integrator=freeze_integrator, override=False)
+                                             freeze_integrator=freeze_integrator, override=CS.steeringPressed)
     return output_curvature

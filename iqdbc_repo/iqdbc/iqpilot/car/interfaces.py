@@ -89,6 +89,8 @@ def setup_interfaces(CI, CP: structs.CarParams, CP_IQ: structs.IQCarParams,
 def _initialize_custom_longitudinal_tuning(CI, CP: structs.CarParams, CP_IQ: structs.IQCarParams,
                                            params_dict: dict[str, str]) -> None:
 
+  # HKG longitudinal tuning lineage in this port traces to Jason Wen, James
+  # Vecellio-Grant, and carrotpilot; keep that attribution with this path.
   # Hyundai Custom Longitudinal Tuning
   if CP.brand == 'hyundai':
     hyundai_longitudinal_tuning = int(params_dict.get("HyundaiLongitudinalTuning", 0))
