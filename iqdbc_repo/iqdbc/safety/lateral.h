@@ -6,7 +6,7 @@ static const float ISO_LATERAL_ACCEL = 3.0;  // m/s^2
 
 static const float EARTH_G = 9.81;
 static const float AVERAGE_ROAD_ROLL = 0.06;  // ~3.4 degrees, 6% superelevation
-static const float MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~5.6 m/s^2
+static const float MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^2
 
 bool is_lat_active(void) {
   return controls_allowed || aol_is_lateral_control_allowed_by_aol();
@@ -233,7 +233,7 @@ bool steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const
     if (limits.angle_is_curvature) {
 
       // Limit to average banked road since safety doesn't have the roll
-      static const float MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL - (EARTH_G * AVERAGE_ROAD_ROLL);  // ~4.4 m/s^2
+      static const float MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL - (EARTH_G * AVERAGE_ROAD_ROLL);  // ~2.4 m/s^2
 
       // Allow small tolerance by using minimum speed and rounding curvature up
       const float speed_lower = SAFETY_MAX(vehicle_speed.min / VEHICLE_SPEED_FACTOR, 1.0);
@@ -301,7 +301,7 @@ bool steer_angle_cmd_checks_vm(int desired_angle, bool steer_control_enabled, co
   // TODO: remove the inaccurate breakpoint angle limiting function above and always use this one
 
   // Highway curves are rolled in the direction of the turn, add tolerance to compensate
-  static const float MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~5.6 m/s^2
+  static const float MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^2
   // Lower than ISO 11270 lateral jerk limit, which is 5.0 m/s^3
   static const float MAX_LATERAL_JERK = 3.0 + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^3
 

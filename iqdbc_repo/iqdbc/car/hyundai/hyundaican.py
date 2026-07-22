@@ -7,10 +7,6 @@ from iqdbc.iqpilot.car.hyundai.lead_data_ext import CanLeadData
 hyundai_checksum = crcmod.mkCrcFun(0x11D, initCrc=0xFD, rev=False, xorOut=0xdf)
 
 
-def _use_stock_scc_surrogates(CP) -> bool:
-  return CP.carFingerprint == CAR.HYUNDAI_PALISADE
-
-
 def create_lkas11(packer, frame, CP, apply_torque, steer_req,
                   torque_fault, lkas11, sys_warning, sys_state, enabled,
                   left_lane, right_lane,
@@ -141,7 +137,7 @@ def create_acc_commands(packer, enabled, accel, upper_jerk, idx, lead_data: CanL
   commands = []
 
   def get_scc11_values():
-    values = {
+    return {
       "MainMode_ACC": 1 if main_cruise_enabled else 0,
       "TauGapSet": hud_control.leadDistanceBars,
       "VSetDis": set_speed if enabled else 0,
@@ -152,11 +148,6 @@ def create_acc_commands(packer, enabled, accel, upper_jerk, idx, lead_data: CanL
       "ACC_ObjRelSpd": lead_data.lead_rel_speed,
       "ACC_ObjDist": int(lead_data.lead_distance), # close lead makes controls tighter
     }
-    if _use_stock_scc_surrogates(CP):
-      values["ObjValid"] = 1
-      values["ACC_ObjStatus"] = 1
-      values["ACC_ObjDist"] = 1
-    return values
 
   def get_scc12_values():
     scc12_values = {
@@ -185,17 +176,15 @@ def create_acc_commands(packer, enabled, accel, upper_jerk, idx, lead_data: CanL
     return values
 
   def get_scc14_values():
-    values = {
+    return {
       "ComfortBandUpper": tuning.comfort_band_upper, # stock usually is 0 but sometimes uses higher values
       "ComfortBandLower": tuning.comfort_band_lower, # stock usually is 0 but sometimes uses higher values
       "JerkUpperLimit": tuning.jerk_upper, # stock usually is 1.0 but sometimes uses higher values
       "JerkLowerLimit": tuning.jerk_lower, # stock usually is 0.5 but sometimes uses higher values
       "ACCMode": 2 if enabled and long_override else 1 if enabled else 4, # stock will always be 4 instead of 0 after first disengage
       "ObjGap": lead_data.object_gap, # 5: >30, m, 4: 25-30 m, 3: 20-25 m, 2: < 20 m, 0: no lead
+      "ObjDistStat": lead_data.object_rel_gap,
     }
-    if not _use_stock_scc_surrogates(CP):
-      values["ObjDistStat"] = lead_data.object_rel_gap
-    return values
 
   def get_fca11_values():
     return {

@@ -73,9 +73,9 @@ class RadarInterfaceExt(EsccRadarInterfaceBase):
       if valid:
         self.pts[ii].measured = True
         self.pts[ii].dRel = msg['ACC_ObjDist']
-        self.pts[ii].yRel = float('nan')
+        self.pts[ii].yRel = float('nan')  # FIXME-IQ: Only some cars have lateral position from SCC
         self.pts[ii].vRel = msg['ACC_ObjRelSpd']
-        self.pts[ii].aRel = float('nan')
+        self.pts[ii].aRel = float('nan')  # TODO-IQ: calculate from ACC_ObjRelSpd and with timestep 50Hz (needs to modify in interfaces.py)
         self.pts[ii].yvRel = float('nan')
 
       else:

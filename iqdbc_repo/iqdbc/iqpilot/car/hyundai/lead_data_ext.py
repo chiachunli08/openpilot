@@ -1,3 +1,6 @@
+"""
+Copyright © IQ.Lvbs, apart of Project Teal Lvbs, All Rights Reserved, licensed under https://konn3kt.com/tos
+"""
 from abc import ABC, abstractmethod
 from iqdbc.car import structs
 from iqdbc.car.hyundai.values import HyundaiFlags

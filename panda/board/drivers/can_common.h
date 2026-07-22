@@ -138,11 +138,9 @@ bus_config_t bus_config[PANDA_CAN_CNT] = {
 void can_init_all(void) {
   for (uint8_t i=0U; i < PANDA_CAN_CNT; i++) {
     bus_config[i].canfd_enabled = false;
-    // NOTE: do NOT reset can_data_speed here. Matching stock panda, can_init_all() only clears
-    // canfd_enabled (re-discovered on RX via canfd_auto). The old "#ifndef CANFD: can_data_speed = 0U"
-    // fired on every board because CANFD is never defined, zeroing the FD data-phase bitrate on every
-    // set_safety_model() -> CAN-FD frames then failed with form/stuff errors and never re-enabled,
-    // breaking all CAN-FD cars (e.g. Kia EV6) after fingerprinting. can_data_speed is only used by fdcan.
+    // Preserve can_data_speed (default 20000U = 2Mbps) through safety model changes.
+    // Auto-detection in can_rx() sets canfd_enabled=true when the first FD frame arrives;
+    // keeping data speed nonzero lets the FDCAN peripheral handle FD frames immediately.
     can_clear(can_queues[i]);
     (void)can_init(i);
   }
@@ -171,7 +169,6 @@ void ignition_can_hook(CANPacket_t *msg) {
     static int tesla_gear = TESLA_DI_GEAR_P;
     static int toyota_gear = TOYOTA_GEAR_P;
     static int toyota_hybrid_gear = TOYOTA_HYBRID_GEAR_P;
-    static bool toyota_hybrid_gear_seen = false;
 
     // GM exception
     if ((msg->addr == 0x1F1U) && (len == 8)) {
@@ -221,10 +218,8 @@ void ignition_can_hook(CANPacket_t *msg) {
       ignition_can_cnt = 0U;
     }
 
-    // Toyota/Lexus exception. SecOC hybrids (e.g. Sienna 4th gen) report gear on
-    // GEAR_PACKET_HYBRID (0x127); their GEAR_PACKET (0x3BC) does not read Park, so once
-    // the hybrid gear packet is seen, don't let 0x3BC override it (Park -> ignition off).
-    if ((msg->addr == 0x3BCU) && (len == 8) && !toyota_hybrid_gear_seen) {
+    // Toyota/Lexus exception
+    if ((msg->addr == 0x3BCU) && (len == 8)) {
       int gear = msg->data[1] & 0x3FU;
       if ((gear == 0) || (gear == 1) || (gear == 8) || (gear == 16) || (gear == 32)) {
         toyota_gear = gear;
@@ -236,7 +231,6 @@ void ignition_can_hook(CANPacket_t *msg) {
     if ((msg->addr == 0x127U) && (len == 8)) {
       int gear = (msg->data[5] >> 4U) & 0xFU;
       if (gear <= 4) {
-        toyota_hybrid_gear_seen = true;
         toyota_hybrid_gear = gear;
         ignition_can = toyota_hybrid_gear != TOYOTA_HYBRID_GEAR_P;
         ignition_can_cnt = 0U;
@@ -244,6 +238,16 @@ void ignition_can_hook(CANPacket_t *msg) {
     }
 
 
+  }
+
+  // Volkswagen MEB / MQBevo exception (Klemmen_Status_01)
+  // On gateway harness cars this message is on bus 1 (powertrain CAN), not bus 0.
+  if ((msg->bus == 0U) || (msg->bus == 1U)) {
+    int len = GET_LEN(msg);
+    if ((msg->addr == 0x3C0U) && (len == 4)) {
+      ignition_can = ((msg->data[2] >> 1U) & 1U) != 0U;
+      ignition_can_cnt = 0U;
+    }
   }
 }
 

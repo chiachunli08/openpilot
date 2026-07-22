@@ -1,3 +1,7 @@
+"""
+Copyright © IQ.Lvbs, apart of Project Teal Lvbs, All Rights Reserved, licensed under https://konn3kt.com/tos
+"""
+
 from iqdbc.car import uds
 from iqdbc.car.carlog import carlog
 from iqdbc.car.isotp_parallel_query import IsoTpParallelQuery

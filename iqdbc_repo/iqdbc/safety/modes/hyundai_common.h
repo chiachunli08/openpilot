@@ -18,10 +18,10 @@ enum {
 };
 
 enum {
-  HYUNDAI_PARAM_IQ_ESCC = 16,
-  HYUNDAI_PARAM_IQ_MAIN_BTN_LONG_TOGGLE = 32,
-  HYUNDAI_PARAM_IQ_HAS_LDA_BUTTON = 64,
-  HYUNDAI_PARAM_IQ_NON_SCC = 128,
+  HYUNDAI_PARAM_IQ_ESCC = 1,
+  HYUNDAI_PARAM_IQ_LONGITUDINAL_MAIN_CRUISE_TOGGLEABLE = 2,
+  HYUNDAI_PARAM_IQ_HAS_LDA_BUTTON = 4,
+  HYUNDAI_PARAM_IQ_NON_SCC = 8,
 };
 
 // common state
@@ -53,8 +53,8 @@ bool hyundai_alt_limits_2 = false;
 extern bool hyundai_escc;
 bool hyundai_escc = false;
 
-extern bool hyundai_main_btn_long_toggle;
-bool hyundai_main_btn_long_toggle = false;
+extern bool hyundai_longitudinal_main_cruise_toggleable;
+bool hyundai_longitudinal_main_cruise_toggleable = false;
 
 extern bool hyundai_has_lda_button;
 bool hyundai_has_lda_button = false;
@@ -87,7 +87,7 @@ void hyundai_common_init(uint16_t param) {
   hyundai_alt_limits_2 = GET_FLAG(param, HYUNDAI_PARAM_ALT_LIMITS_2);
 
   hyundai_escc = GET_FLAG(current_safety_param_iq, HYUNDAI_PARAM_IQ_ESCC);
-  hyundai_main_btn_long_toggle = GET_FLAG(current_safety_param_iq, HYUNDAI_PARAM_IQ_MAIN_BTN_LONG_TOGGLE);
+  hyundai_longitudinal_main_cruise_toggleable = GET_FLAG(current_safety_param_iq, HYUNDAI_PARAM_IQ_LONGITUDINAL_MAIN_CRUISE_TOGGLEABLE);
   hyundai_has_lda_button = GET_FLAG(current_safety_param_iq, HYUNDAI_PARAM_IQ_HAS_LDA_BUTTON);
   hyundai_non_scc = GET_FLAG(current_safety_param_iq, HYUNDAI_PARAM_IQ_NON_SCC);
 
@@ -144,7 +144,7 @@ void hyundai_common_cruise_buttons_check(const int cruise_button, const bool mai
     }
 
     // toggle main cruise state on rising edge of main cruise button
-    if (main_button && !main_button_prev && hyundai_main_btn_long_toggle) {
+    if (main_button && !main_button_prev && hyundai_longitudinal_main_cruise_toggleable) {
       acc_main_on = !acc_main_on;
     }
 

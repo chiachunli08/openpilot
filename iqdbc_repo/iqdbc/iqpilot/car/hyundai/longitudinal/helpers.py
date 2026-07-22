@@ -1,3 +1,7 @@
+"""
+Copyright © IQ.Lvbs, apart of Project Teal Lvbs, All Rights Reserved, licensed under https://konn3kt.com/tos
+"""
+
 import numpy as np
 
 from iqdbc.car import structs, DT_CTRL, rate_limit
@@ -33,6 +37,10 @@ def get_car_config(CP: structs.CarParams) -> CarTuningConfig:
 
 def get_longitudinal_tune(CP: structs.CarParams) -> None:
   config = get_car_config(CP)
+  CP.vEgoStopping = config.v_ego_stopping
+  CP.vEgoStarting = config.v_ego_starting
+  CP.stoppingDecelRate = config.stopping_decel_rate
+  CP.startingState = False
   CP.longitudinalActuatorDelay = config.longitudinal_actuator_delay
 
 

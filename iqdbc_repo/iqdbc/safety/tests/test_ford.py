@@ -22,7 +22,7 @@ MSG_LateralMotionControl = 0x3D3   # TX by OP, Lateral Control message
 MSG_LateralMotionControl2 = 0x3D6  # TX by OP, alternate Lateral Control message
 MSG_IPMA_Data = 0x3D8              # TX by OP, IPMA and LKAS user interface
 
-SAFETY_ISO_LATERAL_ACCEL = 5.0
+SAFETY_ISO_LATERAL_ACCEL = 3.0
 EARTH_G = 9.81
 AVERAGE_ROAD_ROLL = 0.06
 MAX_LATERAL_ACCEL = SAFETY_ISO_LATERAL_ACCEL - (EARTH_G * AVERAGE_ROAD_ROLL)
