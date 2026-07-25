@@ -636,7 +636,7 @@ class LaneChangeSettingsLayout(Widget):
   def _build_rows(self):
     self._lane_change_timer = option_item(
       title=lambda: tr("Auto Lane Change by Blinker"),
-      param="AutoLaneChangeTimer",
+      param="IQLaneChangeTimer",
       description=lambda: tr("Delay before a blinker-triggered lane change starts on its own — no wheel nudge "
                              "needed once a delay is set (default is Nudge).<br>Use the blinker for this only "
                              "when traffic and the road actually allow the maneuver."),
@@ -644,7 +644,7 @@ class LaneChangeSettingsLayout(Widget):
       label_callback=lambda x: _TIMER_LABELS[int(x)](),
     )
     self._bsm_delay = toggle_item(
-      param="AutoLaneChangeBsmDelay",
+      param="IQLaneChangeBsmDelay",
       title=lambda: tr("Auto Lane Change: Delay with Blind Spot"),
       description=lambda: tr("Hold the automatic lane change while blind spot monitoring reports a car in the "
                              "target lane, releasing it once the lane is clear."),
@@ -667,9 +667,9 @@ class LaneChangeSettingsLayout(Widget):
   def _update_state(self):
     super()._update_state()
     has_bsm = bool(ui_state.CP and ui_state.CP.enableBsm)
-    if not has_bsm and ui_state.params.get_bool("AutoLaneChangeBsmDelay"):
-      ui_state.params.remove("AutoLaneChangeBsmDelay")
-    timer_armed = ui_state.params.get("AutoLaneChangeTimer", return_default=True) > AutoLaneChangeMode.NUDGE
+    if not has_bsm and ui_state.params.get_bool("IQLaneChangeBsmDelay"):
+      ui_state.params.remove("IQLaneChangeBsmDelay")
+    timer_armed = ui_state.params.get("IQLaneChangeTimer", return_default=True) > AutoLaneChangeMode.NUDGE
     self._bsm_delay.action_item.set_enabled(has_bsm and timer_armed)
 
   def _render(self, rect):
@@ -829,7 +829,7 @@ class SteeringLayout(Widget):
     items = self._initialize_items()
     self._scroller = Scroller(items, line_separator=False, spacing=0)
 
-    for ctrl, key in [(self._lane_turn_value_control, "IQLaneTurnValue"), (self._delay_control, "LagdToggleDelay")]:
+    for ctrl, key in [(self._lane_turn_value_control, "IQLaneTurnValue"), (self._delay_control, "IQSoftwareSteerDelay")]:
       ctrl.action_item.set_value(int(float(ui_state.params.get(key, return_default=True)) * 100))
 
   def _initialize_items(self):
@@ -872,10 +872,10 @@ class SteeringLayout(Widget):
       lambda v: f"{int(round(v * (CV.MPH_TO_KPH if ui_state.is_metric else 1)))}"
                 f" {'km/h' if ui_state.is_metric else 'mph'}"
     )
-    self._lagd_toggle = toggle_item(tr("Live Learning Steer Delay"), "", param="LagdToggle")
+    self._steer_delay_toggle = toggle_item(tr("Self-Tuning Steer Delay"), "", param="IQLiveSteerDelay")
     self._delay_control = option_item(
-      tr("Adjust Software Delay"), "LagdToggleDelay", 5, 50,
-      tr("Adjust the fixed software delay added to steer actuator delay when Live Learning Steer Delay is turned off. The default software delay value is 0.2 s."),
+      tr("Manual Delay Offset"), "IQSoftwareSteerDelay", 5, 50,
+      tr("How much lead time to add on top of the car's own steering rack delay while self-tuning is off. Default is 0.2 s."),
       1, None, True, "", style.BUTTON_ACTION_WIDTH, None, True, lambda v: f"{float(v):.2f}s"
     )
 
@@ -890,7 +890,7 @@ class SteeringLayout(Widget):
       self._lane_turn_desire_toggle,
       self._lane_turn_value_control,
       IQLineSeparator(40),
-      self._lagd_toggle,
+      self._steer_delay_toggle,
       self._delay_control,
     ]
     return items
@@ -919,22 +919,23 @@ class SteeringLayout(Widget):
     self._nnff_toggle.action_item.set_enabled(ui_state.is_offroad() and steering_supported)
 
     turn_desire = ui_state.params.get_bool("IQLaneTurnDesire")
-    live_delay = ui_state.params.get_bool("LagdToggle")
+    live_delay = ui_state.params.get_bool("IQLiveSteerDelay")
     self._lane_turn_desire_toggle.action_item.set_state(turn_desire)
     self._lane_turn_value_control.set_visible(turn_desire)
-    self._lagd_toggle.action_item.set_state(live_delay)
+    self._steer_delay_toggle.action_item.set_state(live_delay)
     self._delay_control.set_visible(not live_delay)
     new_step = int(round(100 / CV.MPH_TO_KPH)) if ui_state.is_metric else 100
     if self._lane_turn_value_control.action_item.value_change_step != new_step:
       self._lane_turn_value_control.action_item.value_change_step = new_step
-    lagd_desc = tr("Enable this for the car to learn and adapt its steering response time. Disable to use a fixed steering response time.")
+    delay_desc = tr("Let IQ.Pilot measure how long your steering takes to respond and keep that figure up to date. "
+                    "Switch it off to pin the timing yourself.")
     if live_delay:
-      lagd_desc += f"<br>{tr('Live Steer Delay:')} {ui_state.sm['liveDelay'].lateralDelay:.3f} s"
+      delay_desc += f"<br>{tr('Measured:')} {ui_state.sm['liveDelay'].lateralDelay:.3f} s"
     elif ui_state.CP:
-      sw = float(ui_state.params.get("LagdToggleDelay", "0.2"))
+      sw = float(ui_state.params.get("IQSoftwareSteerDelay", "0.2"))
       cp = ui_state.CP.steerActuatorDelay
-      lagd_desc += f"<br>{tr('Actuator Delay:')} {cp:.2f} s + {tr('Software Delay:')} {sw:.2f} s = {tr('Total Delay:')} {cp + sw:.2f} s"
-    self._lagd_toggle.set_description(lagd_desc)
+      delay_desc += f"<br>{tr('Rack:')} {cp:.2f} s + {tr('Offset:')} {sw:.2f} s = {tr('Total:')} {cp + sw:.2f} s"
+    self._steer_delay_toggle.set_description(delay_desc)
 
   def _render(self, rect):
     if self._current_panel == PanelType.LANE_CHANGE:
@@ -1210,16 +1211,16 @@ class IQDeveloperLayout(DeveloperLayout):
 
 UPDATES_DESCRIPTIONS = {
   'disable_updates_offroad': tr_noop(
-    "When enabled, automatic software updates will be off.<br><b>This requires a reboot to take effect.</b>"
+    "Turns off over-the-air update checks entirely.<br><b>Reboot for this to take effect.</b>"
   ),
   'disable_updates_onroad': tr_noop(
-    "Please enable \"Always Offroad\" mode or turn off the vehicle to adjust these toggles."
+    "Put the device in Always Offroad, or shut the car down, before touching these."
   ),
   'install_mode_offroad': tr_noop(
-    "Choose whether updates only download and wait for confirmation, or download and install automatically after they are ready."
+    "Pick whether a ready update just waits for your go-ahead, or downloads and installs on its own."
   ),
   'install_mode_onroad': tr_noop(
-    "Please enable \"Always Offroad\" mode or turn off the vehicle to adjust update install behavior."
+    "Put the device in Always Offroad, or shut the car down, before changing how updates install."
   )
 }
 
@@ -1392,7 +1393,7 @@ class IQDeviceLayout(DeviceLayout):
 
     self._max_time_offroad = option_item(
       title=lambda: tr("Max Time Offroad"),
-      description=lambda: tr("Device will automatically shutdown after set time once the engine is turned off.\n(30h is the default)"),
+      description=lambda: tr("Powers the device down once it has sat this long with the engine off.\n(30h by default)"),
       param="MaxTimeOffroad",
       min_value=0,
       max_value=11,
@@ -1418,7 +1419,7 @@ class IQDeviceLayout(DeviceLayout):
     )
     self._change_language_btn = button_item(lambda: tr("Change Language"), lambda: tr("CHANGE"), callback=self._show_language_dialog)
 
-    # Quiet Mode moved to the settings-hub top bar (bell bubble); this is just the dcam preview now.
+    # Silent Mode moved to the settings-hub top bar (bell bubble); this is just the dcam preview now.
     self._driver_camera_btn = button_item(lambda: tr("Driver Camera Preview"), lambda: tr("PREVIEW"),
                                           callback=self._show_driver_camera)
 
@@ -1505,9 +1506,9 @@ class IQDeviceLayout(DeviceLayout):
 
   @staticmethod
   def wake_mode_description() -> str:
-    def_str = tr("Default: Device will boot/wake-up normally & will be ready to engage.")
-    offrd_str = tr("Offroad: Device will be in Always Offroad mode after boot/wake-up.")
-    header = tr("Controls state of the device after boot/sleep.")
+    def_str = tr("Default: comes up ready to drive, engagement available straight away.")
+    offrd_str = tr("Offroad: lands in Always Offroad every time it boots or wakes.")
+    header = tr("Sets which state the device settles into after a boot or a wake from sleep.")
 
     return f"{header}\n\n{def_str}\n{offrd_str}"
 
@@ -1522,7 +1523,7 @@ class IQDeviceLayout(DeviceLayout):
     def _second_confirm(result: int):
       if result == DialogResult.CONFIRM:
         gui_app.set_modal_overlay(ConfirmDialog(
-          text=tr("The reset cannot be undone. You have been warned."),
+          text=tr("There's no undo once this runs — last chance to back out."),
           confirm_text=tr("Confirm")
         ), callback=_do_reset)
 
@@ -1537,15 +1538,15 @@ class IQDeviceLayout(DeviceLayout):
       gui_app.set_modal_overlay(alert_dialog(tr("Disengage to Enter Always Offroad Mode")))
       return
 
-    _offroad_mode_state = ui_state.params.get_bool("OffroadMode")
-    _offroad_mode_str = tr("Are you sure you want to exit Always Offroad mode?") if _offroad_mode_state else \
-                        tr("Are you sure you want to enter Always Offroad mode?")
+    _offroad_mode_state = ui_state.params.get_bool("IQAlwaysOffroad")
+    _offroad_mode_str = tr("Leave Always Offroad mode now?") if _offroad_mode_state else \
+                        tr("Switch the device into Always Offroad mode?")
 
     def _set_always_offroad(result: int):
       if result == DialogResult.CONFIRM and not ui_state.engaged:
         if _offroad_mode_state:
           ui_state.params.put(FORCE_ONROAD_PARAM, 0)
-        ui_state.params.put_bool("OffroadMode", not _offroad_mode_state)
+        ui_state.params.put_bool("IQAlwaysOffroad", not _offroad_mode_state)
 
     gui_app.set_modal_overlay(ConfirmDialog(_offroad_mode_str, tr("Confirm")), callback=lambda result: _set_always_offroad(result))
 
@@ -1570,7 +1571,7 @@ class IQDeviceLayout(DeviceLayout):
     def _set_force_onroad(result: int):
       if result == DialogResult.CONFIRM and not ui_state.engaged:
         # Force On-Road relies on Always Offroad being active so expiry returns to offroad.
-        ui_state.params.put_bool("OffroadMode", True)
+        ui_state.params.put_bool("IQAlwaysOffroad", True)
         ui_state.params.put(FORCE_ONROAD_PARAM, int(time.time()) + FORCE_ONROAD_DURATION_SEC)
 
     gui_app.set_modal_overlay(ConfirmDialog(prompt, tr("Confirm")), callback=_set_force_onroad)
@@ -1585,7 +1586,7 @@ class IQDeviceLayout(DeviceLayout):
     super()._update_state()
 
     # Handle Always Offroad button
-    always_offroad = ui_state.params.get_bool("OffroadMode")
+    always_offroad = ui_state.params.get_bool("IQAlwaysOffroad")
     now = int(time.time())
     force_onroad_until = ui_state.params.get(FORCE_ONROAD_PARAM, return_default=True)
     force_onroad_active = force_onroad_until > now
@@ -2006,7 +2007,7 @@ class ModelsLayout(Widget):
 
     if not ui_state.is_offroad():
       self.current_model_item.action_item.set_enabled(False)
-      self.current_model_item.set_description(tr("Only available when vehicle is off, or always offroad mode is on"))
+      self.current_model_item.set_description(tr("Reachable only with the car switched off or Always Offroad turned on."))
     else:
       self.current_model_item.action_item.set_enabled(True)
       self.current_model_item.set_description("")
@@ -2248,7 +2249,7 @@ class SubaruSettings(BrandSettings):
     if not self._supported:
       return tr("Not available on this Subaru platform.")
     if not ui_state.is_offroad():
-      return tr("Enable \"Always Offroad\" in Device panel, or turn vehicle off to toggle.")
+      return tr("Flip on Always Offroad from the Device panel, or power the car down, to change this.")
     return ""
 
   def update_settings(self):
@@ -2296,7 +2297,7 @@ class TeslaSettings(BrandSettings):
             f"{tr('Active above {} only.').format(_speed_text(COOP_STEERING_MIN_KMH))}")
 
     if not ui_state.is_offroad():
-      blocker = tr("Enable \"Always Offroad\" in Device panel, or turn vehicle off to toggle.")
+      blocker = tr("Flip on Always Offroad from the Device panel, or power the car down, to change this.")
       body = f"<b>{blocker}</b><br><br>{body}"
 
     self.coop_steering_toggle.set_description(body)
@@ -2574,11 +2575,11 @@ class PlatformSelector(Button):
 
   def _open_picker(self):
     dialog = TreeOptionDialog(
-      tr("Select a vehicle"),
+      tr("Pick your vehicle"),
       self.selection.picker_folders(),
       search_prompt=tr("Search make or model"),
-      search_title=tr("Search your vehicle"),
-      search_subtitle=tr("Enter model year (e.g., 2021) and model (Toyota Corolla):"),
+      search_title=tr("Find your vehicle"),
+      search_subtitle=tr("Type a year then a model — for example, 2021 Toyota Corolla:"),
       search_funcs=[lambda node: node.data.get('display_name', ''), lambda node: node.data.get('search_tags', '')],
     )
     done = partial(self._on_picked, dialog)
@@ -2588,8 +2589,8 @@ class PlatformSelector(Button):
   def _on_picked(self, dialog, res):
     if res != DialogResult.CONFIRM or not dialog.selection_ref:
       return
-    when = tr("This setting will take effect immediately.") if ui_state.is_offroad else \
-           tr("This setting will take effect once the device enters offroad state.")
+    when = tr("Applies right away.") if ui_state.is_offroad else \
+           tr("Applies the next time the device goes offroad.")
 
     def confirm(result):
       if result == DialogResult.CONFIRM and self.selection.force(dialog.selection_ref):
