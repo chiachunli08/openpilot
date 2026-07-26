@@ -244,11 +244,11 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
   };
 
   const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-    .max_curvature = 32767,        // TEST: 15-bit max, no curvature ceiling
+    .max_curvature = 29105,
     .curvature_to_can = 149253.7313f,
     .send_rate = 0.02f,
     .inactive_curvature_is_zero = true,
-    .max_power = 65535,            // TEST: no power ceiling
+    .max_power = 225, // 90% (raw byte, 0.4 %/bit; matches Python STEERING_POWER_MAX = 90)
   };
 
   bool tx = true;

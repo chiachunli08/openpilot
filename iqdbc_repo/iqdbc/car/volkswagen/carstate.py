@@ -340,11 +340,19 @@ class CarState(CarStateBase):
 
     self.ldw_stock_values = cam_cp.vl["LDW_02"]
 
-    awv_values = ext_cp.vl.get("AWV_03", ext_cp.vl.get("ACC_10", {}))
-    ret.stockFcw = bool(awv_values.get("FCW_Active", 0)) or bool(awv_values.get("AWV2_Freigabe", 0))
+    if not (self.CP.flags & VolkswagenFlags.DISABLE_RADAR):
+      awv_values = ext_cp.vl.get("AWV_03", ext_cp.vl.get("ACC_10", {}))
+      ret.stockFcw = bool(awv_values.get("FCW_Active", 0)) or bool(awv_values.get("AWV2_Freigabe", 0))
+    else:
+      ret.stockFcw = False
     ret.stockAeb = False
 
-    self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"]
+    # Camera harness (DISABLE_RADAR): ext_cp == pt_cp, so ACC_18 reads our own sent value.
+    # Hardcode acc_type=2 (stop-and-go capable) to avoid self-referential read on first frame.
+    if self.CP.flags & VolkswagenFlags.DISABLE_RADAR:
+      self.acc_type = 2
+    else:
+      self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"]
     self.travel_assist_available = bool(pt_cp.vl.get("TA_01", {}).get("Travel_Assist_Available", 0))
 
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
@@ -764,11 +772,13 @@ class CarState(CarStateBase):
       # math.nan → ignore_alive=True so it never contributes to can_valid.
       ("TA_01", math.nan),
     ]
-    if CP.networkLocation == NetworkLocation.fwdCamera:
+    # AWV_03 (stock radar FCW/AEB) — don't subscribe when DISABLE_RADAR, the radar is silenced
+    # and our carcontroller sends the replacement. Subscribing causes CAN parser timeout errors.
+    if CP.networkLocation == NetworkLocation.fwdCamera and not (CP.flags & VolkswagenFlags.DISABLE_RADAR):
       pt_messages.append(("AWV_03", 1))
 
     cam_messages = []
-    if CP.networkLocation == NetworkLocation.gateway:
+    if CP.networkLocation == NetworkLocation.gateway and not (CP.flags & VolkswagenFlags.DISABLE_RADAR):
       cam_messages.append(("AWV_03", 1))
 
     return {

@@ -237,16 +237,17 @@ void ignition_can_hook(CANPacket_t *msg) {
       }
     }
 
-
-  }
-
-  // Volkswagen MEB / MQBevo exception (Klemmen_Status_01)
-  // On gateway harness cars this message is on bus 1 (powertrain CAN), not bus 0.
-  if ((msg->bus == 0U) || (msg->bus == 1U)) {
-    int len = GET_LEN(msg);
+    // Volkswagen MEB exception
     if ((msg->addr == 0x3C0U) && (len == 4)) {
-      ignition_can = ((msg->data[2] >> 1U) & 1U) != 0U;
-      ignition_can_cnt = 0U;
+      int counter = msg->data[1] & 0xFU;
+
+      static int prev_counter_vw_meb = -1;
+      if ((counter == ((prev_counter_vw_meb + 1) % 16)) && (prev_counter_vw_meb != -1)) {
+        // Klemmen_Status_01->ZAS_Kl_15
+        ignition_can = ((msg->data[2] >> 1) & 1U) != 0U;
+        ignition_can_cnt = 0U;
+      }
+      prev_counter_vw_meb = counter;
     }
   }
 }

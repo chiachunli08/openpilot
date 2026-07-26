@@ -141,6 +141,8 @@ class CarControllerParams:
       }
 
     elif CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
+      self.AEB_CONTROL_STEP = 100  # AWV_03 radar-replacement at 1Hz (class default 2 = 50Hz is for MQB ACC_10)
+      self.AEB_HUD_STEP = 20       # MEB_AWV_01 AEB HUD at 5Hz
       self.LDW_STEP = 10
       self.ACC_HUD_STEP = 6
       self.STEER_DRIVER_ALLOWANCE = 60

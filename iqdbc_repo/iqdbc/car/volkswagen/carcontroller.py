@@ -474,7 +474,7 @@ class CarController(CarControllerBase):
     if hud_control.leadDistanceBars != self.lead_distance_bars_last:
       self.distance_bar_frame = self.frame
 
-    if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
+    if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl and not CS.out.radarDisableFailed:
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
         fcw_alert = hud_control.visualAlert == VisualAlert.fcw
         show_distance_bars = self.frame - self.distance_bar_frame < 400
