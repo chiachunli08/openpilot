@@ -11,7 +11,7 @@ from cereal import log, custom  # noqa: F401  (custom kept available for downstr
 from iqdbc.car import structs
 from iqdbc.car.lateral import FRICTION_THRESHOLD, get_friction
 from iqdbc.iqpilot.car.interfaces import LatControlInputs
-from iqdbc.iqpilot.car.lateral_ext import get_friction as get_friction_in_torque_space
+from iqdbc.iqpilot.car.iq_lateral import get_friction as get_friction_in_torque_space
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.filter_simple import FirstOrderFilter

@@ -2,8 +2,8 @@
 from iqdbc.car.structs import CarParams
 from iqdbc.car.toyota.values import CAR
 
-from iqdbc.iqpilot.car.fingerprints_ext import merge_fw_versions
-from iqdbc.iqpilot.car.toyota.fingerprints_ext import FW_VERSIONS_EXT
+from iqdbc.iqpilot.car.iq_fingerprints import merge_fw_versions
+from iqdbc.iqpilot.car.toyota.iq_fingerprints import FW_VERSIONS_EXT
 
 Ecu = CarParams.Ecu
 

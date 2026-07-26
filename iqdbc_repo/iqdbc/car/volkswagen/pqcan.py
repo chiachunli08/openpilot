@@ -1,3 +1,7 @@
+"""
+Copyright © IQ.Lvbs, apart of Project Teal Lvbs, All Rights Reserved, licensed under https://konn3kt.com/tos/
+"""
+
 def create_hca_steering_control(packer, bus, apply_torque, HCA_Status):
   values = {
     "LM_Offset": abs(apply_torque),
@@ -95,20 +99,20 @@ def acc_hud_status_value(main_switch_on, acc_faulted, longActive, longOverride):
   return hud_status
 
 
-def create_acc_accel_control(packer, bus, acc_type, accel, acc_control, stopping, starting, esp_hold, comfortBand, jerkLimit, eBrakeActive):
+def create_acc_accel_control(packer, bus, acc_type, accel, acc_control, stopping, starting, esp_hold, comfortBand, jerkLimit, eBrakeActive, sng_active=False):
   commands = []
-  acc_enabled = acc_control == 1
+  acc_enabled = acc_control == 1 and not sng_active
 
   values = {
-    "ACS_Sta_ADR": acc_control,
+    "ACS_Sta_ADR": 0 if sng_active else acc_control,
     "ACS_StSt_Info": acc_enabled,
     "ACS_Typ_ACC": acc_type,
-    "ACS_Anhaltewunsch": acc_type == 1 and stopping or eBrakeActive,
+    "ACS_Anhaltewunsch": (acc_type == 1 and stopping or eBrakeActive) or sng_active,
     "ACS_FreigSollB": acc_enabled,
     "ACS_Sollbeschl": accel if acc_enabled else 3.01,
     "ACS_zul_Regelabw": comfortBand if acc_enabled else 1.27,
     "ACS_max_AendGrad": jerkLimit if acc_enabled else 5.08,
-    "ACS_Schubabsch": 1 if acc_enabled and (accel > 0.05) else 0,
+    "ACS_Schubabsch": 0,
     "ACS_MomEingriff": 0,
     "ACS_ADR_Schub": 0,
   }
@@ -116,6 +120,14 @@ def create_acc_accel_control(packer, bus, acc_type, accel, acc_control, stopping
   commands.append(packer.make_can_msg("ACC_System", bus, values))
 
   return commands
+
+
+def create_sng_handoff_control(packer, bus, handoff_active, decel_req):
+  values = {
+    "SNG_HandoffActive": handoff_active,
+    "SNG_DecelReq": decel_req if handoff_active else 0.0,
+  }
+  return packer.make_can_msg("SNG_1", bus, values)
 
 
 def create_blinker_control(packer, bus, leftBlinker, rightBlinker):
@@ -126,29 +138,71 @@ def create_blinker_control(packer, bus, leftBlinker, rightBlinker):
   return packer.make_can_msg("Blinkmodi_02", bus, values)
 
 
-def create_acc_hud_control(packer, bus, acc_hud_status, set_speed, leadDistance, distanceBars, fcw_alert, leadVisible):
-  if distanceBars == 1:
-    leadDistanceBars = 2
-  elif distanceBars == 2:
-    leadDistanceBars = 3
-  elif distanceBars == 3:
-    leadDistanceBars = 4
-  else:
-    leadDistanceBars = 2
+def create_acc_hud_control(packer, bus, acc_hud_status, set_speed, leadDistance, distanceBars, fcw_alert, leadVisible, unavailable, decel, d_unresponsive):
+  priodisp = 0 if fcw_alert else 1 if (acc_hud_status == 4 or decel or leadVisible) else 2 if (acc_hud_status in (3, 2)) else 0
+  leadDistanceBars = distanceBars + 1 if distanceBars in (1, 2, 3) else 2
   values = {
     "ACA_StaACC": acc_hud_status,
+    "ACA_AnzDisplay": 1 if acc_hud_status in (3, 4) else 0,
     "ACA_Zeitluecke": leadDistanceBars,
     "ACA_V_Wunsch": set_speed,
     "ACA_gemZeitl": min(15, max(1, int(round(leadDistance)))) if leadVisible else 0,
-    "ACA_PrioDisp": 3,
+    "ACA_PrioDisp": priodisp,
+    "ACA_Akustik1": d_unresponsive,
+    # "ACA_Fahrerhinw": unavailable,
     "ACA_Akustik2": fcw_alert,
+    "ACA_ACC_Verz": decel,
   }
 
   return packer.make_can_msg("ACC_GRA_Anzeige", bus, values)
 
-def filter_motor2(packer, bus, motor2_stock):
-  values = motor2_stock
-  values.update({
-    "MO2_Sta_GRA": 0,
-  })
+def filter_motor2(packer, bus, motor2_stock, gra_active=False):
+  values = dict(motor2_stock)
+  if gra_active:
+    values.update({
+      "MO2_Sta_GRA": 1,
+      "MO2_Status_TSK": 1,
+    })
+  else:
+    values.update({
+      "MO2_Sta_GRA": 0,
+    })
   return packer.make_can_msg("Motor_2", bus, values)
+
+
+def filter_motor5(packer, bus, motor5_stock, gra_active=False):
+  values = dict(motor5_stock)
+  if gra_active:
+    values["MO5_GRA_Hauptsch"] = 1
+  return packer.make_can_msg("Motor_5", bus, values)
+
+
+def create_motor3_resume(packer, bus, motor1_stock, motor3_stock, resume=False):
+  values = dict(motor3_stock)
+  values_motor1 = dict(motor1_stock)
+  if resume:
+    values["MO3_Pedalwert"] = values_motor1["MO1_Pedalwert"]
+  return packer.make_can_msg("Motor_3", bus, values)
+
+
+def create_radar_gra(packer, bus, gra_stock, counter, set_btn=False, cancel=False, resume=False,
+                     up_short=False, down_short=False, up_long=False, down_long=False, zeitluecke=None):
+  values = {s: gra_stock[s] for s in [
+    "GRA_Hauptschalt",      # ACC main switch passthrough
+    "GRA_Typ_Hauptschalt",  # momentary vs latching
+    "GRA_Kodierinfo",       # configuration
+    "GRA_Sender",           # CAN originator
+  ]}
+  values.update({
+    "COUNTER": counter % 16,
+    "GRA_Neu_Setzen": 1 if set_btn else 0,
+    "GRA_Abbrechen": 1 if cancel else 0,
+    "GRA_Recall": 1 if resume else 0,
+    "GRA_Up_kurz": 1 if up_short else 0,
+    "GRA_Down_kurz": 1 if down_short else 0,
+    "GRA_Up_lang": 1 if up_long else 0,
+    "GRA_Down_lang": 1 if down_long else 0,
+  })
+  if zeitluecke is not None:
+    values["GRA_Zeitluecke"] = zeitluecke
+  return packer.make_can_msg("GRA_Neu", bus, values)

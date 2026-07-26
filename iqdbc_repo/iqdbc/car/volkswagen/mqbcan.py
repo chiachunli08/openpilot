@@ -114,10 +114,10 @@ def create_acc_accel_control(packer, bus, acc_type, accel, acc_control, stopping
     "ACC_Status_ACC": acc_control,
     "ACC_StartStopp_Info": acc_enabled,
     "ACC_Sollbeschleunigung_02": accel if acc_enabled else 3.01,
-    "ACC_zul_Regelabw_unten": comfortBand if acc_enabled else 0.2,
-    "ACC_zul_Regelabw_oben": comfortBand if acc_enabled else 0.2,
-    "ACC_neg_Sollbeschl_Grad_02": jerkLimit if acc_enabled else 0,
-    "ACC_pos_Sollbeschl_Grad_02": jerkLimit if acc_enabled else 0,
+    "ACC_zul_Regelabw_unten": 0.2,
+    "ACC_zul_Regelabw_oben": 0.2,
+    "ACC_neg_Sollbeschl_Grad_02": 3.0 if acc_enabled else 0,
+    "ACC_pos_Sollbeschl_Grad_02": 3.0 if acc_enabled else 0,
     "ACC_Anfahren": starting if acc_enabled else False,
     "ACC_Anhalten": stopping if acc_enabled else False,
   }
@@ -149,12 +149,16 @@ def create_acc_accel_control(packer, bus, acc_type, accel, acc_control, stopping
   return commands
 
 
-def create_acc_hud_control(packer, bus, acc_hud_status, set_speed, leadDistance, distanceBars, fcw_alert, leadVisible):
+def create_acc_hud_control(packer, bus, acc_hud_status, set_speed, leadDistance, distanceBars, fcw_alert, leadVisible, unavailable, decel, d_unresponsive):
+  priodisp = 0 if fcw_alert else 1 if (acc_hud_status == 4 or decel or leadVisible) else 2 if (acc_hud_status in (3, 2)) else 0
+  leadDistanceBars = distanceBars + 1 if distanceBars in (1, 2, 3) else 2
   values = {
     "ACC_Status_Anzeige": acc_hud_status,
     "ACC_Wunschgeschw_02": set_speed if set_speed < 250 else 327.36,
-    "ACC_Gesetzte_Zeitluecke": distanceBars,
-    "ACC_Display_Prio": 3,
+    "ACC_Gesetzte_Zeitluecke": leadDistanceBars,
+    "ACC_Optischer_Fahrerhinweis": 1 if fcw_alert else 0,
+    "ACC_Display_Prio": priodisp,
+    "ACC_Relevantes_Objekt": leadDistanceBars,
     "ACC_Abstandsindex": leadDistance if leadVisible else 0,
     "ACC_Akustik_02": fcw_alert,
   }

@@ -40,10 +40,21 @@ def _speed_scale() -> float:
 #  Accel strip
 # ============================================================================
 _STRIP_WIDTH = 28
+_STRIP_INSET = 14
 _STRIP_CEILING = 0.85
 _STRIP_EMA = 5.0
-_STRIP_GO = canvas.shade(0, 245, 0, 200)
-_STRIP_STOP = canvas.shade(245, 0, 0, 200)
+_STRIP_ARC_SEGMENTS = 24
+_STRIP_ACCEL = (33, 112, 115)
+_STRIP_ACCEL_NEON = (94, 232, 236)
+_STRIP_DECEL = (255, 0, 247)
+_STRIP_DECEL_NEON = (255, 145, 251)
+_STRIP_TIP_ALPHA = 235
+_STRIP_ROOT_ALPHA = 55
+# neon edge: opaque core inside the cap, then non-overlapping halo bands outside it
+_STRIP_CORE = 3.0
+_STRIP_CORE_FLOOR = 0.3
+_STRIP_HALO = ((3.0, 0.42), (5.0, 0.14))
+_STRIP_NEON_FULL = 2.0  # m/s^2 at which the edges reach full brightness
 
 
 class RocketFuel:
@@ -54,6 +65,22 @@ class RocketFuel:
     mag = abs(self._eased)
     return 0.0 if mag == 0.0 else max(0.0, _STRIP_CEILING - 0.1 / mag)
 
+  @staticmethod
+  def _tint(fill, frac: float):
+    return canvas.shade(*fill, int(_STRIP_TIP_ALPHA + (_STRIP_ROOT_ALPHA - _STRIP_TIP_ALPHA) * frac))
+
+  @staticmethod
+  def _cap(center, cap: float, up: bool, fill, neon, heat: float) -> None:
+    start, end = (180.0, 360.0) if up else (0.0, 180.0)
+    canvas.annulus(center, 0.0, cap, start, end, _STRIP_ARC_SEGMENTS, fill)
+    edge = cap
+    for spread, weight in _STRIP_HALO:
+      canvas.annulus(center, edge, edge + spread, start, end, _STRIP_ARC_SEGMENTS,
+                     canvas.shade(*neon, int(255 * heat * weight)))
+      edge += spread
+    core = canvas.shade(*neon, int(255 * (_STRIP_CORE_FLOOR + (1.0 - _STRIP_CORE_FLOOR) * heat)))
+    canvas.annulus(center, max(0.0, cap - _STRIP_CORE), cap, start, end, _STRIP_ARC_SEGMENTS, core)
+
   def render(self, rect, sm) -> None:
     if not ui_state.rocket_fuel:
       return
@@ -61,9 +88,20 @@ class RocketFuel:
     reach = self._reach() * rect.height / 2.0
     if reach <= 0.0:
       return
+    accelerating = self._eased > 0.0
     mid = rect.y + rect.height / 2.0
-    top, tint = (mid - reach, _STRIP_GO) if self._eased > 0.0 else (mid, _STRIP_STOP)
-    canvas.slab(rect.x, top, _STRIP_WIDTH, reach, tint)
+    top = mid - reach if accelerating else mid
+    x = rect.x + _STRIP_INSET
+    cap = min(_STRIP_WIDTH / 2.0, reach / 2.0)
+    fill, neon = (_STRIP_ACCEL, _STRIP_ACCEL_NEON) if accelerating else (_STRIP_DECEL, _STRIP_DECEL_NEON)
+    near = cap / reach
+    frac_top, frac_bottom = (near, 1.0 - near) if accelerating else (1.0 - near, near)
+    heat = min(abs(self._eased) / _STRIP_NEON_FULL, 1.0)
+
+    canvas.v_sweep(x, top + cap, cap * 2.0, reach - cap * 2.0,
+                   self._tint(fill, frac_top), self._tint(fill, frac_bottom))
+    self._cap(canvas.Pt(x + cap, top + cap), cap, True, self._tint(fill, frac_top), neon, heat)
+    self._cap(canvas.Pt(x + cap, top + reach - cap), cap, False, self._tint(fill, frac_bottom), neon, heat)
 
 
 # ============================================================================

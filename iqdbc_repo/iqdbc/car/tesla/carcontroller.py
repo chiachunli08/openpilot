@@ -3,11 +3,13 @@ from iqdbc.can import CANPacker
 from iqdbc.car import Bus
 from iqdbc.car.lateral import apply_steer_angle_limits_vm
 from iqdbc.car.interfaces import CarControllerBase
+from iqdbc.car.tesla import TESLA_BLINKERS
 from iqdbc.car.tesla.teslacan import TeslaCAN
 from iqdbc.car.tesla.values import CarControllerParams
 from iqdbc.car.vehicle_model import VehicleModel
 from openpilot.iqpilot.selfdrive.car.enhanced_stock_longitudinal_control import get_set_speed_kph_from_params
 from iqdbc.iqpilot.car.tesla.coop_steering import CoopSteeringCarController
+from iqdbc.iqpilot.car.tesla.values import TeslaFlagsIQ
 
 
 def get_safety_CP():
@@ -27,6 +29,11 @@ class CarController(CarControllerBase):
 
     # Vehicle model used for lateral limiting
     self.VM = VehicleModel(get_safety_CP())
+
+    self.has_vehicle_bus = bool(CP_IQ.flags & TeslaFlagsIQ.HAS_VEHICLE_BUS)
+    self.body_controls_counter_last = -1
+    self.blinker_request_prev = False
+    self.blinker_cancel_frame = 0
 
   def update(self, CC, CC_IQ, CS, now_nanos):
     actuators = CC.actuators
@@ -52,6 +59,8 @@ class CarController(CarControllerBase):
       if self.frame % 4 == 0:
         state = 13 if CC.cruiseControl.cancel or CS.das_accCancel else 4  # 4=ACC_ON, 13=ACC_CANCEL_GENERIC_SILENT
         accel = float(np.clip(actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX))
+        if not CC.longActive:
+          accel = 0.
         cntr = (self.frame // 4) % 8
         set_speed_kph = get_set_speed_kph_from_params(CC_IQ.params)
         can_sends.append(self.tesla_can.create_longitudinal_command(state, accel, cntr, CS.out.vEgo, CC.longActive,
@@ -62,6 +71,30 @@ class CarController(CarControllerBase):
       if CC.cruiseControl.cancel:
         cntr = (CS.das_control["DAS_controlCounter"] + 1) % 8
         can_sends.append(self.tesla_can.create_longitudinal_command(13, 0, cntr, CS.out.vEgo, False, True))
+
+    # Nav blinker control via DAS_bodyControls on the vehicle bus, phase-locked to the car's
+    # counter. Cancel on the trailing edge since the body controller latches the signal.
+    stock_dat = getattr(CS, 'das_body_controls_dat', b"")
+    # FIXME: gate by FingerPrint
+    if TESLA_BLINKERS and self.has_vehicle_bus and len(stock_dat) >= 8:
+      left_blinker = CC.leftBlinker
+      right_blinker = CC.rightBlinker
+
+      driver_opposes = (left_blinker and CS.out.rightBlinker) or (right_blinker and CS.out.leftBlinker)
+      if driver_opposes:
+        left_blinker = right_blinker = False
+
+      nav_requesting = left_blinker or right_blinker
+
+      if self.blinker_request_prev and not nav_requesting and not driver_opposes:
+        self.blinker_cancel_frame = self.frame + 150  # ~1.5 s
+      self.blinker_request_prev = nav_requesting
+      cancel = not nav_requesting and not driver_opposes and self.frame < self.blinker_cancel_frame
+
+      body_counter = stock_dat[6] >> 4
+      if body_counter != self.body_controls_counter_last:
+        can_sends.append(self.tesla_can.create_body_controls(stock_dat, left_blinker, right_blinker, cancel))
+      self.body_controls_counter_last = body_counter
 
     # TODO: HUD control
     new_actuators = actuators.as_builder()

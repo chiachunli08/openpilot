@@ -4,26 +4,20 @@ from iqdbc.car.toyota.values import CAR, ToyotaFlags
 from iqdbc.iqpilot.car.toyota.values import ToyotaFlagsIQ
 
 
-def test_forced_secoc_toyota_clears_dashcam_mode():
+def test_secoc_toyota_not_dashcam_on_release():
+  # SecOC Toyotas are controllable regardless of branch or fingerprint source.
   candidate = CAR.TOYOTA_SIENNA_4TH_GEN
+
+  # is_release=True (release branch) must not force dashcam mode
   cp = CarInterface.get_params(candidate, gen_empty_fingerprint(), [], False, True, False)
-  assert cp.dashcamOnly
-
-  cp.fingerprintSource = structs.CarParams.FingerprintSource.fixed
-  CarInterface.get_params_iq(cp, candidate, gen_empty_fingerprint(), [], False, True, False)
-
+  assert cp.flags & ToyotaFlags.SECOC.value
+  assert cp.secOcRequired
   assert not cp.dashcamOnly
 
-
-def test_automatic_secoc_toyota_release_stays_dashcam():
-  candidate = CAR.TOYOTA_SIENNA_4TH_GEN
-  cp = CarInterface.get_params(candidate, gen_empty_fingerprint(), [], False, True, False)
-  assert cp.dashcamOnly
-
+  # fw/can-sourced fingerprint (not forced) must also stay controllable
   cp.fingerprintSource = structs.CarParams.FingerprintSource.can
   CarInterface.get_params_iq(cp, candidate, gen_empty_fingerprint(), [], False, True, False)
-
-  assert cp.dashcamOnly
+  assert not cp.dashcamOnly
 
 
 def test_smart_dsu_clears_disable_radar_on_radar_acc_toyota():

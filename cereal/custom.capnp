@@ -734,6 +734,7 @@ struct IQVehicleTracks @0xb877ef4b20a4ae22 {
   frameHeight @2 :UInt16;
   processingMs @3 :Float32;
   tracks @4 :List(Track);
+  wide @5 :Bool;
 
   struct Track {
     # box corners normalized [0,1] in the road-camera frame

@@ -1,12 +1,25 @@
 import json
+import os
 
-from iqdbc.iqpilot.car.platform_list import get_car_list, CAR_LIST_JSON_OUT
+from iqdbc.car.common.basedir import BASEDIR
+from iqdbc.iqpilot.car.platform_list import get_car_list
+
+CATALOG_JSON = os.path.join(BASEDIR, "..", "..", "iqpilot", "selfdrive", "car", "vehicle_catalog.json")
+
+_KEY_TO_ATTR = {"id": "platform", "mk": "make", "grp": "brand", "mdl": "model", "yrs": "year", "req": "package"}
+
+
+def _decode(envelope) -> dict:
+  out = {}
+  for record in (envelope.get("vehicles") or {}).values():
+    out[record.get("label", "")] = {attr: record.get(key) for key, attr in _KEY_TO_ATTR.items()}
+  return out
 
 
 class TestCarList:
   def test_generator(self):
-    generated_car_list = json.dumps(get_car_list(), indent=2, ensure_ascii=False)
-    with open(CAR_LIST_JSON_OUT) as f:
-      current_car_list = f.read()
+    generated = get_car_list()
+    with open(CATALOG_JSON) as f:
+      shipped = _decode(json.load(f))
 
-    assert generated_car_list == current_car_list, "Run iqdbc/iqpilot/car/platform_list.py to update the car list"
+    assert shipped == generated, "Run: python -m openpilot.iqpilot.selfdrive.car.vehicle_catalog"

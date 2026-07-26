@@ -231,12 +231,15 @@ class ModelRenderer(Widget, IQModelRenderer):
 
   def _update_vision_dots(self, sm):
     self._vision_dots = []
-    if (self._frame_transform is None or self._frame_transform_wide or
+    self._sign_dots = []
+    if (self._frame_transform is None or
         not sm.alive['iqVehicleTracks'] or not sm.valid['iqVehicleTracks']):
       return
 
-    self._sign_dots = []
     vt = sm['iqVehicleTracks']
+    if bool(vt.wide) != self._frame_transform_wide:
+      return
+
     fw, fh = vt.frameWidth, vt.frameHeight
     if fw == 0 or fh == 0:
       return

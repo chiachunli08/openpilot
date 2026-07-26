@@ -1,15 +1,16 @@
 import time
 
-from iqdbc.car.common.conversions import Conversions as CV
 from iqdbc.car import get_safety_config, structs, uds
 from iqdbc.car.carlog import carlog
 from iqdbc.car.interfaces import CarInterfaceBase
 from iqdbc.car.isotp_parallel_query import IsoTpParallelQuery
 from iqdbc.car.volkswagen.carcontroller import CarController
 from iqdbc.car.volkswagen.carstate import CarState
-from iqdbc.car.volkswagen.values import CanBus, CAR, DashcamOnlyReason, NetworkLocation, RADAR_DISABLE_STATE, TransmissionType, VolkswagenFlags, VolkswagenSafetyFlags, VolkswagenFlagsIQ
+from iqdbc.car.volkswagen.values import (
+  CAR, CanBus, DashcamOnlyReason, NetworkLocation, RADAR_DISABLE_STATE, TransmissionType,
+  VolkswagenFlags, VolkswagenSafetyFlags, VolkswagenFlagsIQ, get_longitudinal_stopping_speed_override,
+)
 from iqdbc.car.volkswagen.radar_interface import RadarInterface
-from iqdbc.car.common.conversions import Conversions as CV
 import sys
 import os
 iqpilot_path = os.path.join(os.path.dirname(__file__), '..', '..', '..')
@@ -18,6 +19,11 @@ try:
   from openpilot.common.params import Params
 except ImportError:
   pass
+
+try:
+  from openpilot.system.proprietary_runtime._verified_import import import_verified_module
+except Exception:
+  import_verified_module = None
 
 
 class CarInterface(CarInterfaceBase):
@@ -39,9 +45,16 @@ class CarInterface(CarInterfaceBase):
     if ret.flags & VolkswagenFlags.PQ:
       # Set global PQ35/PQ46/NMS parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenPq)]
+      if candidate == CAR.SEAT_ALHAMBRA_MK1:
+        ret.flags |= VolkswagenFlagsIQ.IQ_PQ_TIMEBOMB.value
+      if not (ret.flags & VolkswagenFlagsIQ.IQ_PQ_TIMEBOMB) and _params.get_bool("VwPqEpsPatched"):
+        ret.minSteerSpeed = 0
       if angle_lat_enabled:
         ret.flags |= VolkswagenFlagsIQ.IQ_LVBS_ALC_MODULE.value
         safety_configs[0].safetyParam |= VolkswagenSafetyFlags.PQ_ALC_MODULE.value
+        if alpha_long:
+          ret.flags |= VolkswagenFlagsIQ.IQ_PQ_SNG_ECD.value
+          safety_configs[0].safetyParam |= VolkswagenSafetyFlags.PQ_SNG_ECD.value
       ret.enableBsm = 0x3BA in fingerprint[0]  # SWA_1
 
       if 0x440 in fingerprint[0] or docs:  # Getriebe_1
@@ -58,6 +71,13 @@ class CarInterface(CarInterfaceBase):
           ret.flags |= VolkswagenFlagsIQ.IQ_CC_ONLY.value
         else:
           ret.flags |= VolkswagenFlagsIQ.IQ_CC_ONLY_NO_RADAR.value
+
+      cc_only_flags = VolkswagenFlagsIQ.IQ_CC_ONLY | VolkswagenFlagsIQ.IQ_CC_ONLY_NO_RADAR
+      if ret.flags & cc_only_flags:
+        safety_configs[0].safetyParam |= VolkswagenSafetyFlags.PQ_NO_CAM_BUS.value
+      if (ret.flags & cc_only_flags) and not fingerprint[0]:
+        ret.flags |= VolkswagenFlagsIQ.IQ_PQ_LOWLINE.value
+        safety_configs[0].safetyParam |= VolkswagenSafetyFlags.PQ_LOWLINE.value
 
       if any(msg in fingerprint[1] for msg in (0x1A0, 0xC2)):  # Bremse_1, Lenkwinkel_1
         ret.networkLocation = NetworkLocation.gateway
@@ -151,7 +171,7 @@ class CarInterface(CarInterfaceBase):
     ret.steerLimitTimer = 0.4
     if ret.flags & VolkswagenFlags.PQ:
       ret.steerActuatorDelay = 0.2
-      ret.longitudinalTuning.kfDEPRECATED = 1.2
+      ret.longitudinalTuning.kf = 1.2
       ret.longitudinalTuning.kpBP = [0.]
       ret.longitudinalTuning.kpV = [.45]
       ret.longitudinalTuning.kiBP = [0.]
@@ -164,19 +184,20 @@ class CarInterface(CarInterfaceBase):
         CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
     elif ret.flags & VolkswagenFlags.MLB:
       ret.steerActuatorDelay = 0.2
-      CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+      if angle_lat_enabled:
+        ret.steerControlType = structs.CarParams.SteerControlType.angle
+        ret.steerAtStandstill = bool(joystick_mode)
+      else:
+        CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
     elif ret.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
       ret.steerActuatorDelay = 0.3
     else:
       ret.steerActuatorDelay = 0.1
-      ret.lateralTuning.pid.kpBP = [0.]
-      ret.lateralTuning.pid.kiBP = [0.]
-      ret.lateralTuning.pid.kf = 0.00006
-      ret.lateralTuning.pid.kpV = [0.6]
-      ret.lateralTuning.pid.kiV = [0.2]
       if angle_lat_enabled:
         ret.steerControlType = structs.CarParams.SteerControlType.angle
         ret.steerAtStandstill = bool(joystick_mode)
+      else:
+        CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
     # Global longitudinal tuning defaults, can be overridden per-vehicle
 
@@ -200,17 +221,12 @@ class CarInterface(CarInterfaceBase):
     if candidate == CAR.PORSCHE_MACAN_MK1:
       ret.steerActuatorDelay = 0.07
 
+    if candidate == CAR.VOLKSWAGEN_PASSAT_B7 or CAR.SEAT_ALHAMBRA_MK1:
+      ret.flags |= VolkswagenFlagsIQ.IQ_PQ_ACC_FTS_EPB.value
+      safety_configs[0].safetyParam |= VolkswagenSafetyFlags.PQ_ACC_FTS_EPB.value
+
     ret.pcmCruise = not ret.openpilotLongitudinalControl
-    if ret.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
-      ret.startingState = True
-      ret.startAccel = 0.8
-      ret.vEgoStarting = 0.5
-      ret.vEgoStopping = 0.1
-      ret.stopAccel = -0.55
-    else:
-      ret.stopAccel = -0.55
-      ret.vEgoStarting = 0.1
-      ret.vEgoStopping = 1.5 * CV.KPH_TO_MS if ret.flags & VolkswagenFlags.PQ else 0.1
+    ret.stopAccel = -0.55
     ret.autoResumeSng = ret.minEnableSpeed == -1
     CAN = CanBus(fingerprint=fingerprint)
     if CAN.pt >= 4:
@@ -221,10 +237,18 @@ class CarInterface(CarInterfaceBase):
 
   @staticmethod
   def pre_init(CP: structs.CarParams, CP_IQ: structs.IQCarParams, can_recv, can_send):
-    # Engine-on check moved to init(): if radar can't be disabled, radarDisableFailed=True
-    # gates only long control (carcontroller line ~308) while lateral still works.
-    # Full dashcam mode here was too aggressive — lateral doesn't need radar disabled.
-    pass
+    if not (CP.flags & VolkswagenFlags.PQ) or (CP.flags & VolkswagenFlagsIQ.IQ_PQ_TIMEBOMB) or import_verified_module is None:
+      return
+    try:
+      params = Params()
+      if params.get_bool("VwPqEpsPatched"):
+        return
+      flasher = import_verified_module("iqpilot_hephaestusd_private", "iqpilot_private.konn3kt.hephaestus.vw_pq_flasher")
+      status = flasher.check_eps_patch_status(1, can_recv, can_send)
+    except Exception:
+      return
+    if status == "patched":
+      params.put_bool("VwPqEpsPatched", True)
 
   @staticmethod
   def init(CP: structs.CarParams, CP_IQ: structs.IQCarParams, can_recv, can_send):
@@ -321,4 +345,5 @@ class CarInterface(CarInterfaceBase):
 
   @staticmethod
   def _get_params_iq(stock_cp: structs.CarParams, ret: structs.IQCarParams, candidate, fingerprint: dict[int, dict[int, int]], car_fw: list[structs.CarParams.CarFw], alpha_long: bool, is_release_iq: bool, docs: bool) -> structs.IQCarParams:
+    ret.longitudinalStoppingSpeedOverride = get_longitudinal_stopping_speed_override(candidate, stock_cp.flags)
     return ret

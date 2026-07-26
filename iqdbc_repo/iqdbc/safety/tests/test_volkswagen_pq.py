@@ -20,6 +20,7 @@ MSG_ACC_GRA_ANZEIGE = 0x56A   # TX by OP, ACC HUD
 MSG_LDW_1 = 0x5BE             # TX by OP, Lane line recognition and text alerts
 MSG_BLINKMODI_02 = 0x0AA      # TX by OP, turn signal control
 MSG_APD_1 = 0x3D6             # TX by OP, CarParams
+MSG_IQ = 0x6A1                # TX by OP
 
 
 class TestVolkswagenPqSafetyBase(common.CarSafetyTest):
@@ -43,7 +44,7 @@ class TestVolkswagenPqSafetyBase(common.CarSafetyTest):
   # Ego speed (Bremse_1)
   def _speed_msg(self, speed):
     values = {"BR1_Rad_kmh": speed}
-    return self.packer.make_can_msg_safety("Bremse_1", 0, values)
+    return self.packer.make_can_msg_safety("Bremse_1", 1, values)
 
   # Brake light switch (shared message Motor_2)
   def _user_brake_msg(self, brake):
@@ -63,7 +64,7 @@ class TestVolkswagenPqSafetyBase(common.CarSafetyTest):
   # Driver steering input torque
   def _torque_driver_msg(self, torque):
     values = {"LH3_LM": abs(torque), "LH3_LMSign": torque < 0}
-    return self.packer.make_can_msg_safety("Lenkhilfe_3", 0, values)
+    return self.packer.make_can_msg_safety("Lenkhilfe_3", 1, values)
 
   # openpilot steering output torque
   def _torque_cmd_msg(self, torque, steer_req=1, hca_status=7):
@@ -76,17 +77,17 @@ class TestVolkswagenPqSafetyBase(common.CarSafetyTest):
     values = {"MO2_BLS": brake_pressed,
               "MO2_Sta_GRA": cruise_engaged,
               "MO2_Status_TSK": tsk_status}
-    return self.packer.make_can_msg_safety("Motor_2", 0, values)
+    return self.packer.make_can_msg_safety("Motor_2", 1, values)
 
   # ACC main switch status
   def _motor_5_msg(self, main_switch=False):
     values = {"MO5_GRA_Hauptsch": main_switch}
-    return self.packer.make_can_msg_safety("Motor_5", 0, values)
+    return self.packer.make_can_msg_safety("Motor_5", 1, values)
 
   # Driver throttle input (Motor_3)
   def _user_gas_msg(self, gas):
     values = {"MO3_Pedalwert": gas}
-    return self.packer.make_can_msg_safety("Motor_3", 0, values)
+    return self.packer.make_can_msg_safety("Motor_3", 1, values)
 
   # Cruise control buttons (GRA_Neu)
   def _button_msg(self, _set=False, resume=False, cancel=False, bus=2):
@@ -116,7 +117,7 @@ class TestVolkswagenPqSafetyBase(common.CarSafetyTest):
 
 class TestVolkswagenPqStockSafety(TestVolkswagenPqSafetyBase):
   # Transmit of GRA_Neu is allowed on bus 0/1/2 to keep compatibility with gateway and camera integration
-  TX_MSGS = [[MSG_HCA_1, 0], [MSG_GRA_NEU, 0], [MSG_GRA_NEU, 1], [MSG_GRA_NEU, 2], [MSG_LDW_1, 0], [MSG_BLINKMODI_02, 0], [MSG_APD_1, 1]]
+  TX_MSGS = [[MSG_HCA_1, 0], [MSG_GRA_NEU, 0], [MSG_GRA_NEU, 1], [MSG_GRA_NEU, 2], [MSG_LDW_1, 0], [MSG_BLINKMODI_02, 0], [MSG_APD_1, 1], [MSG_IQ, 1]]
   FWD_BLACKLISTED_ADDRS = {2: [MSG_HCA_1, MSG_LDW_1]}
 
   def setUp(self):
@@ -139,11 +140,11 @@ class TestVolkswagenPqLongSafety(TestVolkswagenPqSafetyBase, common.Longitudinal
   tsk_status = True
 
   TX_MSGS = [[MSG_HCA_1, 0], [MSG_LDW_1, 0], [MSG_ACC_SYSTEM, 0], [MSG_ACC_GRA_ANZEIGE, 0],
-             [MSG_GRA_NEU, 1], [MSG_GRA_NEU, 2], [MSG_BLINKMODI_02, 0], [MSG_MOTOR_2, 2], [MSG_APD_1, 1]]
-  FWD_BLACKLISTED_ADDRS = {0: [MSG_MOTOR_2, MSG_GRA_NEU],
+             [MSG_GRA_NEU, 1], [MSG_GRA_NEU, 2], [MSG_BLINKMODI_02, 0], [MSG_MOTOR_2, 2], [MSG_MOTOR_5, 2], [MSG_APD_1, 1], [MSG_IQ, 1]]
+  FWD_BLACKLISTED_ADDRS = {0: [MSG_MOTOR_2, MSG_MOTOR_5, MSG_GRA_NEU],
                            2: [MSG_HCA_1, MSG_LDW_1, MSG_ACC_SYSTEM, MSG_ACC_GRA_ANZEIGE]}
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_1, MSG_LDW_1, MSG_ACC_SYSTEM, MSG_ACC_GRA_ANZEIGE),
-                             2: (MSG_MOTOR_2, MSG_GRA_NEU)}
+                             2: (MSG_MOTOR_2, MSG_GRA_NEU, MSG_MOTOR_5)}
   INACTIVE_ACCEL = 3.01
 
   def setUp(self):
@@ -168,20 +169,20 @@ class TestVolkswagenPqLongSafety(TestVolkswagenPqSafetyBase, common.Longitudinal
       # ACC main switch must be on, engage on falling edge
       self.safety.set_controls_allowed(0)
       self._rx(self._motor_5_msg(main_switch=False))
-      self._rx(self._button_msg(_set=(button == "set"), resume=(button == "resume"), bus=0))
-      self._rx(self._button_msg(bus=0))
+      self._rx(self._button_msg(_set=(button == "set"), resume=(button == "resume"), bus=1))
+      self._rx(self._button_msg(bus=1))
       self.assertFalse(self.safety.get_controls_allowed(), f"controls allowed on {button} with main switch off")
       self._rx(self._motor_5_msg(main_switch=True))
-      self._rx(self._button_msg(_set=(button == "set"), resume=(button == "resume"), bus=0))
+      self._rx(self._button_msg(_set=(button == "set"), resume=(button == "resume"), bus=1))
       self.assertFalse(self.safety.get_controls_allowed(), f"controls allowed on {button} rising edge")
-      self._rx(self._button_msg(bus=0))
+      self._rx(self._button_msg(bus=1))
       self.assertTrue(self.safety.get_controls_allowed(), f"controls not allowed on {button} falling edge")
 
   def test_cancel_button(self):
     # Disable on rising edge of cancel button
     self._rx(self._motor_5_msg(main_switch=True))
     self.safety.set_controls_allowed(1)
-    self._rx(self._button_msg(cancel=True, bus=0))
+    self._rx(self._button_msg(cancel=True, bus=1))
     self.assertFalse(self.safety.get_controls_allowed(), "controls allowed after cancel")
 
   def test_main_switch(self):
@@ -223,8 +224,8 @@ class TestVolkswagenPqLongSafety(TestVolkswagenPqSafetyBase, common.Longitudinal
       self.safety.set_controls_allowed(0)
       self._rx(self._motor_5_msg(main_switch=False))
       self._rx(self._motor_2_msg(tsk_status=True))
-      self._rx(self._button_msg(_set=(button == "set"), resume=(button == "resume"), bus=0))
-      self._rx(self._button_msg(bus=0))
+      self._rx(self._button_msg(_set=(button == "set"), resume=(button == "resume"), bus=1))
+      self._rx(self._button_msg(bus=1))
       self.assertTrue(self.safety.get_controls_allowed(), f"controls not allowed on {button} falling edge with TSK ready")
 
   def test_torque_cmd_enable_variants(self):
@@ -249,6 +250,43 @@ class TestVolkswagenPqLongSafety(TestVolkswagenPqSafetyBase, common.Longitudinal
     self._rx(self._user_gas_msg(1))
     self.safety.set_controls_allowed(True)
     self.assertTrue(self._tx(self._accel_msg(0.5)))
+
+
+class TestVolkswagenPqLowlineSafety(TestVolkswagenPqSafetyBase):
+  """Non-ECAN lateral-only PQ cars: bus 0 dead, TX on bus 1 (ptCAN) directly to EPS."""
+  TX_MSGS = [[MSG_HCA_1, 1], [MSG_GRA_NEU, 1], [MSG_GRA_NEU, 2], [MSG_LDW_1, 1], [MSG_BLINKMODI_02, 1], [MSG_APD_1, 1], [MSG_IQ, 1]]
+  FWD_BUS_LOOKUP = {2: 0}
+  FWD_BLACKLISTED_ADDRS = {}
+  RELAY_MALFUNCTION_ADDRS = {1: (MSG_HCA_1, MSG_LDW_1)}
+
+  def setUp(self):
+    self.packer = CANPackerSafety("vw_pq")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.volkswagenPq, VolkswagenSafetyFlags.PQ_LOWLINE | VolkswagenSafetyFlags.PQ_NO_CAM_BUS)
+    self.safety.init_tests()
+
+  def _torque_cmd_msg(self, torque, steer_req=1, hca_status=7):
+    values = {"LM_Offset": abs(torque), "LM_OffSign": torque < 0, "HCA_Status": hca_status if steer_req else 3}
+    return self.packer.make_can_msg_safety("HCA_1", 1, values)
+
+  def test_spam_cancel_safety_check(self):
+    self.safety.set_controls_allowed(0)
+    self.assertTrue(self._tx(self._button_msg(cancel=True)))
+    self.assertFalse(self._tx(self._button_msg(resume=True)))
+    self.assertFalse(self._tx(self._button_msg(_set=True)))
+    self.safety.set_controls_allowed(1)
+    self.assertTrue(self._tx(self._button_msg(resume=True)))
+
+
+class TestVolkswagenPqNoCamSafety(TestVolkswagenPqStockSafety):
+  FWD_BUS_LOOKUP = {2: 0}
+
+  def setUp(self):
+    self.packer = CANPackerSafety("vw_pq")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.volkswagenPq, VolkswagenSafetyFlags.PQ_NO_CAM_BUS)
+    self.safety.init_tests()
+
 
 if __name__ == "__main__":
   unittest.main()
