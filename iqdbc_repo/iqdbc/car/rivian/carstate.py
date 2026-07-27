@@ -4,15 +4,15 @@ from iqdbc.car import Bus, structs
 from iqdbc.car.interfaces import CarStateBase
 from iqdbc.car.rivian.values import DBC, GEAR_MAP
 from iqdbc.car.common.conversions import Conversions as CV
-from iqdbc.iqpilot.car.rivian.iq_carstate import IQCarState
+from iqdbc.iqpilot.car.rivian.carstate_ext import CarStateExt
 
 GearShifter = structs.CarState.GearShifter
 
 
-class CarState(CarStateBase, IQCarState):
+class CarState(CarStateBase, CarStateExt):
   def __init__(self, CP, CP_IQ):
     CarStateBase.__init__(self, CP, CP_IQ)
-    IQCarState.__init__(self, CP, CP_IQ)
+    CarStateExt.__init__(self, CP, CP_IQ)
     self.last_speed = 30
 
     self.acm_lka_hba_cmd = None
@@ -95,7 +95,7 @@ class CarState(CarStateBase, IQCarState):
     self.sccm_wheel_touch = copy.copy(cp.vl["SCCM_WheelTouch"])
     self.vdm_adas_status = copy.copy(cp.vl["VDM_AdasSts"])
 
-    IQCarState.update(self, ret, can_parsers)
+    CarStateExt.update(self, ret, can_parsers)
 
     return ret, ret_iq
 
@@ -105,5 +105,5 @@ class CarState(CarStateBase, IQCarState):
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
       Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
-      **IQCarState.get_parser(CP, CP_IQ),
+      **CarStateExt.get_parser(CP, CP_IQ),
     }

@@ -12,10 +12,7 @@ from iqdbc.car.common.conversions import Conversions as CV
 from iqdbc.car.volkswagen.values import CAR, DBC, CanBus, NetworkLocation, RADAR_DISABLE_STATE, TransmissionType, GearShifter, \
                                                       CarControllerParams, VolkswagenFlags, VolkswagenFlagsIQ
 from iqdbc.car.volkswagen.speed_limit_manager import SpeedLimitManager
-from openpilot.system.proprietary_runtime._verified_import import import_verified_module
-
-iq_lvbs_alc = import_verified_module("iqpilot_alc_private", "iqpilot_private.konn3kt.iqlvbs.alc")
-vehicle_state = import_verified_module("iqpilot_alc_private", "iqpilot_private.konn3kt.iqlvbs.vehicle_state")
+from openpilot.iqpilot.konn3kt.iqlvbs import alc as iq_lvbs_alc
 
 iqpilot_path = os.path.join(os.path.dirname(__file__), '..', '..', '..')
 sys.path.insert(0, iqpilot_path)
@@ -48,14 +45,6 @@ class CarState(CarStateBase):
     self.ea_hud_stock_values = {}
     self.ea_control_stock_values = {}
     self.acc_type = 0
-    self.acc_radar_sollbeschl = 0.0
-    self.acc_radar_regelabw = 0.0
-    self.acc_radar_aendgrad = 0.0
-    self.acc_radar_sta_adr = 0
-    self.acc_radar_fehler = False
-    self.acc_radar_v_wunsch = 0.0
-    self.acc_radar_sta_acc = 0
-    self.epb_freigabe_ver = False
     self.acc_stock_counters: dict[str, int] = {}
     self.esp_stopping = False
     self.tsk_brake_torque = 0.0
@@ -96,20 +85,7 @@ class CarState(CarStateBase):
     self.PQ_ALC_Status_raw = 0
     self.alcOverrideAlert = False
     self.bremse8_stock = None
-    self.br8_acc_anf = False
-    self.tsk_verzoeg_anf = False
     self.cruise_main_switch = False
-    self.motor3_stock = {}
-    self.motor1_stock = {}
-    self.motor3_frame = 0
-    self.motor1_frame = 0
-    self._odometer_store = vehicle_state.VehicleOdometerStore(CP, self._params)
-
-  def _update_odometer(self, ret: structs.CarState, raw_km: float) -> None:
-    """Publish the cluster value while proprietary Konn3kt code owns persistence."""
-    odometer_km = self._odometer_store.record(raw_km)
-    if odometer_km is not None:
-      ret.odometer = odometer_km
 
   def _apply_iq_private_flags(self, ret_iq: structs.IQCarState) -> None:
     ret_iq.alcOverrideAlert = bool(self.alcOverrideAlert)
@@ -141,9 +117,6 @@ class CarState(CarStateBase):
   def _update_mqb_iq_alc_state(self, pt_cp):
     iq_lvbs_alc.update_mqb_carstate_alc_state(self, pt_cp)
 
-  def _update_mlb_iq_alc_state(self, pt_cp):
-    iq_lvbs_alc.update_mlb_carstate_alc_state(self, pt_cp)
-
   def _update_pq_iq_alc_state(self, pt_cp):
     iq_lvbs_alc.update_pq_carstate_alc_state(self, pt_cp)
 
@@ -153,8 +126,7 @@ class CarState(CarStateBase):
     ext_cp = pt_cp if self.CP.networkLocation == NetworkLocation.fwdCamera else cam_cp
 
     if self.CP.flags & VolkswagenFlags.PQ:
-      aux_cp = can_parsers.get(Bus.aux)
-      return self.update_pq(pt_cp, cam_cp, ext_cp, aux_cp)
+      return self.update_pq(pt_cp, cam_cp, ext_cp)
     elif self.CP.flags & VolkswagenFlags.MLB:
       br_cp = can_parsers[Bus.aux]
       return self.update_mlb(pt_cp, br_cp, cam_cp, ext_cp)
@@ -246,7 +218,6 @@ class CarState(CarStateBase):
       self.grade = pt_cp.vl["Motor_16"]["TSK_Steigung"]
       acc_limiter_mode = False if cc_only else ext_cp.vl["ACC_02"]["ACC_Gesetzte_Zeitluecke"] == 0
       speed_limiter_mode = bool(pt_cp.vl["TSK_06"]["TSK_Limiter_ausgewaehlt"])
-      self.tsk_verzoeg_anf = bool(pt_cp.vl["TSK_06"]["TSK_Freig_Verzoeg_Anf"])
 
       self._update_mqb_iq_alc_state(pt_cp)
 
@@ -285,15 +256,12 @@ class CarState(CarStateBase):
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
 
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
-    allow_lat_only = self._params.get_bool("AllowLateralWhenLongUnavailable") and self._params.get_bool("AolEnabled")
-    cruise_main_switch = bool(self.gra_stock_values["GRA_Hauptschalter"])
-    ret.cruiseFaultLateralMode = allow_lat_only and ret.accFaulted and cruise_main_switch
-    ret.lateralAvailable = ret.cruiseState.available or ret.cruiseFaultLateralMode
-    ret.blockPcmEnable = ret.cruiseFaultLateralMode
+    ret.cruiseFaultLateralMode = False
+    ret.lateralAvailable = ret.cruiseState.available
+    ret.blockPcmEnable = False
 
     ret.fuelGauge = pt_cp.vl["Kombi_02"]["KBI_Inhalt_Tank"] / 55.0
     ret.fuelTankLevelL = pt_cp.vl["Kombi_02"]["KBI_Inhalt_Tank"]  # raw liters for konn3kt
-    self._update_odometer(ret, pt_cp.vl["Kombi_02"]["KBI_Kilometerstand"])
 
     self.cruise_faulted = ret.accFaulted
     self._apply_iq_private_flags(ret_iq)
@@ -372,11 +340,19 @@ class CarState(CarStateBase):
 
     self.ldw_stock_values = cam_cp.vl["LDW_02"]
 
-    awv_values = ext_cp.vl.get("AWV_03", ext_cp.vl.get("ACC_10", {}))
-    ret.stockFcw = bool(awv_values.get("FCW_Active", 0)) or bool(awv_values.get("AWV2_Freigabe", 0))
+    if not (self.CP.flags & VolkswagenFlags.DISABLE_RADAR):
+      awv_values = ext_cp.vl.get("AWV_03", ext_cp.vl.get("ACC_10", {}))
+      ret.stockFcw = bool(awv_values.get("FCW_Active", 0)) or bool(awv_values.get("AWV2_Freigabe", 0))
+    else:
+      ret.stockFcw = False
     ret.stockAeb = False
 
-    self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"]
+    # Camera harness (DISABLE_RADAR): ext_cp == pt_cp, so ACC_18 reads our own sent value.
+    # Hardcode acc_type=2 (stop-and-go capable) to avoid self-referential read on first frame.
+    if self.CP.flags & VolkswagenFlags.DISABLE_RADAR:
+      self.acc_type = 2
+    else:
+      self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"]
     self.travel_assist_available = bool(pt_cp.vl.get("TA_01", {}).get("Travel_Assist_Available", 0))
 
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
@@ -409,7 +385,6 @@ class CarState(CarStateBase):
     psd_06_values = main_cp.vl["PSD_06"] if self.CP.flags & VolkswagenFlags.STOCK_PSD_PRESENT else {}
     psd_06_values = pt_cp.vl["PSD_06"] if not psd_06_values and self.CP.flags & VolkswagenFlags.STOCK_PSD_06_PRESENT else psd_06_values
     diagnose_01_values = pt_cp.vl["Diagnose_01"] if self.CP.flags & VolkswagenFlags.STOCK_DIAGNOSE_01_PRESENT else {}
-    self._update_odometer(ret, pt_cp.vl["Diagnose_01"]["KBI_Kilometerstand"])
 
     if self.enable_speed_limit_predicative and not self.enable_predicative_speed_limit:
       self.enable_predicative_speed_limit = True
@@ -434,8 +409,10 @@ class CarState(CarStateBase):
     ret.espDisabled = bool(pt_cp.vl["ESP_21"]["ESP_Tastung_passiv"])
     ret.espActive = bool(pt_cp.vl["ESP_21"]["ESP_Eingriff"])
 
-    allow_lat_only = self._params.get_bool("AllowLateralWhenLongUnavailable") and self._params.get_bool("AolEnabled")
-    cruise_fault_candidate = allow_lat_only and ret.accFaulted and bool(pt_cp.vl["GRA_ACC_01"]["GRA_Hauptschalter"])
+    allow_lat_only = self._params.get_bool("AllowLateralWhenLongUnavailable")
+    cruise_main_switch = bool(pt_cp.vl["GRA_ACC_01"]["GRA_Hauptschalter"])
+    cruise_fault_candidate = allow_lat_only and ret.accFaulted and cruise_main_switch
+
     if cruise_fault_candidate:
       self.cruise_faulted_frames += 1
       self.cruise_fault_clear_frames = 0
@@ -449,10 +426,12 @@ class CarState(CarStateBase):
           self.cruise_fault_lateral_active = False
       else:
         self.cruise_fault_clear_frames = 0
+
     if not allow_lat_only:
       self.cruise_fault_lateral_active = False
       self.cruise_faulted_frames = 0
       self.cruise_fault_clear_frames = 0
+
     ret.cruiseFaultLateralMode = self.cruise_fault_lateral_active
     ret.lateralAvailable = ret.cruiseState.available or ret.cruiseFaultLateralMode
     ret.blockPcmEnable = ret.cruiseFaultLateralMode
@@ -482,10 +461,9 @@ class CarState(CarStateBase):
     self._apply_iq_private_flags(ret_iq)
     return ret, ret_iq
 
-  def update_pq(self, pt_cp, cam_cp, ext_cp, aux_cp=None) -> tuple[structs.CarState, structs.IQCarState]:
+  def update_pq(self, pt_cp, cam_cp, ext_cp) -> tuple[structs.CarState, structs.IQCarState]:
     ret = structs.CarState()
     ret_iq = structs.IQCarState()
-    sng_ecd_enabled = bool(self.CP.flags & VolkswagenFlagsIQ.IQ_PQ_SNG_ECD)
 
     # vEgo obtained from Bremse_1 vehicle speed rather than Bremse_3 wheel speeds because Bremse_3 isn't present on NSF
     ret.vEgoRaw = pt_cp.vl["Bremse_1"]["BR1_Rad_kmh"] * CV.KPH_TO_MS
@@ -498,7 +476,7 @@ class CarState(CarStateBase):
     ret.steeringTorque = pt_cp.vl["Lenkhilfe_3"]["LH3_LM"] * (1, -1)[int(pt_cp.vl["Lenkhilfe_3"]["LH3_LMSign"])]
     ret.steeringPressed = abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE
     hca_status = self.CCP.hca_status_values.get(pt_cp.vl["Lenkhilfe_2"]["LH2_Sta_HCA"])
-    ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status, ready_confirms_init=False)
+    ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status)
 
     # Update gas, brakes, and gearshift.
     ret.gasPressed = pt_cp.vl["Motor_3"]["MO3_Pedalwert"] > 0
@@ -533,11 +511,8 @@ class CarState(CarStateBase):
     # Consume blind-spot monitoring info/warning LED states, if available.
     # Infostufe: BSM LED on, Warnung: BSM LED flashing
     if self.CP.enableBsm:
-      blindspot_li = bool(ext_cp.vl["SWA_1"]["SWA_Infostufe_SWA_li"]) or bool(ext_cp.vl["SWA_1"]["SWA_Warnung_SWA_li"])
-      blindspot_re = bool(ext_cp.vl["SWA_1"]["SWA_Infostufe_SWA_re"]) or bool(ext_cp.vl["SWA_1"]["SWA_Warnung_SWA_re"])
-      force_rhd = self.force_rhd_for_bsm or self._params.get_bool("ForceRHDForBSM")
-      ret.leftBlindspot = blindspot_re if force_rhd else blindspot_li
-      ret.rightBlindspot = blindspot_li if force_rhd else blindspot_re
+      ret.leftBlindspot = bool(ext_cp.vl["SWA_1"]["SWA_Infostufe_SWA_li"]) or bool(ext_cp.vl["SWA_1"]["SWA_Warnung_SWA_li"])
+      ret.rightBlindspot = bool(ext_cp.vl["SWA_1"]["SWA_Infostufe_SWA_re"]) or bool(ext_cp.vl["SWA_1"]["SWA_Warnung_SWA_re"])
 
     # Consume factory LDW data relevant for factory SWA (Lane Change Assist)
     # and capture it for forwarding to the blind spot radar controller
@@ -557,18 +532,16 @@ class CarState(CarStateBase):
     # Update ACC radar status.
     self.acc_type = 0 if cc_only else ext_cp.vl["ACC_System"]["ACS_Typ_ACC"]
     cruise_main_switch = bool(pt_cp.vl["Motor_5"]["MO5_GRA_Hauptsch"])
-    self.cruise_main_switch = cruise_main_switch
+    cruise_tsk_status = bool(pt_cp.vl["Motor_2"]["MO2_Status_TSK"])
+    self.cruise_main_switch = cruise_main_switch or cruise_tsk_status
     MO2_StaGRA = pt_cp.vl["Motor_2"]["MO2_Sta_GRA"] in (1, 2)
     ACS_StaADR = False if cc_only else ext_cp.vl["ACC_System"]["ACS_Sta_ADR"] == 1
     cruiseActive = MO2_StaGRA or ACS_StaADR
-    self.epb_freigabe_ver = bool(aux_cp.vl["EPB_1"]["EP1_Freigabe_Ver"]) if sng_ecd_enabled and not cc_only else False
-    sng_holding = sng_ecd_enabled and self.epb_freigabe_ver
-    if cruiseActive or sng_holding:
+    if cruiseActive:
       self.last_cruiseActive = True
-    elif not MO2_StaGRA and not ACS_StaADR and not sng_holding:
+    elif not MO2_StaGRA and not ACS_StaADR:
       self.last_cruiseActive = False
     ret.cruiseState.enabled = self.last_cruiseActive
-    self.br8_acc_anf = bool(pt_cp.vl["Bremse_8"]["BR8_Sta_ACC_Anf"]) if not cc_only else False
 
     if self.CP.pcmCruise:
       if cc_only:
@@ -579,9 +552,9 @@ class CarState(CarStateBase):
       cruise_faulted = pt_cp.vl["Motor_2"]["MO2_Sta_GRA"] == 3
 
     ret.accFaulted = cruise_faulted
-    ret.cruiseState.available = cruise_main_switch and not cruise_faulted
+    ret.cruiseState.available = (cruise_main_switch or cruise_tsk_status) and not cruise_faulted
     allow_lat_only = self._params.get_bool("AllowLateralWhenLongUnavailable") and self._params.get_bool("AolEnabled")
-    cruise_main_available = cruise_main_switch
+    cruise_main_available = cruise_main_switch or cruise_tsk_status
     ret.cruiseFaultLateralMode = allow_lat_only and cruise_faulted and cruise_main_available
     ret.lateralAvailable = ret.cruiseState.available or ret.cruiseFaultLateralMode
     ret.blockPcmEnable = ret.cruiseFaultLateralMode
@@ -598,33 +571,6 @@ class CarState(CarStateBase):
       ret.cruiseState.speed = 0
 
     self.motor2_stock = pt_cp.vl["Motor_2"]
-    self.motor5_stock = pt_cp.vl["Motor_5"]
-
-    if self.CP.flags & VolkswagenFlagsIQ.IQ_PQ_ACC_FTS_EPB:
-      self.motor3_stock = aux_cp.vl["Motor_3"]
-      self.motor1_stock = aux_cp.vl["Motor_1"]
-    self.motor3_frame += 1
-    self.motor1_frame += 1
-
-    if cc_only:
-      self.acc_radar_sollbeschl = 0.0
-      self.acc_radar_regelabw = 0.0
-      self.acc_radar_aendgrad = 0.0
-      self.acc_radar_sta_adr = 0
-      self.acc_radar_fehler = False
-      self.acc_radar_v_wunsch = 0.0
-      self.acc_radar_sta_acc = 0
-    else:
-      self.acc_radar_sollbeschl = ext_cp.vl["ACC_System"]["ACS_Sollbeschl"]
-      self.acc_radar_regelabw = ext_cp.vl["ACC_System"]["ACS_zul_Regelabw"]
-      self.acc_radar_aendgrad = ext_cp.vl["ACC_System"]["ACS_max_AendGrad"]
-      self.acc_radar_sta_adr = int(ext_cp.vl["ACC_System"]["ACS_Sta_ADR"])
-      self.acc_radar_fehler = bool(ext_cp.vl["ACC_System"]["ACS_Fehler"])
-      self.acc_radar_v_wunsch = ext_cp.vl["ACC_GRA_Anzeige"]["ACA_V_Wunsch"]
-      self.acc_radar_sta_acc = int(ext_cp.vl["ACC_GRA_Anzeige"]["ACA_StaACC"])
-
-    ret_iq.accRadarStaAdr = self.acc_radar_sta_adr
-    ret_iq.accRadarFehler = self.acc_radar_fehler
 
     # Update button states for turn signals and ACC controls, capture all ACC button state/config for passthrough
     ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_stalk(300, pt_cp.vl["Gate_Komf_1"]["GK1_Blinker_li"],
@@ -641,13 +587,6 @@ class CarState(CarStateBase):
 
     ret.fuelGauge = pt_cp.vl["Kombi_1"]["Tankinhalt"] / 55.0
     ret.fuelTankLevelL = pt_cp.vl["Kombi_1"]["Tankinhalt"]  # raw liters for konn3kt
-    if aux_cp is not None:
-      self._update_odometer(ret, aux_cp.vl["Kombi_3"]["Kilometerstand"])
-
-    if self.CP.flags & VolkswagenFlagsIQ.IQ_PQ_ACC_FTS_EPB:
-      ret.cruiseState.standstill = self.CP.pcmCruise and bool(pt_cp.vl["Bremse_5"]["BR5_Stillstand"]) and ret.cruiseState.enabled
-    elif sng_ecd_enabled:
-      ret.cruiseState.standstill = sng_holding and ret.standstill
 
     self.cruise_faulted = ret.accFaulted
     self.frame += 1
@@ -684,7 +623,6 @@ class CarState(CarStateBase):
       ret.accFaulted = pt_cp.vl["TSK_02"]["TSK_Status"] in (3,)
 
     self.parse_mlb_mqb_steering_state(ret, pt_cp)
-    self._update_mlb_iq_alc_state(pt_cp)
 
     ret.brake = pt_cp.vl["ESP_05"]["ESP_Bremsdruck"] / 250.0
     brake_pedal_pressed = bool(pt_cp.vl["Motor_03"]["MO_Fahrer_bremst"])
@@ -718,7 +656,6 @@ class CarState(CarStateBase):
 
     ret.fuelGauge = br_cp.vl["Kombi_02"]["KBI_Inhalt_Tank"] / 55.0
     ret.fuelTankLevelL = br_cp.vl["Kombi_02"]["KBI_Inhalt_Tank"]  # raw liters for konn3kt
-    self._update_odometer(ret, br_cp.vl["Kombi_02"]["KBI_Kilometerstand"])
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
 
@@ -751,11 +688,10 @@ class CarState(CarStateBase):
     ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status, drive_mode)
     return
 
-  def update_hca_state(self, hca_status, drive_mode=True, ready_confirms_init=True):
+  def update_hca_state(self, hca_status, drive_mode=True):
     # Treat FAULT as temporary for worst likely EPS recovery time, for cars without factory Lane Assist
     # DISABLED means the EPS hasn't been configured to support Lane Assist
-    init_statuses = ("DISABLED", "READY", "ACTIVE") if ready_confirms_init else ("DISABLED", "ACTIVE")
-    self.eps_init_complete = self.eps_init_complete or hca_status in init_statuses or self.frame > 1000
+    self.eps_init_complete = self.eps_init_complete or (hca_status in ("DISABLED", "READY", "ACTIVE") or self.frame > 600)
     perm_fault = drive_mode and hca_status == "DISABLED" or (self.eps_init_complete and hca_status == "FAULT")
     temp_fault = drive_mode and hca_status in ("REJECTED", "PREEMPTED") or not self.eps_init_complete
     return temp_fault, perm_fault
@@ -807,11 +743,8 @@ class CarState(CarStateBase):
       ]
     if CP.flags & VolkswagenFlags.MLB:
       pt_messages += [
-        ("Blinkmodi_01", math.nan),  # From J519 BCM (is inactive when no lights active, 50Hz when active)
-        ("Kombi_02", math.nan),  # Auxiliary-bus cluster odometer
+        ("Blinkmodi_01", math.nan)  # From J519 BCM (is inactive when no lights active, 50Hz when active)
       ]
-    else:
-      pt_messages += [("Kombi_02", math.nan)]  # Auxiliary-bus cluster odometer
     if CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
       cam_messages += [
         ("HCA_01", 1),  # From R242 Driver assistance camera, 50Hz if steering/1Hz if not
@@ -825,12 +758,8 @@ class CarState(CarStateBase):
 
   @staticmethod
   def get_can_parsers_pq(CP):
-    aux_messages = [("Kombi_3", math.nan)]  # Bus 1 cluster odometer
-    if CP.flags & VolkswagenFlagsIQ.IQ_PQ_ACC_FTS_EPB:
-      aux_messages.append(("Motor_3", 0))
     return {
-      Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).powertrain),
-      Bus.aux: CANParser(DBC[CP.carFingerprint][Bus.pt], aux_messages, CanBus(CP).aux),
+      Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
     }
 
@@ -842,13 +771,14 @@ class CarState(CarStateBase):
       # TA_01 lives on bus 0 (car ECU / OP-generated when long is active).
       # math.nan → ignore_alive=True so it never contributes to can_valid.
       ("TA_01", math.nan),
-      ("Diagnose_01", math.nan),  # Bus 0 cluster odometer
     ]
-    if CP.networkLocation == NetworkLocation.fwdCamera:
+    # AWV_03 (stock radar FCW/AEB) — don't subscribe when DISABLE_RADAR, the radar is silenced
+    # and our carcontroller sends the replacement. Subscribing causes CAN parser timeout errors.
+    if CP.networkLocation == NetworkLocation.fwdCamera and not (CP.flags & VolkswagenFlags.DISABLE_RADAR):
       pt_messages.append(("AWV_03", 1))
 
     cam_messages = []
-    if CP.networkLocation == NetworkLocation.gateway:
+    if CP.networkLocation == NetworkLocation.gateway and not (CP.flags & VolkswagenFlags.DISABLE_RADAR):
       cam_messages.append(("AWV_03", 1))
 
     return {

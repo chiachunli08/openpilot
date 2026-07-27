@@ -32,6 +32,7 @@ class CarInterface(CarInterfaceBase):
       ret.safetyConfigs[0].safetyParam |= RivianSafetyFlags.LONG_CONTROL.value
 
     ret.longitudinalActuatorDelay = 0.35
+    ret.vEgoStopping = 0.25
     ret.stopAccel = 0
 
     return ret
@@ -39,8 +40,6 @@ class CarInterface(CarInterfaceBase):
   @staticmethod
   def _get_params_iq(stock_cp: structs.CarParams, ret: structs.IQCarParams, candidate, fingerprint: dict[int, dict[int, int]],
                      car_fw: list[structs.CarParams.CarFw], alpha_long: bool, is_release_iq: bool, docs: bool) -> structs.IQCarParams:
-    # Longitudinal harness upgrade advertises msg 0x31a on bus 5; when present it
-    # unlocks radar, blind-spot and openpilot longitudinal on Rivian.
     if 0x31a in fingerprint[5]:
       ret.flags |= RivianFlagsIQ.LONGITUDINAL_HARNESS_UPGRADE.value
       stock_cp.radarUnavailable = False

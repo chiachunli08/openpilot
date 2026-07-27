@@ -3,13 +3,6 @@ from pathlib import Path
 
 env = Environment(ENV=os.environ)
 
-# short colored build output, if the top-level pretty tool is present (main-repo build)
-_pretty = Dir('#site_scons/site_tools').File('pretty.py')
-if _pretty.exists():
-  env.Tool('pretty', toolpath=[_pretty.dir.abspath])
-if not hasattr(env, 'PrettyAction'):
-  env.AddMethod(lambda e, cmd, label, **kw: Action(cmd), 'PrettyAction')
-
 generator = File("generator/generator.py")
 
 source_files = [
@@ -34,5 +27,5 @@ output_files += [
 generated = env.Command(
   target=list(set(output_files)),
   source=[generator] + source_files,
-  action=env.PrettyAction("python3 ${SOURCES[0]}", 'GEN'),
+  action="python3 ${SOURCES[0]}",
 )

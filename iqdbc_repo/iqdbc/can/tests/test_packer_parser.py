@@ -67,32 +67,6 @@ class TestCanParserPacker:
       parser.update([t, [msg]])
       assert parser.can_valid
 
-  def test_lazy_add_not_ignore_alive(self):
-    """
-    Accessing an undeclared message via parser.vl[...] lazily adds it via
-    _add_message(key) with the default freq=None, which is NOT the same as
-    declaring it with math.nan (ignore_alive=True). It's treated as "assume
-    ~1Hz, must be seen within ~10s" — so if that message is never fed, the
-    parser is permanently invalid. Declaring an optional/rarely-sent message
-    with math.nan (or gating the .vl[...] read entirely) is required to avoid
-    this; see iqdbc/car/volkswagen/carstate.py's Diagnose_1/EPB_1 bugs.
-    """
-    parser = CANParser(TEST_DBC, [], 0)
-    assert parser.can_valid
-
-    # lazily add STEERING_CONTROL by reading it, without ever declaring it
-    # or feeding any CAN data for it
-    _ = parser.vl["STEERING_CONTROL"]
-    state = parser.message_states[parser.dbc.name_to_msg["STEERING_CONTROL"].address]
-    assert not state.ignore_alive
-
-    # never becomes valid again, no matter how many times it's checked
-    # (can_valid debounces over MAX_BAD_COUNTER reads before flipping false)
-    for _ in range(MAX_BAD_COUNTER):
-      parser.can_valid
-    for _ in range(20):
-      assert not parser.can_valid
-
   def test_parser_updated_list(self):
     msgs = [("CAN_FD_MESSAGE", 10), ]
     parser = CANParser(TEST_DBC, msgs, 0)

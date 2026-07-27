@@ -1,8 +1,13 @@
 import re
+import json
+import os
 import unicodedata
 
+from iqdbc.car.common.basedir import BASEDIR
 from iqdbc.car.docs import get_all_footnotes, get_params_for_docs
 from iqdbc.car.values import PLATFORMS
+
+CAR_LIST_JSON_OUT = os.path.join(BASEDIR, "../", "iqpilot", "car", "car_list.json")
 
 
 def get_car_list() -> dict[str, dict[str, list[str] | str]]:
@@ -57,6 +62,8 @@ def build_sorted_car_list(platforms, footnotes) -> dict[str, dict[str, list[str]
 
 
 if __name__ == "__main__":
-  # get_car_list() is the raw platform source; the shipped catalog is generated
-  # (and encoded to its on-disk envelope) by the main-repo entry point:
-  print("run: python -m openpilot.iqpilot.selfdrive.car.vehicle_catalog")
+  platform_list = get_car_list()
+
+  with open(CAR_LIST_JSON_OUT, "w") as json_file:
+    json.dump(platform_list, json_file, indent=2, ensure_ascii=False)
+  print(f"Generated and written to {CAR_LIST_JSON_OUT}")

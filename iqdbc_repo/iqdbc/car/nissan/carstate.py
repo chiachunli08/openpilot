@@ -5,18 +5,17 @@ from iqdbc.car import Bus, create_button_events, structs
 from iqdbc.car.common.conversions import Conversions as CV
 from iqdbc.car.interfaces import CarStateBase
 from iqdbc.car.nissan.values import CAR, DBC, CarControllerParams
-
-from iqdbc.iqpilot.car.nissan.iq_carstate import IQCarState
+from iqdbc.iqpilot.car.nissan.carstate_ext import CarStateExt
 
 ButtonType = structs.CarState.ButtonEvent.Type
 
 TORQUE_SAMPLES = 12
 
 
-class CarState(CarStateBase, IQCarState):
+class CarState(CarStateBase, CarStateExt):
   def __init__(self, CP, CP_IQ):
     CarStateBase.__init__(self, CP, CP_IQ)
-    IQCarState.__init__(self, CP, CP_IQ)
+    CarStateExt.__init__(self, CP, CP_IQ)
     can_define = CANDefine(DBC[CP.carFingerprint][Bus.pt])
 
     self.lkas_hud_msg = {}
@@ -130,7 +129,7 @@ class CarState(CarStateBase, IQCarState):
       self.lkas_hud_msg = copy.copy(cp_adas.vl["PROPILOT_HUD"])
       self.lkas_hud_info_msg = copy.copy(cp_adas.vl["PROPILOT_HUD_INFO_MSG"])
 
-    IQCarState.update(self, ret, ret_iq, can_parsers)
+    CarStateExt.update(self, ret, ret_iq, can_parsers)
 
     ret.buttonEvents = [
       *create_button_events(self.distance_button, prev_distance_button, {1: ButtonType.gapAdjustCruise}),

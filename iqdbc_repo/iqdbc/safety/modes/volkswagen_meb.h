@@ -236,21 +236,19 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
   }
 }
 
-// Lateral limits for curvature-based steering (HCA_03)
-// max_power matches 50% (~125/255) of the byte range, safely above Python's STEERING_POWER_MAX of 90
-static const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-  .max_curvature = 29105,          // 0.195 rad/m
-  .curvature_to_can = 149253.7313f, // 1 / 6.7e-6 rad/m to CAN units
-  .send_rate = 0.02f,
-  .inactive_curvature_is_zero = true,
-  .max_power = 125,                // ~50% of byte range; Python STEERING_POWER_MAX is 90
-};
-
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
   const LongitudinalLimits VOLKSWAGEN_MEB_LONG_LIMITS = {
     .max_accel = 2000,
     .min_accel = -3500,
     .inactive_accel = 3010,
+  };
+
+  const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
+    .max_curvature = 29105,
+    .curvature_to_can = 149253.7313f,
+    .send_rate = 0.02f,
+    .inactive_curvature_is_zero = true,
+    .max_power = 225, // 90% (raw byte, 0.4 %/bit; matches Python STEERING_POWER_MAX = 90)
   };
 
   bool tx = true;

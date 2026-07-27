@@ -541,21 +541,21 @@ BO_ 1437 mRemotestart_FFB: 8 Vector__XXX
  SG_ RSF_Tastencode_2 : 8|8@1+ (1,0) [1|255] "" Vector__XXX
  SG_ RSF_Tastencode_Maske : 16|8@1+ (1,0) [1|255] "" Vector__XXX
 
-BO_ 640 Motor_1: 8 Motor
- SG_ MO1_Wunschmo : 56|8@1+ (0.39,0) [0|99.06] "%" XXX
- SG_ MO1_Verlustmo : 48|8@1+ (0.39,0) [0|99.06] "%" XXX
- SG_ MO1_Pedalwert : 40|8@1+ (0.4,0) [0|101.6] "%" XXX
- SG_ MO1_Mo_o_ex : 32|8@1+ (0.39,0) [0|99.06] "%" XXX
- SG_ MO1_Drehzahl : 16|16@1+ (0.25,0) [0|16256] "1/min" XXX
- SG_ MO1_Mo_m_ex : 8|8@1+ (0.39,0) [0|99.06] "%" XXX
- SG_ MO1_Sta_MotMo : 7|1@1+ (1,0) [0|1] "" XXX
- SG_ MO1_Sta_Getr : 6|1@1+ (1,0) [0|1] "" XXX
- SG_ MO1_Sta_Bremse : 5|1@1+ (1,0) [0|1] "" XXX
- SG_ MO1_TiOut_Br : 4|1@1+ (1,0) [0|1] "" XXX
- SG_ MO1_Kup_schalt : 3|1@1+ (1,0) [0|1] "" XXX
- SG_ MO1_Kickdown : 2|1@1+ (1,0) [0|1] "" XXX
- SG_ MO1_Sta_Pedal : 1|1@1+ (1,0) [0|1] "" XXX
- SG_ MO1_Leergas : 0|1@1+ (1,0) [0|1] "" XXX
+BO_ 640 Motor_1: 8 XXX
+ SG_ Fahrerwunschmoment : 56|8@1+ (0.39,0) [0|99] "MDI" XXX
+ SG_ mechanisches_Motor_Verlustmomen : 48|8@1+ (0.39,0) [0|99] "MDI" XXX
+ SG_ Fahrpedalwert_oder_Drosselklapp : 40|8@1+ (0.4,0) [0|101.6] "%" XXX
+ SG_ inneres_Motor_Moment_ohne_exter : 32|8@1+ (0.39,0) [0|99] "MDI" XXX
+ SG_ Motordrehzahl : 16|16@1+ (0.25,0) [0|16256] "U/min" XXX
+ SG_ inneres_Motor_Moment : 8|8@1+ (0.39,0) [0|99] "MDI" XXX
+ SG_ Momentenangaben_ungenau : 7|1@1+ (1,0) [0|0] "" XXX
+ SG_ Fehlerstatus_Getriebe_Momentene : 6|1@1+ (1,0) [0|0] "" XXX
+ SG_ Fehlerstatus_Brems_Momenteneing : 5|1@1+ (1,0) [0|0] "" XXX
+ SG_ Time_Out_Bremsen_Botschaft : 4|1@1+ (1,0) [0|0] "" XXX
+ SG_ Kupplungsschalter : 3|1@1+ (1,0) [0|0] "" XXX
+ SG_ Kickdownschalter : 2|1@1+ (1,0) [0|0] "" XXX
+ SG_ Fahrpedalwert_ungenau__Motor_1_ M : 1|1@1+ (1,0) [0|0] "" XXX
+ SG_ Leergasinformation : 0|1@1+ (1,0) [0|0] "" XXX
 
 BO_ 262 Master_3: 8 XXX
  SG_ Frei_Master_3_1 : 56|8@1+ (1,0) [0|0] "" XXX
@@ -1352,12 +1352,6 @@ BO_ 982 APD_1: 8 XXX
  SG_ APD_Wheelbase : 31|11@1+ (1,2000) [2000|4047] "mm" XXX
  SG_ APD_AngleOffSet : 42|11@1+ (0.01,-10) [-10|10.47] "deg" XXX
  SG_ APD_GripFactor : 53|11@1+ (0.001,0) [0|2.047] "" XXX
-
-BO_ 983 SNG_1: 8 XXX
- SG_ CHECKSUM : 0|8@1+ (1,0) [0|255] "" XXX
- SG_ COUNTER : 8|4@1+ (1,0) [0|15] "" XXX
- SG_ SNG_HandoffActive : 12|1@1+ (1,0) [0|1] "" XXX
- SG_ SNG_DecelReq : 16|8@1+ (0.048,-7.968) [-7.968|4.224] "Unit_MeterPerSeconSquar" XXX
 
 BO_ 210 HCA_1: 5 XXX
  SG_ CHECKSUM : 0|8@1+ (1,0) [0|15] "" XXX

@@ -4,8 +4,9 @@ from enum import Enum, IntFlag
 from iqdbc.car import Bus, PlatformConfig, DbcDict, Platforms, CarSpecs
 from iqdbc.car.structs import CarParams
 from iqdbc.car.docs_definitions import CarDocs, CarFootnote, CarHarness, CarParts, Column, SupportType
-from iqdbc.iqpilot.car.gm.iq_values import GMFlagsIQ
 from iqdbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
+
+from iqdbc.iqpilot.car.gm.values_ext import GMFlagsIQ
 
 Ecu = CarParams.Ecu
 
@@ -87,6 +88,13 @@ class GMCarDocs(CarDocs):
       self.car_parts = CarParts.common([CarHarness.obd_ii])
 
 
+@dataclass
+class GMNonAccCarDocs(GMCarDocs):
+  package: str = "No Adaptive Cruise Control (Non-ACC)"
+  support_type: SupportType = SupportType.COMMUNITY
+  support_link: str = "community"
+
+
 @dataclass(frozen=True, kw_only=True)
 class GMCarSpecs(CarSpecs):
   tireStiffnessFactor: float = 0.444  # not optimized yet
@@ -113,13 +121,6 @@ class GMSDGMPlatformConfig(GMPlatformConfig):
   def init(self):
     # Don't show in docs until the harness is sold. See https://github.com/commaai/openpilot/issues/32471
     self.car_docs = []
-
-
-@dataclass
-class GMNonAccCarDocs(GMCarDocs):
-  package: str = "No Adaptive Cruise Control (Non-ACC)"
-  support_type: SupportType = SupportType.COMMUNITY
-  support_link: str = "community"
 
 
 @dataclass
@@ -208,7 +209,13 @@ class CAR(Platforms):
     GMCarSpecs(mass=2490, wheelbase=2.94, steerRatio=17.3, centerToFrontRatio=0.5, tireStiffnessFactor=1.0),
   )
 
-  # IQ.Pilot Non-ACC camera-harness ports (no factory adaptive cruise).
+  # port extensions
+  # Separate car def is required when there is no ASCM
+  # (for now) unless there is a way to detect it when it has been unplugged...
+  # CHEVROLET_VOLT_CC = GMNonSccPlatformConfig(
+  #   [GMNonAccCarDocs("Chevrolet Volt LT 2017-18")],
+  #   CHEVROLET_VOLT.specs,
+  # )
   CHEVROLET_BOLT_NON_ACC = GMNonSccPlatformConfig(
     [GMNonAccCarDocs("Chevrolet Bolt EV Non-ACC 2017")],
     CHEVROLET_BOLT_EUV.specs,
@@ -326,7 +333,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
 
 # TODO: detect most of these sets live
 EV_CAR = {CAR.CHEVROLET_VOLT, CAR.CHEVROLET_VOLT_2019, CAR.CHEVROLET_BOLT_EUV,
-          # Non-ACC EV ports
+          # port extensions, Non-ACC
           CAR.CHEVROLET_BOLT_NON_ACC, CAR.CHEVROLET_BOLT_NON_ACC_1ST_GEN, CAR.CHEVROLET_BOLT_NON_ACC_2ND_GEN}
 
 # We're integrated at the camera with VOACC on these cars (instead of ASCM w/ OBD-II harness)

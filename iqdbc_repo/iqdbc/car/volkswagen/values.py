@@ -36,10 +36,6 @@ class CanBus(CanBusBase):
     return 1
 
   @property
-  def powertrain(self) -> int:
-    return 1
-
-  @property
   def main(self) -> int:
     return 1
 
@@ -53,11 +49,17 @@ class CanBus(CanBusBase):
     # ADAS / Extended CAN, side of the relay with the ACC radar
     return 2
 
+  @property
+  def eps(self) -> int:
+    return 4
+
+  @property
+  def car(self) -> int:
+    return 6
+
+
 # Extra Tolerances For Road Variance
 AVERAGE_ROAD_ROLL = 0.06
-PQ_STOPPING_SPEED = 1.5 * CV.KPH_TO_MS
-PASSAT_B7_STOPPING_SPEED = 0.55 * CV.KPH_TO_MS
-PASSAT_B7_STOP_ACCEL = -0.55
 
 
 class CarControllerParams:
@@ -82,8 +84,6 @@ class CarControllerParams:
   AEB_CONTROL_STEP = 2                     # ACC_10 frequency 50Hz
   AEB_HUD_STEP = 20                        # ACC_15 frequency 5Hz
   VW_LOW_SPEED_STATE_SPEED = 0.5           # m/s; below this, always force starting or stopping in MQB legacy long
-  SNG_HANDOFF_SPEED = 5.0 * CV.KPH_TO_MS
-  SNG_HOLD_DECEL_MAX = -0.1
 
   # Documented lateral limits: 3.00 Nm max, rate of change 5.00 Nm/sec.
   # MQB vs PQ maximums are shared, but rate-of-change limited differently
@@ -99,8 +99,7 @@ class CarControllerParams:
   STEER_LOW_TORQUE = int(STEER_MAX * 0.20) # Steer timer mitigation performed when torque output under 20%
   STEER_TIME_LOW_TORQUE = 0.5              # Wait for this duration of STEER_LOW_TORQUE to begin mitigation
   STEER_TIME_STUCK_TORQUE = 1.9            # EPS limits same torque to 6 seconds, reset timer 3x within that period
-  STEER_TIME_RESET = 1.1                   # Duration of HCA disable needed for effective EPS timer reset'
-  IQ_PQ_UNAVAILABLE_HUD_FRAMES = 25
+  STEER_TIME_RESET = 1.1                   # Duration of HCA disable needed for effective EPS timer reset
 
   DEFAULT_MIN_STEER_SPEED = 0.4            # m/s, newer EPS racks fault below this speed, don't show a low speed alert
 
@@ -116,8 +115,8 @@ class CarControllerParams:
       self.LDW_STEP = 5                   # LDW_1 message frequency 20Hz
       self.ACC_HUD_STEP = 4               # ACC_GRA_Anzeige frequency 25Hz
       self.STEER_DRIVER_ALLOWANCE = 80    # Driver intervention threshold 0.8 Nm
-      self.STEER_DELTA_UP = 150            # Max HCA reached in 0.60s (STEER_MAX / (50Hz * 0.60))
-      self.STEER_DELTA_DOWN = 300          # Min HCA reached in 0.60s (STEER_MAX / (50Hz * 0.60))
+      self.STEER_DELTA_UP = 10            # Max HCA reached in 0.60s (STEER_MAX / (50Hz * 0.60))
+      self.STEER_DELTA_DOWN = 10          # Min HCA reached in 0.60s (STEER_MAX / (50Hz * 0.60))
 
       if CP.transmissionType == TransmissionType.automatic:
         self.shifter_values = can_define.dv["Getriebe_1"]["GE1_Wahl_Pos"]
@@ -142,6 +141,8 @@ class CarControllerParams:
       }
 
     elif CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
+      self.AEB_CONTROL_STEP = 100  # AWV_03 radar-replacement at 1Hz (class default 2 = 50Hz is for MQB ACC_10)
+      self.AEB_HUD_STEP = 20       # MEB_AWV_01 AEB HUD at 5Hz
       self.LDW_STEP = 10
       self.ACC_HUD_STEP = 6
       self.STEER_DRIVER_ALLOWANCE = 60
@@ -285,10 +286,6 @@ class VolkswagenSafetyFlags(IntFlag):
   ALLOW_LONG_ACCEL_WITH_GAS_PRESSED = 8
   DISABLE_RADAR = 16
   PQ_ALC_MODULE = 32
-  PQ_LOWLINE = 64
-  PQ_NO_CAM_BUS = 128
-  PQ_ACC_FTS_EPB = 256
-  PQ_SNG_ECD = 512
 
 
 class VolkswagenFlags(IntFlag):
@@ -316,10 +313,6 @@ class VolkswagenFlagsIQ(IntFlag):
   IQ_CC_ONLY = 1 << 5              # CC only mode with radar (has AEB)
   IQ_CC_ONLY_NO_RADAR = 1 << 6     # CC only mode without radar
   IQ_LVBS_ALC_MODULE = 1 << 7      # IQ.Lvbs VW ALC hardware module present / intended active path
-  IQ_PQ_LOWLINE = 1 << 17          # Non-ECAN lateral-only PQ: bus 0 dead, TX on bus 1 (ptCAN)
-  IQ_PQ_ACC_FTS_EPB = 1 << 18      # B7 TRW450: ACC FtS + EPB hold, Motor_1 resume spoof on bus 1
-  IQ_PQ_SNG_ECD = 1 << 19
-  IQ_PQ_TIMEBOMB = 1 << 20
 
 
 RADAR_DISABLE_STATE = {"error": False}
@@ -342,7 +335,6 @@ class VolkswagenMQBPlatformConfig(PlatformConfig):
   # on camera-integrated cars, as we lose too many ECUs to reliably identify the vehicle
   chassis_codes: set[str] = field(default_factory=set)
   wmis: set[WMI] = field(default_factory=set)
-  model_years: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -552,33 +544,22 @@ class CAR(Platforms):
     VolkswagenCarSpecs(mass=1551, wheelbase=2.79),
     chassis_codes={"3C", "3G"},
     wmis={WMI.VOLKSWAGEN_EUROPE_CAR},
-    model_years={"F", "G", "H", "J", "K", "L", "M", "N"},  # 2015-2022
   )
   VOLKSWAGEN_PASSAT_MK7 = VolkswagenPQPlatformConfig(
     [VWCarDocs("Volkswagen Passat 2.0 TDI 2014")],
     VolkswagenCarSpecs(mass=1836, wheelbase=2.70, steerRatio=13.0, minSteerSpeed=31 * CV.KPH_TO_MS),
     chassis_codes={"3C"},
     wmis={WMI.VOLKSWAGEN_EUROPE_CAR},
-    model_years={"E"},  # 2014
   )
   VOLKSWAGEN_PASSAT_NMS = VolkswagenPQPlatformConfig(
     [VWCarDocs("Volkswagen Passat NMS 2015-17")],
     VolkswagenCarSpecs(mass=1503, wheelbase=2.80),
     chassis_codes={"A3"},
     wmis={WMI.VOLKSWAGEN_USA_CAR},
-    # NMS and NMS+ share chassis code A3; disambiguate by model year
-    model_years={"F", "G", "H"},  # 2015-2017
   )
   VOLKSWAGEN_PASSAT_NMS_PLUS = VolkswagenPQPlatformConfig(
     [VWCarDocs("Volkswagen Passat NMS 2018-22")],
     VolkswagenCarSpecs(mass=1503, wheelbase=2.80, minEnableSpeed=20 * CV.KPH_TO_MS),
-    chassis_codes={"A3"},
-    wmis={WMI.VOLKSWAGEN_USA_CAR},
-    model_years={"J", "K", "L", "M", "N"},  # 2018-2022
-  )
-  VOLKSWAGEN_PASSAT_B7 = VolkswagenPQPlatformConfig(
-    [VWCarDocs("Volkswagen Passat B7 2008-2011")],
-    VolkswagenCarSpecs(mass=1503, wheelbase=2.712, steerRatio=16.4, minSteerSpeed=0),
     chassis_codes={"A3"},
     wmis={WMI.VOLKSWAGEN_USA_CAR},
   )
@@ -594,18 +575,11 @@ class CAR(Platforms):
   VOLKSWAGEN_SHARAN_MK2 = VolkswagenPQPlatformConfig(
     [
       VWCarDocs("Volkswagen Sharan 2018-22"),
+      VWCarDocs("SEAT Alhambra 2018-20"),
     ],
     VolkswagenCarSpecs(mass=1639, wheelbase=2.92),
     chassis_codes={"7N"},
     wmis={WMI.VOLKSWAGEN_EUROPE_CAR},
-  )
-  SEAT_ALHAMBRA_MK1 = VolkswagenPQPlatformConfig(
-    [
-      VWCarDocs("SEAT Alhambra 2018-20"),
-    ],
-    VolkswagenCarSpecs(mass=1639, wheelbase=2.92, minSteerSpeed=50 * CV.KPH_TO_MS),
-    chassis_codes={"7N"},
-    wmis={WMI.SEAT},
   )
   VOLKSWAGEN_TAOS_MK1 = VolkswagenMQBPlatformConfig(
     [VWCarDocs("Volkswagen Taos 2022-24")],
@@ -907,25 +881,5 @@ FW_QUERY_CONFIG = FwQueryConfig(
               (Ecu.adas, 0x769, None)],
   match_fw_to_car_fuzzy=match_fw_to_car_fuzzy,
 )
-
-MQB_A0_CARS = {
-  CAR.VOLKSWAGEN_POLO_MK6,
-  CAR.VOLKSWAGEN_TCROSS_MK1,
-  CAR.SKODA_FABIA_MK4,
-  CAR.SKODA_KAMIQ_MK1,
-}
-
-
-def get_longitudinal_stopping_speed_override(candidate: CAR, flags: int) -> float:
-  if candidate == CAR.VOLKSWAGEN_PASSAT_B7:
-    return PASSAT_B7_STOPPING_SPEED
-  if flags & VolkswagenFlags.PQ:
-    return PQ_STOPPING_SPEED
-  return 0.0
-
-
-def apply_pq_stopping_accel(candidate: CAR, accel: float, stopping: bool) -> float:
-  return PASSAT_B7_STOP_ACCEL if candidate == CAR.VOLKSWAGEN_PASSAT_B7 and stopping else accel
-
 
 DBC = CAR.create_dbc_map()
