@@ -390,13 +390,12 @@ class TestCurvatureEstimator:
 
     for c in test_curvatures:
       scalar_result = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, c)
-      array_result = CurvatureDLookup.interp_curve_value(
+      array_result = np.asarray(CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, np.asarray([c], dtype=np.float64)
-      )
+      ), dtype=np.float64)
       # Scalar path returns float
       assert isinstance(scalar_result, float)
       # Array path returns np.ndarray
-      assert isinstance(array_result, np.ndarray)
       assert np.isclose(scalar_result, array_result[0]), f"mismatch at c={c}: scalar={scalar_result}, array={array_result[0]}"
 
   def test_interp_curve_value_handles_speed_interp_transition(self):

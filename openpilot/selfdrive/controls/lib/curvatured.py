@@ -84,7 +84,7 @@ class CurvatureDController(CurvatureDLookup):
     if v_ego_q == self._cached_v_ego_q and curvature_q == self._cached_curvature_q:
       projected = self._cached_projected
     else:
-      projected = self.interp_curve_value(self.fit_corrections, self.fit_valid, v_ego, abs_curvature)
+      projected = float(self.interp_curve_value(self.fit_corrections, self.fit_valid, v_ego, abs_curvature))
       self._cached_v_ego_q = v_ego_q
       self._cached_curvature_q = curvature_q
       self._cached_projected = projected
