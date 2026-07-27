@@ -5,6 +5,10 @@ Import('env', 'arch', 'common')
 
 # build the fonts
 generator = File("#openpilot/selfdrive/assets/fonts/process.py")
+translation_sources = [
+  File("#openpilot/selfdrive/ui/translations/app_zh-CHT.po"),
+  File("#openpilot/system/ui/lib/multilang.py"),
+]
 source_files = Glob("#openpilot/selfdrive/assets/fonts/*.ttf") + Glob("#openpilot/selfdrive/assets/fonts/*.otf")
 output_files = [
   (f"#{Path(f.path).with_suffix('.fnt')}", f"#{Path(f.path).with_suffix('.png')}")
@@ -13,7 +17,7 @@ output_files = [
 ]
 env.Command(
   target=output_files,
-  source=[generator, source_files],
+  source=[generator, source_files] + translation_sources,
   action=f"python3 {generator}",
 )
 

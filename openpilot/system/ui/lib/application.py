@@ -91,6 +91,7 @@ DEFAULT_TEXT_COLOR = rl.Color(255, 255, 255, int(255 * 0.9))
 # Qt draws fonts accounting for ascent/descent differently, so compensate to match old styles
 # The real scales for the fonts below range from 1.212 to 1.266
 FONT_SCALE = 1.242 if BIG_UI else 1.16
+ZH_CHT_TEXT_SCALE = 1.20
 
 ASSETS_DIR = files("openpilot.selfdrive").joinpath("assets")
 FONT_DIR = ASSETS_DIR.joinpath("fonts")
@@ -102,6 +103,7 @@ class FontWeight(StrEnum):
   BOLD = "Inter-Bold.fnt"
   SEMI_BOLD = "Inter-SemiBold.fnt"
   UNIFONT = "unifont.fnt"
+  SOURCE_HAN_SANS_TC = "C4SourceHanSansTC-Regular.fnt"
   AUDIOWIDE = "Audiowide-Regular.fnt"
 
   # Small UI fonts
@@ -110,9 +112,20 @@ class FontWeight(StrEnum):
   DISPLAY = "Inter-Bold.fnt"
 
 
-def font_fallback(font: rl.Font) -> rl.Font:
-  """Fall back to unifont for languages that require it."""
-  if multilang.requires_unifont():
+def text_size_scale(text: str = "") -> float:
+  """Return the render scale for the active language and text."""
+  if multilang.language == "zh-CHT" and any(ord(char) > 0x7F for char in text):
+    return FONT_SCALE * ZH_CHT_TEXT_SCALE
+  return FONT_SCALE
+
+
+def font_fallback(font: rl.Font, text: str = "") -> rl.Font:
+  """Use a language-appropriate font only when text needs non-ASCII glyphs."""
+  if multilang.requires_unifont() and any(ord(char) > 0x7F for char in text):
+    if multilang.language == "zh-CHT":
+      if FONT_DIR.joinpath(FontWeight.SOURCE_HAN_SANS_TC).is_file():
+        return gui_app.font(FontWeight.SOURCE_HAN_SANS_TC)
+      return gui_app.font(FontWeight.UNIFONT)
     return gui_app.font(FontWeight.UNIFONT)
   return font
 
@@ -715,8 +728,8 @@ class GuiApplication(GuiApplicationExt):
       rl._orig_draw_text_ex = rl.draw_text_ex
 
     def _draw_text_ex_scaled(font, text, position, font_size, spacing, tint):
-      font = font_fallback(font)
-      return rl._orig_draw_text_ex(font, text, position, font_size * FONT_SCALE, spacing, tint)
+      font = font_fallback(font, text)
+      return rl._orig_draw_text_ex(font, text, position, font_size * text_size_scale(text), spacing, tint)
 
     rl.draw_text_ex = _draw_text_ex_scaled
 

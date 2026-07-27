@@ -99,7 +99,6 @@ class UIState(UIStateSP):
     self.is_body: bool | None = None
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
-
     self.dark_mode: bool = False
     self.onroad_screen_timeout: bool = False
     self.enable_accel_bar: bool = False
@@ -238,7 +237,6 @@ class UIState(UIStateSP):
 
     UIStateSP.update_params(self)
 
-    self.dark_mode = self.params.get_bool("DarkMode")
     self.onroad_screen_timeout = self.params.get_bool("DisableScreenTimer")
     self.enable_accel_bar = self.params.get_bool("ShowAccelBar")
 
@@ -330,9 +328,6 @@ class Device(DeviceSP):
         min_brightness = DeviceSP.set_min_onroad_brightness(ui_state, min_brightness)
 
       clipped_brightness = float(np.interp(clipped_brightness, [0, 1], [min_brightness, 100]))
-
-    if ui_state.started and ui_state.dark_mode:
-      clipped_brightness = 1.0
 
     brightness = round(self._brightness_filter.update(clipped_brightness))
 

@@ -4,12 +4,16 @@ from collections.abc import Callable
 from typing import Union
 import pyray as rl
 
-from openpilot.system.ui.lib.application import gui_app, FontWeight, DEFAULT_TEXT_SIZE, DEFAULT_TEXT_COLOR, FONT_SCALE
+from openpilot.system.ui.lib.application import (
+  gui_app, FontWeight, DEFAULT_TEXT_SIZE, DEFAULT_TEXT_COLOR, FONT_SCALE,
+  font_fallback, text_size_scale,
+)
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.lib.utils import GuiStyleContext
 from openpilot.system.ui.lib.emoji import find_emoji, emoji_tex
 from openpilot.system.ui.lib.wrap_text import wrap_text
+from openpilot.system.ui.lib.multilang import tr
 
 ICON_PADDING = 15
 
@@ -85,22 +89,21 @@ def gui_text_box(
   font_weight: FontWeight = FontWeight.NORMAL,
   line_scale: float = 1.0,
 ):
+  scale = text_size_scale(text)
   styles = [
     (rl.GuiControl.DEFAULT, rl.GuiControlProperty.TEXT_COLOR_NORMAL, rl.color_to_int(color)),
-    (rl.GuiControl.DEFAULT, rl.GuiDefaultProperty.TEXT_SIZE, round(font_size * FONT_SCALE)),
-    (rl.GuiControl.DEFAULT, rl.GuiDefaultProperty.TEXT_LINE_SPACING, round(font_size * FONT_SCALE * line_scale)),
+    (rl.GuiControl.DEFAULT, rl.GuiDefaultProperty.TEXT_SIZE, round(font_size * scale)),
+    (rl.GuiControl.DEFAULT, rl.GuiDefaultProperty.TEXT_LINE_SPACING, round(font_size * scale * line_scale)),
     (rl.GuiControl.DEFAULT, rl.GuiControlProperty.TEXT_ALIGNMENT, alignment),
     (rl.GuiControl.DEFAULT, rl.GuiDefaultProperty.TEXT_ALIGNMENT_VERTICAL, alignment_vertical),
     (rl.GuiControl.DEFAULT, rl.GuiDefaultProperty.TEXT_WRAP_MODE, rl.GuiTextWrapMode.TEXT_WRAP_WORD)
   ]
-  if font_weight != FontWeight.NORMAL:
-    rl.gui_set_font(gui_app.font(font_weight))
+  rl.gui_set_font(font_fallback(gui_app.font(font_weight), text))
 
   with GuiStyleContext(styles):
     rl.gui_label(rect, text)
 
-  if font_weight != FontWeight.NORMAL:
-    rl.gui_set_font(gui_app.font(FontWeight.NORMAL))
+  rl.gui_set_font(gui_app.font(FontWeight.NORMAL))
 
 
 # Non-interactive text area. Can render emojis and an optional specified icon.
@@ -320,7 +323,7 @@ class UnifiedLabel(Widget):
   @property
   def text(self) -> str:
     """Get the current text content."""
-    return str(_resolve_value(self._text))
+    return tr(str(_resolve_value(self._text)))
 
   @property
   def font_size(self) -> int:

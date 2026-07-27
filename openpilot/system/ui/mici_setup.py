@@ -19,6 +19,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.common.time_helpers import system_time_valid
 from openpilot.common.utils import run_cmd
 from openpilot.system.ui.lib.application import gui_app, FontWeight
+from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.wifi_manager import WifiManager, ConnectStatus
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.nav_widget import NavWidget
@@ -577,7 +578,7 @@ def main():
       cloudlog.exception("Failed to set core affinity for setup process")
 
   try:
-    gui_app.init_window("Setup")
+    gui_app.init_window(tr("Setup"))
     setup = Setup()
     gui_app.push_widget(setup)
     for _ in gui_app.render():

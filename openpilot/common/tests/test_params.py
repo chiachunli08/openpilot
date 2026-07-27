@@ -116,7 +116,7 @@ class TestParams:
 
     assert self.params.get("LanguageSetting") is None
     assert self.params.get("LanguageSetting", return_default=False) is None
-    assert isinstance(self.params.get("LanguageSetting", return_default=True), str)
+    assert self.params.get("LanguageSetting", return_default=True) == "zh-CHT"
     assert isinstance(self.params.get("LongitudinalPersonality", return_default=True), int)
     assert self.params.get("LiveParametersV2") is None
     assert self.params.get("LiveParametersV2", return_default=True) is None
