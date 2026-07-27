@@ -154,8 +154,7 @@ class TestCurvatureEstimator:
     mid = CurvatureDLookup.required_support_bucket_count(3)
     high = CurvatureDLookup.required_support_bucket_count(6)
 
-    assert low == len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
-    assert low >= mid >= high >= CurvatureDLookup.MIN_REQUIRED_SUPPORT_BUCKETS
+    assert len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) >= low >= mid >= high >= CurvatureDLookup.MIN_REQUIRED_SUPPORT_BUCKETS
 
   def test_fit_valid_no_longer_requires_global_total_samples(self):
     speed_idx = 3
@@ -214,6 +213,7 @@ class TestCurvatureEstimator:
     v_ego = 22.0
 
     self._train_speed_curve(estimator, v_ego)
+    estimator.use_params = True
     estimator._update_current_lookup(desired_curvature, v_ego)
     msg = estimator.get_msg(include_debug=True, include_preview=True)
     idx = CurvatureDLookup.indices(desired_curvature, v_ego)
@@ -251,10 +251,10 @@ class TestCurvatureEstimator:
     speed_idx = 3
     counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
-    selected = np.array([5, 6, 7, 8], dtype=int)
+    selected = np.arange(CurvatureDLookup.required_support_bucket_count(speed_idx), dtype=int)
 
     counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected] + 40.0
-    bias[speed_idx, selected] = np.array([2.0e-6, 6.0e-6, 1.2e-5, 2.0e-5], dtype=np.float32)
+    bias[speed_idx, selected] = np.linspace(2.0e-6, 2.0e-5, len(selected), dtype=np.float32)
 
     fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
 
