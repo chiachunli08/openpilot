@@ -1018,7 +1018,7 @@ class PickerDialog(MultiOptionDialog):
     self.on_exit = on_exit
     self.display_func = display_func or (lambda node: node.data.get('display_name', node.ref))
     self.search_funcs = search_funcs or [lambda node: node.data.get('display_name', ''), lambda node: node.data.get('short_name', '')]
-    self.search_title = search_title or tr("Enter search query")
+    self.search_title = search_title or tr("Type to search")
     self.search_subtitle = search_subtitle
     self._search_rect: rl.Rectangle | None = None
     self._search_pressed = False

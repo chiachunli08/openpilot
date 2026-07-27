@@ -116,9 +116,9 @@ def _fmt_seconds(value) -> str:
 
 def onroad_brightness_label(val) -> str:
   if val == OnroadBrightness.AUTO:
-    return tr("Auto (Default)")
+    return tr("Auto")
   if val == OnroadBrightness.AUTO_DARK:
-    return tr("Auto (Dark)")
+    return tr("Auto — Dim")
   return f"{(val - 1) * 5} %"
 
 
@@ -140,17 +140,17 @@ class DisplayLayout(Widget):
       label_callback=lambda v: tr("Default") if v == 0 else f"{v} %", inline=True,
     )
     self._onroad_brightness_row = option_item(
-      param="OnroadScreenOffBrightness", title=lambda: tr("Onroad Brightness"), description="",
+      param="OnroadScreenOffBrightness", title=lambda: tr("Driving Brightness"), description="",
       min_value=0, max_value=21, value_change_step=1,
       label_callback=onroad_brightness_label, inline=True,
     )
     self._dim_delay_row = option_item(
-      param="OnroadScreenOffTimer", title=lambda: tr("Onroad Brightness Delay"), description="",
+      param="OnroadScreenOffTimer", title=lambda: tr("Dim Delay"), description="",
       min_value=0, max_value=11, value_change_step=1,
       value_map=ONROAD_BRIGHTNESS_TIMER_VALUES, label_callback=_fmt_seconds, inline=True,
     )
     self._idle_close_row = option_item(
-      param="InteractivityTimeout", title=lambda: tr("Interactivity Timeout"),
+      param="InteractivityTimeout", title=lambda: tr("Auto-Close Settings"),
       description=lambda: tr("How long the settings screen may sit untouched before it closes itself."),
       min_value=0, max_value=120, value_change_step=10,
       label_callback=lambda v: tr("Default") if not v else _fmt_seconds(v), inline=True,
@@ -195,7 +195,7 @@ CHEVRON_INFO_DESCRIPTION = {
 # param key -> (title fn, description fn)
 _HUD_TOGGLES = {
   "BlindSpot": (
-    lambda: tr("Show Blind Spot Warnings"),
+    lambda: tr("Blind Spot Alerts"),
     lambda: tr("Flashes a side warning whenever the car reports something sitting in your blind spot (BSM-equipped cars only)."),
   ),
   "IQExpandedStatus": (
@@ -203,20 +203,20 @@ _HUD_TOGGLES = {
     lambda: tr("Bring back the classic UI's wide offroad status strip: temperature, vehicle, and Konn3kt state at a glance."),
   ),
   "TorqueBar": (
-    lambda: tr("Steering Arc"),
+    lambda: tr("Steering Effort Arc"),
     lambda: tr("Trace an arc over the road view showing how much steering IQ.Pilot is applying while lateral control runs."),
   ),
   "RoadNameToggle": (
-    lambda: tr("Display Road Name"),
+    lambda: tr("Road Name Overlay"),
     lambda: tr("Show the current road's name over the driving view."
                "<br>Requires offline map data for your region to be installed."),
   ),
   "ShowTurnSignals": (
-    lambda: tr("Display Turn Signals"),
+    lambda: tr("Blinker Indicators"),
     lambda: tr("Mirror the car's blinkers as arrows on the driving screen."),
   ),
   "RocketFuel": (
-    lambda: tr("Real-time Acceleration Bar"),
+    lambda: tr("Acceleration Meter"),
     lambda: tr("Draw a bar along the left edge tracking measured acceleration and braking — what the car is actually "
                "doing right now, not the planner's request."),
   ),
@@ -240,7 +240,7 @@ class VisualsLayout(Widget):
     }
 
     self._chevron_info = multiple_button_item(
-      title=lambda: tr("Display Metrics Below Chevron"),
+      title=lambda: tr("Lead Vehicle Readouts"),
       description="",
       buttons=[lambda: tr("Off"), lambda: tr("Distance"), lambda: tr("Speed"), lambda: tr("Time"), lambda: tr("All")],
       param="ChevronInfo",
@@ -319,7 +319,7 @@ class IQNetworkUI(NetworkUI):
   def _set_phase(self, phase: ScanPhase):
     self._phase = phase
     running = phase == ScanPhase.RUNNING
-    self.scan_button.set_text(tr("Scanning...") if running else tr("Scan"))
+    self.scan_button.set_text(tr("Searching...") if running else tr("Scan"))
     self.scan_button.set_enabled(not running)
     # keep the manager's spinner in step with the button, not just the quick scan call
     self._wifi_manager._scanning = running
@@ -397,7 +397,7 @@ class IQMapsLayout(Widget):
     self._scroller = Scroller(self.items, line_separator=True, spacing=0)
 
   def _build_rows(self):
-    self._mapd_version = text_item(tr("Mapd Version"), lambda: ui_state.params.get("MapdVersion") or "Loading...")
+    self._mapd_version = text_item(tr("Routing Engine Version"), lambda: ui_state.params.get("MapdVersion") or "Loading...")
     self._online_maps_toggle = toggle_item(
       tr("Online On-Screen Maps"),
       tr("Pull live Mapbox tiles for the on-screen map whenever the device has internet."),
@@ -409,11 +409,11 @@ class IQMapsLayout(Widget):
          "take over the moment connectivity drops. Tiles come down with your selected region."),
       param="OfflineOSMaps",
     )
-    self._delete_maps_btn = IQListItem(tr("Downloaded Maps"), action_item=WideButtonAction(tr("DELETE"), enabled=True),
+    self._delete_maps_btn = IQListItem(tr("Stored Maps"), action_item=WideButtonAction(tr("DELETE"), enabled=True),
                                        callback=self._confirm_wipe)
-    self._progress = progress_item(tr("Downloading Map"))
+    self._progress = progress_item(tr("Fetching Map"))
     self._tile_progress = progress_item(tr("Downloading Map Tiles"))
-    self._update_btn = IQListItem(tr("Database Update"), action_item=WideButtonAction(tr("CHECK"), enabled=True),
+    self._update_btn = IQListItem(tr("Map Database"), action_item=WideButtonAction(tr("CHECK"), enabled=True),
                                   callback=self._confirm_db_refresh)
     self._country_btn = IQListItem(tr("Country"), action_item=WideButtonAction(tr("SELECT"), enabled=True),
                                    callback=lambda: self._open_region_picker("Country"))
@@ -436,7 +436,7 @@ class IQMapsLayout(Widget):
 
   def _start_wipe(self):
     self._delete_maps_btn.action_item.set_enabled(False)
-    self._delete_maps_btn.action_item.set_text(tr("DELETING..."))
+    self._delete_maps_btn.action_item.set_text(tr("REMOVING..."))
     threading.Thread(target=self._wipe_worker, daemon=True).start()
 
   def _wipe_worker(self):
@@ -475,7 +475,7 @@ class IQMapsLayout(Widget):
   def _open_region_picker(self, region_type):
     btn = self._country_btn if region_type == "Country" else self._state_btn
     btn.action_item.set_enabled(False)
-    btn.action_item.set_text(tr("FETCHING..."))
+    btn.action_item.set_text(tr("LOADING..."))
     threading.Thread(target=self._region_picker_worker, args=(region_type, btn), daemon=True).start()
 
   @staticmethod
@@ -554,14 +554,14 @@ class IQMapsLayout(Widget):
 
     if failed:
       self._current_percent = 0.0
-      bar_text, btn_text = "0% - Downloading Maps", tr("Error: Invalid download. Retry.")
+      bar_text, btn_text = "0% - Downloading Maps", tr("Download failed — try again.")
     elif total > 0 and downloading:
       self._current_percent = max(0.0, min(100.0, done / total * 100.0))
       pct = int(self._current_percent)
       bar_text, btn_text = f"{pct}% - Downloading Maps", f"{done}/{total} ({pct}%)"
     else:
       self._current_percent = 0.0
-      bar_text, btn_text = "0% - Downloading Maps", tr("Downloading Maps...")
+      bar_text, btn_text = "0% - Downloading Maps", tr("Fetching Maps...")
 
     self._progress.action_item.update(self._current_percent, bar_text,
                                       show_progress=total > 0 and downloading and not failed)
@@ -599,7 +599,7 @@ class IQMapsLayout(Widget):
           dt = datetime.datetime.fromtimestamp(float(ts), tz=datetime.UTC)
       except (ValueError, TypeError):
         dt = None
-    self._update_btn.action_item.set_value(tr("Last checked {}").format(time_ago(dt)))
+    self._update_btn.action_item.set_value(tr("Checked {}").format(time_ago(dt)))
 
   def _update_state(self):
     now = monotonic()
@@ -618,7 +618,7 @@ class IQMapsLayout(Widget):
 _TIMER_LABELS = {
   -1: lambda: tr("Off"),
   0: lambda: tr("Nudge"),
-  1: lambda: tr("Nudgeless"),
+  1: lambda: tr("No Nudge"),
   2: lambda: f"0.5 {tr('s')}",
   3: lambda: f"1 {tr('s')}",
   4: lambda: f"2 {tr('s')}",
@@ -635,7 +635,7 @@ class LaneChangeSettingsLayout(Widget):
 
   def _build_rows(self):
     self._lane_change_timer = option_item(
-      title=lambda: tr("Auto Lane Change by Blinker"),
+      title=lambda: tr("Blinker-Initiated Lane Change"),
       param="IQLaneChangeTimer",
       description=lambda: tr("Delay before a blinker-triggered lane change starts on its own — no wheel nudge "
                              "needed once a delay is set (default is Nudge).<br>Use the blinker for this only "
@@ -645,7 +645,7 @@ class LaneChangeSettingsLayout(Widget):
     )
     self._bsm_delay = toggle_item(
       param="IQLaneChangeBsmDelay",
-      title=lambda: tr("Auto Lane Change: Delay with Blind Spot"),
+      title=lambda: tr("Hold Lane Change for Blind Spot"),
       description=lambda: tr("Hold the automatic lane change while blind spot monitoring reports a car in the "
                              "target lane, releasing it once the lane is clear."),
     )
@@ -685,7 +685,7 @@ class LaneChangeSettingsLayout(Widget):
 
 # (segment label, explanation) — order matches the AolSteeringMode param values
 SAB_BRAKE_RESPONSE_OPTIONS = [
-  (tr("Remain Active"), tr_noop("Remain Active: braking never interrupts steering assistance.")),
+  (tr("Stay Engaged"), tr_noop("Remain Active: braking never interrupts steering assistance.")),
   (tr("Standby"), tr_noop("Standby: braking parks steering assistance; it rejoins once you're off the pedal.")),
   (tr("Disengage"), tr_noop("Disengage: braking shuts steering assistance off entirely.")),
 ]
@@ -849,7 +849,7 @@ class SteeringLayout(Widget):
       callback=lambda: self._set_current_panel(PanelType.SAB)
     )
     self._lane_change_settings_button = simple_button_item(
-      button_text=lambda: tr("Customize Lane Change"),
+      button_text=lambda: tr("Lane Change Options"),
       button_width=800,
       callback=lambda: self._set_current_panel(PanelType.LANE_CHANGE)
     )
@@ -859,7 +859,7 @@ class SteeringLayout(Widget):
       description=""
     )
     self._lane_turn_desire_toggle = toggle_item(
-      tr("Use Lane Turn Desires"),
+      tr("Low-Speed Turn Planning"),
       tr("If you're driving at 20 mph (32 km/h) or below and have your blinker on,"
          " the car will plan a turn in that direction at the nearest drivable path."
          " This prevents situations (like at red lights) where the car might plan the wrong turn direction."),
@@ -1177,7 +1177,7 @@ class IQDeveloperLayout(DeveloperLayout):
       self._scroller.add_widget(item)
 
   def _initialize_items(self):
-    self.error_log_btn = button_item(tr("Error Log"), tr("VIEW"), tr("View the error log for IQ.Pilot crashes."), callback=self._on_error_log_clicked)
+    self.error_log_btn = button_item(tr("Crash Log"), tr("VIEW"), tr("View the error log for IQ.Pilot crashes."), callback=self._on_error_log_clicked)
 
     self.items: list = [self.error_log_btn]
 
@@ -1188,7 +1188,7 @@ class IQDeveloperLayout(DeveloperLayout):
 
   def _on_error_log_closed(self, result, log_exists):
     if result == DialogResult.CONFIRM and log_exists:
-      dialog2 = ConfirmDialog(tr("Would you like to delete this log?"), tr("Yes"), tr("No"), rich=False)
+      dialog2 = ConfirmDialog(tr("Delete this log?"), tr("Yes"), tr("No"), rich=False)
       gui_app.set_modal_overlay(dialog2, callback=self._on_delete_confirm)
 
   def _on_error_log_clicked(self):
@@ -1240,7 +1240,7 @@ class IQSoftwareLayout(SoftwareLayout):
   def __init__(self):
     super().__init__()
     self.disable_updates_toggle = toggle_item(
-      lambda: tr("Disable Updates"),
+      lambda: tr("Pause Updates"),
       description="",
       initial_state=ui_state.params.get_bool("DisableUpdates"),
       callback=self._on_disable_updates_toggled,
@@ -1273,7 +1273,7 @@ class IQSoftwareLayout(SoftwareLayout):
       self.disable_updates_toggle.action_item.set_state(ui_state.params.get_bool("DisableUpdates"))
 
   def _on_disable_updates_toggled(self, enabled):
-    dialog = ConfirmDialog(tr("System reboot required for changes to take effect. Reboot now?"), tr("Reboot"))
+    dialog = ConfirmDialog(tr("This needs a reboot to apply. Restart now?"), tr("Reboot"))
     gui_app.set_modal_overlay(dialog, callback=self._handle_reboot)
 
   def _on_change_install_mode(self):
@@ -1388,11 +1388,11 @@ class IQDeviceLayout(DeviceLayout):
     DeviceLayout._initialize_items(self)
 
     # Using dual button with no right button for better alignment
-    self._always_offroad_btn = self._left_button(lambda: tr("Enable Always Offroad"), self._handle_always_offroad)
+    self._always_offroad_btn = self._left_button(lambda: tr("Force Offroad Mode"), self._handle_always_offroad)
     self._force_onroad_btn = self._left_button(lambda: tr("Force On-Road (10 min)"), self._handle_force_onroad)
 
     self._max_time_offroad = option_item(
-      title=lambda: tr("Max Time Offroad"),
+      title=lambda: tr("Offroad Shutdown Timer"),
       description=lambda: tr("Powers the device down once it has sat this long with the engine off.\n(30h by default)"),
       param="MaxTimeOffroad",
       min_value=0,
@@ -1409,7 +1409,7 @@ class IQDeviceLayout(DeviceLayout):
     )
 
     self._device_wake_mode = multiple_button_item(
-      title=lambda: tr("Wake Up Behavior"),
+      title=lambda: tr("Boot State"),
       description=self.wake_mode_description,
       param="DeviceBootMode",
       buttons=[lambda: tr("Default"), lambda: tr("Offroad")],
@@ -1420,7 +1420,7 @@ class IQDeviceLayout(DeviceLayout):
     self._change_language_btn = button_item(lambda: tr("Change Language"), lambda: tr("CHANGE"), callback=self._show_language_dialog)
 
     # Silent Mode moved to the settings-hub top bar (bell bubble); this is just the dcam preview now.
-    self._driver_camera_btn = button_item(lambda: tr("Driver Camera Preview"), lambda: tr("PREVIEW"),
+    self._driver_camera_btn = button_item(lambda: tr("Driver Camera Check"), lambda: tr("PREVIEW"),
                                           callback=self._show_driver_camera)
 
     self._reg_and_training = dual_button_item(
@@ -1432,9 +1432,9 @@ class IQDeviceLayout(DeviceLayout):
     self._reg_and_training.action_item.right_button.set_button_style(ButtonStyle.NORMAL)
 
     self._onroad_uploads_and_reset_settings = dual_button_item(
-      left_text=lambda: tr("Onroad Uploads"),
+      left_text=lambda: tr("Upload While Driving"),
       left_callback=lambda: ui_state.params.put_bool("OnroadUploads", not ui_state.params.get_bool("OnroadUploads")),
-      right_text=lambda: tr("Reset Settings"),
+      right_text=lambda: tr("Restore Defaults"),
       right_callback=self._reset_settings
     )
 
@@ -1535,7 +1535,7 @@ class IQDeviceLayout(DeviceLayout):
   @staticmethod
   def _handle_always_offroad():
     if ui_state.engaged:
-      gui_app.set_modal_overlay(alert_dialog(tr("Disengage to Enter Always Offroad Mode")))
+      gui_app.set_modal_overlay(alert_dialog(tr("Disengage before forcing offroad")))
       return
 
     _offroad_mode_state = ui_state.params.get_bool("IQAlwaysOffroad")
@@ -1578,7 +1578,7 @@ class IQDeviceLayout(DeviceLayout):
 
   @staticmethod
   def _update_max_time_offroad_label(value: int) -> str:
-    label = tr("Always On") if value == 0 else f"{value}" + tr("m") if value < 60 else f"{value // 60}" + tr("h")
+    label = tr("Never Sleep") if value == 0 else f"{value}" + tr("m") if value < 60 else f"{value // 60}" + tr("h")
     label += tr(" (Default)") if value == 1800 else ""
     return label
 
@@ -1592,7 +1592,7 @@ class IQDeviceLayout(DeviceLayout):
     force_onroad_active = force_onroad_until > now
 
     # Text & Color
-    offroad_mode_btn_text = tr("Exit Always Offroad") if always_offroad else tr("Enable Always Offroad")
+    offroad_mode_btn_text = tr("Exit Offroad Mode") if always_offroad else tr("Force Offroad Mode")
     offroad_mode_btn_style = ButtonStyle.PRIMARY if always_offroad else ButtonStyle.DANGER
     self._always_offroad_btn.action_item.left_button.set_text(offroad_mode_btn_text)
     self._always_offroad_btn.action_item.left_button.set_button_style(offroad_mode_btn_style)
@@ -1692,27 +1692,27 @@ class ModelsLayout(Widget):
 
   def _initialize_items(self):
     self.current_model_item = IQListItem(
-      title=tr("Current Model"),
+      title=tr("Active Model"),
       description="",
       action_item=WideButtonAction(tr("SELECT")),
       callback=self._handle_current_model_clicked
     )
 
-    self.supercombo_label = progress_item(tr("Driving Model"))
-    self.vision_label = progress_item(tr("Vision Model"))
-    self.policy_label = progress_item(tr("Policy Model"))
+    self.supercombo_label = progress_item(tr("Combined Model"))
+    self.vision_label = progress_item(tr("Vision Weights"))
+    self.policy_label = progress_item(tr("Policy Weights"))
 
-    self.refresh_item = button_item(tr("Refresh Model List"), tr("REFRESH"), "", self._on_refresh_models)
+    self.refresh_item = button_item(tr("Reload Model List"), tr("REFRESH"), "", self._on_refresh_models)
 
     self.clear_cache_item = IQListItem(
-      title=tr("Clear Model Cache"),
+      title=tr("Purge Model Cache"),
       description="",
       action_item=WideButtonAction(tr("CLEAR")),
       callback=self._clear_cache
     )
 
     self.redownload_item = button_item(tr("Redownload Current Model"), tr("REDOWNLOAD"), "", self._redownload_model)
-    self.cancel_download_item = button_item(tr("Cancel Download"), tr("Cancel"), "", self._cancel_model_request)
+    self.cancel_download_item = button_item(tr("Stop Download"), tr("Cancel"), "", self._cancel_model_request)
 
     self.items = [self.current_model_item, self.cancel_download_item, self.supercombo_label, self.vision_label,
                   self.policy_label, self.redownload_item, self.refresh_item, self.clear_cache_item]
@@ -1962,7 +1962,7 @@ class ModelsLayout(Widget):
     folders_list = self._get_folders(favorites)
 
     active_ref = self.model_manager.activeBundle.ref if self._has_active_bundle_param() and self.model_manager.activeBundle else "Default"
-    self.model_dialog = PickerDialog(tr("Select a Model"), folders_list, active_ref, "ModelManager_Favs",
+    self.model_dialog = PickerDialog(tr("Choose a Model"), folders_list, active_ref, "ModelManager_Favs",
                                          get_folders_fn=self._get_folders, on_exit=self._on_model_selected)
     gui_app.set_modal_overlay(self.model_dialog, callback=self._on_model_selected)
 
@@ -2189,7 +2189,7 @@ class HyundaiSettings(BrandPanel):
     super().__init__()
     self.alpha_long_available = False
     self.longitudinal_tuning_item = multiple_button_item(
-      tr("Custom Longitudinal Tuning"), "",
+      tr("Longitudinal Tune Profile"), "",
       [tr("Off"), tr("Dynamic"), tr("Predictive")],
       button_width=300, param="HyundaiLongitudinalTuning", inline=False,
       callback=lambda index: ui_state.params.put("HyundaiLongitudinalTuning", index))
@@ -2231,10 +2231,10 @@ class SubaruSettings(BrandPanel):
   def __init__(self):
     super().__init__()
     self._supported = False
-    self.stop_and_go_toggle = toggle_item(tr("Stop and Go (Beta)"), "", param="SubaruStopAndGo",
+    self.stop_and_go_toggle = toggle_item(tr("Creep from Standstill (Beta)"), "", param="SubaruStopAndGo",
                                           callback=lambda _: self.update_settings())
     self.stop_and_go_manual_parking_brake_toggle = toggle_item(
-      tr("Stop and Go for Manual Parking Brake (Beta)"), "",
+      tr("Creep from Standstill — Manual Handbrake (Beta)"), "",
       param="SubaruStopAndGoManualParkingBrake", callback=lambda _: self.update_settings())
     self.items = [self.stop_and_go_toggle, self.stop_and_go_manual_parking_brake_toggle]
 
@@ -2310,7 +2310,7 @@ class ToyotaSettings(BrandPanel):
   def __init__(self):
     super().__init__()
     self.enforce_stock_longitudinal = toggle_item(
-      lambda: tr("Enforce Factory Longitudinal Control"),
+      lambda: tr("Keep Factory Gas and Brake"),
       description=lambda: tr("Keeps gas and brakes with the factory Toyota system; IQ.Pilot steers only."),
       initial_state=ui_state.params.get_bool("ToyotaEnforceStockLongitudinal"),
       callback=self._on_toggled,
@@ -2503,7 +2503,7 @@ class VehicleSelection:
       return bundle.get("name", "")
     if ui_state.CP and ui_state.CP.carFingerprint != "MOCK":
       return ui_state.CP.carFingerprint
-    return tr("No vehicle selected")
+    return tr("No vehicle set")
 
   def force(self, platform_name: str) -> bool:
     data = self.platforms.get(platform_name)
@@ -2600,9 +2600,9 @@ class VehiclePicker(Button):
 
 
 _LEGEND = (
-  (FingerprintStatus.AUTO, lambda: tr("Fingerprinted automatically")),
-  (FingerprintStatus.FORCED, lambda: tr("Manually selected fingerprint")),
-  (FingerprintStatus.NONE, lambda: tr("Not fingerprinted or manually selected")),
+  (FingerprintStatus.AUTO, lambda: tr("Detected automatically")),
+  (FingerprintStatus.FORCED, lambda: tr("Chosen manually")),
+  (FingerprintStatus.NONE, lambda: tr("Undetected and unset")),
 )
 
 
@@ -2619,9 +2619,9 @@ class LegendWidget(Widget):
   def _render(self, rect):
     x = rect.x + 20
     y = rect.y + 20
-    rl.draw_text_ex(self._font, tr("Select vehicle to force fingerprint manually."), rl.Vector2(x, y), 40, 0, ink.CAPTION)
+    rl.draw_text_ex(self._font, tr("Pin a vehicle to skip auto-detection."), rl.Vector2(x, y), 40, 0, ink.CAPTION)
     y += 80
-    rl.draw_text_ex(self._font, tr("Colors represent vehicle fingerprint status:"), rl.Vector2(x, y), 40, 0, ink.CAPTION)
+    rl.draw_text_ex(self._font, tr("Colour key for fingerprint state:"), rl.Vector2(x, y), 40, 0, ink.CAPTION)
     y += 80
 
     active = self._selector.status
