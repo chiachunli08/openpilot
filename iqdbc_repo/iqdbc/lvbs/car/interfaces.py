@@ -79,14 +79,14 @@ def apply_iq_car_config(CI, CP: structs.CarParams, CP_IQ: structs.IQCarParams,
 
   params_dict = {k: v for param in params_list for k, v in param.items()}
 
-  _initialize_custom_longitudinal_tuning(CI, CP, CP_IQ, params_dict)
-  _initialize_coop_steering(CP, CP_IQ, params_dict)
+  _apply_long_tuning(CI, CP, CP_IQ, params_dict)
+  _apply_torque_blend(CP, CP_IQ, params_dict)
   _initialize_radar_tracks(CP, CP_IQ, can_recv, can_send)
-  _initialize_stop_and_go(CP, CP_IQ, params_dict)
-  _initialize_toyota(CP, CP_IQ, params_dict)
+  _apply_creep_assist(CP, CP_IQ, params_dict)
+  _apply_toyota_options(CP, CP_IQ, params_dict)
 
 
-def _initialize_custom_longitudinal_tuning(CI, CP: structs.CarParams, CP_IQ: structs.IQCarParams,
+def _apply_long_tuning(CI, CP: structs.CarParams, CP_IQ: structs.IQCarParams,
                                            params_dict: dict[str, str]) -> None:
 
   # Hyundai Custom Longitudinal Tuning
@@ -100,11 +100,11 @@ def _initialize_custom_longitudinal_tuning(CI, CP: structs.CarParams, CP_IQ: str
   _ = CI.get_longitudinal_tuning_iq(CP, CP_IQ)
 
 
-def _initialize_coop_steering(CP: structs.CarParams, CP_IQ: structs.IQCarParams,
+def _apply_torque_blend(CP: structs.CarParams, CP_IQ: structs.IQCarParams,
                               params_dict: dict[str, str]) -> None:
   if CP.brand == 'tesla':
-    coop_steering = int(params_dict.get("TeslaCoopSteering", 0)) == 1
-    if coop_steering:
+    torque_blend = int(params_dict.get("IQTeslaTorqueBlend", 0)) == 1
+    if torque_blend:
       CP_IQ.flags |= TeslaFlagsIQ.COOP_STEERING.value
 
 
@@ -116,10 +116,10 @@ def _initialize_radar_tracks(CP: structs.CarParams, CP_IQ: structs.IQCarParams,
       CP.radarUnavailable = not tracks_enabled
 
 
-def _initialize_stop_and_go(CP: structs.CarParams, CP_IQ: structs.IQCarParams, params_dict: dict[str, str]) -> None:
+def _apply_creep_assist(CP: structs.CarParams, CP_IQ: structs.IQCarParams, params_dict: dict[str, str]) -> None:
   if CP.brand == 'subaru' and not CP.flags & (SubaruFlags.GLOBAL_GEN2 | SubaruFlags.HYBRID):
-    stop_and_go = int(params_dict.get("SubaruStopAndGo", 0)) == 1
-    stop_and_go_manual_parking_brake = int(params_dict.get("SubaruStopAndGoManualParkingBrake", 0)) == 1
+    stop_and_go = int(params_dict.get("IQSubaruCreepAssist", 0)) == 1
+    stop_and_go_manual_parking_brake = int(params_dict.get("IQSubaruCreepAssistManualBrake", 0)) == 1
 
     if stop_and_go:
       CP_IQ.flags |= SubaruFlagsIQ.STOP_AND_GO.value
@@ -129,9 +129,9 @@ def _initialize_stop_and_go(CP: structs.CarParams, CP_IQ: structs.IQCarParams, p
       CP_IQ.safetyParam |= SubaruSafetyFlagsIQ.STOP_AND_GO
 
 
-def _initialize_toyota(CP: structs.CarParams, CP_IQ: structs.IQCarParams, params_dict: dict[str, str]) -> None:
+def _apply_toyota_options(CP: structs.CarParams, CP_IQ: structs.IQCarParams, params_dict: dict[str, str]) -> None:
   if CP.brand == 'toyota':
-    toyota_stock_long = int(params_dict.get("ToyotaEnforceStockLongitudinal", 0)) == 1
+    toyota_stock_long = int(params_dict.get("IQToyotaFactoryLong", 0)) == 1
     toyota_sng_hack = int(params_dict.get("ToyotaSnGHack", 0)) == 1
 
     if toyota_stock_long:

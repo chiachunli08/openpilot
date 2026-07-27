@@ -88,7 +88,7 @@ class IQStopAndGoController:
 
     return send_resume
 
-  def create_stop_and_go(self, packer, CC: structs.CarControl, CS: CarStateBase, frame: int) -> list[CanData]:
+  def create_creep_assist(self, packer, CC: structs.CarControl, CS: CarStateBase, frame: int) -> list[CanData]:
     can_sends = []
 
     if not self.enabled:

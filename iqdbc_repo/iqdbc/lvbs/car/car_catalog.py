@@ -10,7 +10,7 @@ from iqdbc.car.values import PLATFORMS
 CAR_LIST_JSON_OUT = os.path.join(BASEDIR, "../", "iqpilot", "car", "car_list.json")
 
 
-def get_car_list() -> dict[str, dict[str, list[str] | str]]:
+def build_car_catalog() -> dict[str, dict[str, list[str] | str]]:
   collected_footnote = get_all_footnotes()
   sorted_list: dict[str, dict[str, list[str] | str]] = collect_car_docs(PLATFORMS, collected_footnote)
   return sorted_list
@@ -62,8 +62,8 @@ def collect_car_docs(platforms, footnotes) -> dict[str, dict[str, list[str] | st
 
 
 if __name__ == "__main__":
-  platform_list = get_car_list()
+  catalog = build_car_catalog()
 
   with open(CAR_LIST_JSON_OUT, "w") as json_file:
-    json.dump(platform_list, json_file, indent=2, ensure_ascii=False)
+    json.dump(catalog, json_file, indent=2, ensure_ascii=False)
   print(f"Generated and written to {CAR_LIST_JSON_OUT}")
