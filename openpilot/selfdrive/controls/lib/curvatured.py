@@ -2,8 +2,9 @@ import numpy as np
 
 from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup, VERSION
 
-# Cache granularity for get_correction(). Inputs are rounded before comparison so that
-# sensor noise does not invalidate the cache between consecutive 100Hz calls.
+# Cache granularity for get_correction(). Inputs within half a bucket reuse the
+# cached value so sensor noise does not invalidate it between consecutive 100Hz
+# calls, even when the first sample happens to be near a rounding boundary.
 #
 # Rationale per input:
 #   CACHE_V_EGO_DECIMALS = 1   (0.1 m/s granularity)
@@ -31,8 +32,8 @@ class CurvatureDController(CurvatureDLookup):
     self.live_valid = False
     self.fit_corrections = np.zeros(self.bucket_shape(), dtype=np.float32)
     self.fit_valid = np.zeros(self.bucket_shape(), dtype=bool)
-    self._cached_v_ego_q: float | None = None
-    self._cached_curvature_q: float | None = None
+    self._cached_v_ego: float | None = None
+    self._cached_curvature: float | None = None
     self._cached_projected: float = 0.0
 
   def update_live_params(self, msg) -> None:
@@ -69,7 +70,7 @@ class CurvatureDController(CurvatureDLookup):
   def _invalidate_correction_cache(self) -> None:
     # Tuple assignment is a single bytecode op in CPython, so this is
     # effectively atomic with respect to readers (no half-zeroed state).
-    self._cached_v_ego_q, self._cached_curvature_q, self._cached_projected = None, None, 0.0
+    self._cached_v_ego, self._cached_curvature, self._cached_projected = None, None, 0.0
 
   def get_correction(self, desired_curvature: float, v_ego: float) -> float:
     if not self.use_params or not self.live_valid:
@@ -79,14 +80,16 @@ class CurvatureDController(CurvatureDLookup):
     if self._exceeds_safety_bounds(abs_curvature, v_ego):
       return 0.0
 
-    v_ego_q = round(v_ego, CACHE_V_EGO_DECIMALS)
-    curvature_q = round(abs_curvature, CACHE_CURVATURE_DECIMALS)
-    if v_ego_q == self._cached_v_ego_q and curvature_q == self._cached_curvature_q:
+    v_ego_tolerance = 0.5 * 10 ** -CACHE_V_EGO_DECIMALS
+    curvature_tolerance = 0.5 * 10 ** -CACHE_CURVATURE_DECIMALS
+    if (self._cached_v_ego is not None and self._cached_curvature is not None and
+        abs(v_ego - self._cached_v_ego) < v_ego_tolerance and
+        abs(abs_curvature - self._cached_curvature) < curvature_tolerance):
       projected = self._cached_projected
     else:
       projected = float(CurvatureDLookup.interp_curve_value(self.fit_corrections, self.fit_valid, v_ego, abs_curvature))
-      self._cached_v_ego_q = v_ego_q
-      self._cached_curvature_q = curvature_q
+      self._cached_v_ego = float(v_ego)
+      self._cached_curvature = abs_curvature
       self._cached_projected = projected
 
     direction = 1.0 if desired_curvature >= 0.0 else -1.0

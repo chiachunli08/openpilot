@@ -192,10 +192,10 @@ class TestCurvatureDController:
     msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
 
     outer_idx = len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1
-    self._set_curve(msg, 3, {outer_idx: 8.0e-5})
+    self._set_curve(msg, 0, {outer_idx: 8.0e-5})
     controller.update_live_params(msg.liveCurvatureParameters)
 
-    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[0])
     last_edge = float(CurvatureDLookup.CURVATURE_BUCKET_MAX)
     fade_mid = 0.5 * (last_edge + float(CurvatureDLookup.CURVATURE_MAX))
 

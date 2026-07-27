@@ -29,6 +29,16 @@ def deprecated_or_current(msg):
   return msg.deprecated if hasattr(msg, "deprecated") else msg
 
 
+def car_control_actuators_output(car_control):
+  """Read actuator output from both pre- and post-wrapper carControl schemas."""
+  for value, field in ((car_control, "actuatorsOutputDEPRECATED"),
+                       (car_control, "actuatorsOutput"),
+                       (deprecated_or_current(car_control), "actuatorsOutput")):
+    if hasattr(value, field):
+      return getattr(value, field)
+  raise AttributeError("carControl has no actuator output field")
+
+
 # rules for migration functions
 # 1. must use the decorator @migration(inputs=[...], product="...") and MigrationFunc signature
 # 2. it only gets the messages that are in the inputs list
@@ -303,7 +313,7 @@ def migrate_carOutput(msgs):
     co = messaging.new_message('carOutput')
     co.valid = msg.valid
     co.logMonoTime = msg.logMonoTime
-    co.carOutput.actuatorsOutput = deprecated_or_current(msg.carControl).actuatorsOutput
+    co.carOutput.actuatorsOutput = car_control_actuators_output(msg.carControl)
     add_ops.append(as_reader(co))
   return [], add_ops, []
 
