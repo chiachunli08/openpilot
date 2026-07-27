@@ -242,8 +242,8 @@ struct IQPlan @0xda401323ae805f2b {
   }
 
   struct E2eAlerts {
-    greenLightAlert @0 :Bool;
-    leadDepartAlert @1 :Bool;
+    pathOpen @0 :Bool;
+    leadPullaway @1 :Bool;
   }
 }
 

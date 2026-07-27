@@ -8,7 +8,7 @@ from iqdbc.car.structs import CarParams
 from iqdbc.car.docs_definitions import CarHarness, CarDocs, CarParts, SupportType
 from iqdbc.car.fw_query_definitions import FwQueryConfig, Request, p16
 
-from iqdbc.iqpilot.car.hyundai.values import HyundaiFlagsIQ
+from iqdbc.lvbs.car.hyundai.values import HyundaiFlagsIQ
 
 Ecu = CarParams.Ecu
 

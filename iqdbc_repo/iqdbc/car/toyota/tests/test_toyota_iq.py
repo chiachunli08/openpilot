@@ -1,7 +1,7 @@
 from iqdbc.car import gen_empty_fingerprint, structs
 from iqdbc.car.toyota.interface import CarInterface
 from iqdbc.car.toyota.values import CAR, ToyotaFlags
-from iqdbc.iqpilot.car.toyota.values import ToyotaFlagsIQ
+from iqdbc.lvbs.car.toyota.values import ToyotaFlagsIQ
 
 
 def test_forced_secoc_toyota_clears_dashcam_mode():

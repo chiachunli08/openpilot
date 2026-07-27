@@ -8,10 +8,10 @@ from iqdbc.car.hyundai.hyundaicanfd import CanBus
 from iqdbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR
 from iqdbc.car.interfaces import CarControllerBase
 
-from iqdbc.iqpilot.car.hyundai.escc import EsccCarController
-from iqdbc.iqpilot.car.hyundai.longitudinal.controller import LongitudinalController
-from iqdbc.iqpilot.car.hyundai.lead_data_ext import LeadDataCarController
-from iqdbc.iqpilot.car.hyundai.aol import AolCarController
+from iqdbc.lvbs.car.hyundai.escc import EsccCarController
+from iqdbc.lvbs.car.hyundai.longitudinal.controller import LongitudinalController
+from iqdbc.lvbs.car.hyundai.lead_data_ext import LeadDataCarController
+from iqdbc.lvbs.car.hyundai.aol import AolCarController
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState

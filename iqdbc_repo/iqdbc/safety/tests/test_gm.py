@@ -7,7 +7,7 @@ from iqdbc.safety.tests.libsafety import libsafety_py
 import iqdbc.safety.tests.common as common
 from iqdbc.safety.tests.common import CANPackerSafety
 
-from iqdbc.iqpilot.car.gm.values_ext import GMSafetyFlagsIQ
+from iqdbc.lvbs.car.gm.values_ext import GMSafetyFlagsIQ
 
 
 class Buttons:

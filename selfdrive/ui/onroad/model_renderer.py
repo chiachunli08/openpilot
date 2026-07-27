@@ -89,7 +89,7 @@ class ModelRenderer(Widget, IQModelRenderer):
     self._path_offset_z = HEIGHT_INIT[0]
     self._counter = -1
     self._camera_offset = ui_state.params.get("CameraOffset", return_default=True) if ui_state.active_bundle else 0.0
-    self._ambient_dots = ui_state.params.get_bool("AmbientTrackDots")
+    self._ambient_dots = bool(ui_state.params.get("AmbientTrackDots", return_default=True))
     # Initialize ModelPoints objects
     self._path = ModelPoints()
     self._lane_lines = [ModelPoints() for _ in range(4)]
@@ -143,7 +143,7 @@ class ModelRenderer(Widget, IQModelRenderer):
 
     if self._counter % 60 == 0:
       self._camera_offset = ui_state.params.get("CameraOffset", return_default=True) if ui_state.active_bundle else 0.0
-      self._ambient_dots = ui_state.params.get_bool("AmbientTrackDots")
+      self._ambient_dots = bool(ui_state.params.get("AmbientTrackDots", return_default=True))
     self._counter += 1
 
     if sm.updated['carParams']:
@@ -456,18 +456,17 @@ class ModelRenderer(Widget, IQModelRenderer):
       draw_polygon(self._rect, self._path.projected_points, gradient=gradient)
 
   def _draw_vision_dots(self):
-    src = rl.Rectangle(0, 0, self._lead_orb.width, self._lead_orb.height)
     for dot in self._vision_dots:
       a = dot.alpha
       if a <= 0.02:
         continue
+      x, y, r = int(dot.x), int(dot.y), dot.radius
       if dot.rgb is None:
-        r = dot.radius
-        dest = rl.Rectangle(dot.x, dot.y, r * 2.0, r * 2.0)
-        rl.draw_texture_pro(self._lead_orb, src, dest, rl.Vector2(r, r), 0.0, rl.Color(255, 255, 255, int(90 * a)))
+        # soft teal glow, brighter in the center fading to transparent at the edge
+        rl.draw_circle_gradient(x, y, r, rl.Color(120, 235, 225, int(165 * a)), rl.Color(0, 150, 150, 0))
       else:
-        rl.draw_circle(int(dot.x), int(dot.y), dot.radius, rl.Color(dot.rgb[0], dot.rgb[1], dot.rgb[2], int(200 * a)))
-        rl.draw_circle_lines(int(dot.x), int(dot.y), dot.radius, rl.Color(255, 255, 255, int(160 * a)))
+        rl.draw_circle_gradient(x, y, r, rl.Color(dot.rgb[0], dot.rgb[1], dot.rgb[2], int(210 * a)),
+                                rl.Color(dot.rgb[0], dot.rgb[1], dot.rgb[2], 0))
 
   def _draw_track_dots(self):
     src = rl.Rectangle(0, 0, self._lead_orb.width, self._lead_orb.height)

@@ -22,7 +22,7 @@ from openpilot.selfdrive.ui.mici.onroad.alert_renderer import IconSide, TURN_SIG
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets import Widget
-from openpilot.system.ui.iqpilot.lib import canvas
+from openpilot.system.ui.iqwidgets.lib import canvas
 from iqdbc.car.volkswagen.values import VolkswagenFlags
 
 
@@ -50,14 +50,19 @@ _STRIP_DECEL = (255, 0, 247)
 _STRIP_DECEL_NEON = (255, 145, 251)
 _STRIP_TIP_ALPHA = 235
 _STRIP_ROOT_ALPHA = 55
-# neon edge: opaque core inside the cap, then non-overlapping halo bands outside it
-_STRIP_CORE = 3.0
+_STRIP_CORE_DEPTH = 7.0
+_STRIP_CORE_LAYERS = 8
+_STRIP_CORE_ALPHA = 0.15
 _STRIP_CORE_FLOOR = 0.3
-_STRIP_HALO = ((3.0, 0.42), (5.0, 0.14))
+_STRIP_CORE_TAIL = 22.0
+_STRIP_HALO_SPREAD = 11.0
+_STRIP_HALO_LAYERS = 11
+_STRIP_HALO_ALPHA = 0.095
+_STRIP_HALO_TAIL = 34.0
 _STRIP_NEON_FULL = 2.0  # m/s^2 at which the edges reach full brightness
 
 
-class RocketFuel:
+class IQAccelBar:
   def __init__(self):
     self._eased = 0.0
 
@@ -70,16 +75,46 @@ class RocketFuel:
     return canvas.shade(*fill, int(_STRIP_TIP_ALPHA + (_STRIP_ROOT_ALPHA - _STRIP_TIP_ALPHA) * frac))
 
   @staticmethod
-  def _cap(center, cap: float, up: bool, fill, neon, heat: float) -> None:
+  def _halo(center, cap: float, up: bool, neon, heat: float, tail: float) -> None:
+    step = int(255 * _STRIP_HALO_ALPHA * heat)
+    if step < 1:
+      return
+    start, end = (180.0, 360.0) if up else (0.0, 180.0)
+    tint = canvas.shade(*neon, step)
+    faded = canvas.shade(*neon, 0)
+    top, bottom = (tint, faded) if up else (faded, tint)
+    for i in range(_STRIP_HALO_LAYERS):
+      spread = _STRIP_HALO_SPREAD * (1.0 - i / _STRIP_HALO_LAYERS)
+      if spread <= 0.0:
+        continue
+      canvas.annulus(center, cap, cap + spread, start, end, _STRIP_ARC_SEGMENTS, tint)
+      if tail <= 0.0:
+        continue
+      run = min(tail, _STRIP_HALO_TAIL)
+      y = center.y if up else center.y - run
+      canvas.v_sweep(center.x - cap - spread, y, spread, run, top, bottom)
+      canvas.v_sweep(center.x + cap, y, spread, run, top, bottom)
+
+  @staticmethod
+  def _cap(center, cap: float, up: bool, fill, neon, heat: float, tail: float) -> None:
     start, end = (180.0, 360.0) if up else (0.0, 180.0)
     canvas.annulus(center, 0.0, cap, start, end, _STRIP_ARC_SEGMENTS, fill)
-    edge = cap
-    for spread, weight in _STRIP_HALO:
-      canvas.annulus(center, edge, edge + spread, start, end, _STRIP_ARC_SEGMENTS,
-                     canvas.shade(*neon, int(255 * heat * weight)))
-      edge += spread
-    core = canvas.shade(*neon, int(255 * (_STRIP_CORE_FLOOR + (1.0 - _STRIP_CORE_FLOOR) * heat)))
-    canvas.annulus(center, max(0.0, cap - _STRIP_CORE), cap, start, end, _STRIP_ARC_SEGMENTS, core)
+    IQAccelBar._halo(center, cap, up, neon, heat, tail)
+    lit = _STRIP_CORE_FLOOR + (1.0 - _STRIP_CORE_FLOOR) * heat
+    core = canvas.shade(*neon, max(1, int(255 * _STRIP_CORE_ALPHA * lit)))
+    faded = canvas.shade(*neon, 0)
+    top, bottom = (core, faded) if up else (faded, core)
+    run = min(tail, _STRIP_CORE_TAIL)
+    for i in range(_STRIP_CORE_LAYERS):
+      depth = _STRIP_CORE_DEPTH * (1.0 - i / _STRIP_CORE_LAYERS)
+      if depth <= 0.0:
+        continue
+      canvas.annulus(center, max(0.0, cap - depth), cap, start, end, _STRIP_ARC_SEGMENTS, core)
+      if run <= 0.0:
+        continue
+      y = center.y if up else center.y - run
+      canvas.v_sweep(center.x - cap, y, depth, run, top, bottom)
+      canvas.v_sweep(center.x + cap - depth, y, depth, run, top, bottom)
 
   def render(self, rect, sm) -> None:
     if not ui_state.rocket_fuel:
@@ -100,8 +135,9 @@ class RocketFuel:
 
     canvas.v_sweep(x, top + cap, cap * 2.0, reach - cap * 2.0,
                    self._tint(fill, frac_top), self._tint(fill, frac_bottom))
-    self._cap(canvas.Pt(x + cap, top + cap), cap, True, self._tint(fill, frac_top), neon, heat)
-    self._cap(canvas.Pt(x + cap, top + reach - cap), cap, False, self._tint(fill, frac_bottom), neon, heat)
+    tail = max(0.0, reach / 2.0 - cap)
+    self._cap(canvas.Pt(x + cap, top + cap), cap, True, self._tint(fill, frac_top), neon, heat, tail)
+    self._cap(canvas.Pt(x + cap, top + reach - cap), cap, False, self._tint(fill, frac_bottom), neon, heat, tail)
 
 
 # ============================================================================
@@ -130,7 +166,7 @@ class _BlindSide:
     canvas.stamp(tex, x, rect.y + _BS_DROP, canvas.shade(255, 255, 255, int(255 * self.glow.x)))
 
 
-class BlindSpotIndicators:
+class IQBlindSpotOverlay:
   def __init__(self):
     self._left = _BlindSide("left")
     self._right = _BlindSide("right")
@@ -159,7 +195,7 @@ _MQB_CLUSTER_EXEMPT = (VolkswagenFlags.PQ | VolkswagenFlags.MLB | VolkswagenFlag
                        VolkswagenFlags.MEB_GEN2 | VolkswagenFlags.MQB_EVO)
 
 
-class SpeedRenderer:
+class IQSpeedOverlay:
   def __init__(self):
     self.speed: float = 0.0
     self._cluster_ever_live: bool = False
@@ -323,7 +359,7 @@ def _lamp_modes(event_name: str, cs, remembered):
   return left, right, None
 
 
-class TurnSignalController:
+class IQTurnSignalOverlay:
   def __init__(self, config: TurnSignalConfig | None = None):
     self._config = config or TurnSignalConfig()
     self._lamps = {IconSide.left: _IndicatorLamp(IconSide.left),
@@ -740,7 +776,7 @@ def _desired_probe(sm):
   return desired_lat_accel
 
 
-class DeveloperUiRenderer(Widget):
+class IQDevMetricsOverlay(Widget):
   DEV_UI_OFF = 0
   DEV_UI_RIGHT = 1
   DEV_UI_BOTTOM = 2
@@ -754,7 +790,7 @@ class DeveloperUiRenderer(Widget):
 
   @staticmethod
   def get_bottom_dev_ui_offset():
-    return DeveloperUiRenderer.BOTTOM_BAR_HEIGHT if ui_state.developer_ui != DeveloperUiRenderer.DEV_UI_OFF else 0
+    return IQDevMetricsOverlay.BOTTOM_BAR_HEIGHT if ui_state.developer_ui != IQDevMetricsOverlay.DEV_UI_OFF else 0
 
   def _update_state(self) -> None:
     self.dev_ui_mode = ui_state.developer_ui
@@ -813,7 +849,7 @@ def _dim(color, alpha: float):
   return canvas.with_opacity(color, 255 * alpha)
 
 
-class SpeedLimitRenderer(Widget):
+class IQSpeedLimitOverlay(Widget):
   """Regulatory sign, upcoming-limit preview and pre-active nudge arrows."""
 
   def __init__(self):

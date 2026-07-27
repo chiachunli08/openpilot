@@ -5,7 +5,7 @@ from iqdbc.car.ford.fordcan import CanBus
 from iqdbc.car.ford.values import DBC, CarControllerParams, FordFlags
 from iqdbc.car.interfaces import CarStateBase
 
-from iqdbc.iqpilot.car.ford.aol import AolCarState
+from iqdbc.lvbs.car.ford.aol import AolCarState
 
 ButtonType = structs.CarState.ButtonEvent.Type
 GearShifter = structs.CarState.GearShifter

@@ -10,7 +10,7 @@ import pyray as rl
 
 from cereal import custom
 
-from openpilot.system.ui.iqpilot.widgets.helpers.glyphs import draw_star
+from openpilot.system.ui.iqwidgets.widgets.helpers.glyphs import draw_star
 
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app

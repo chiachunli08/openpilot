@@ -5,9 +5,9 @@ from iqdbc.car.chrysler import chryslercan
 from iqdbc.car.chrysler.values import RAM_CARS, CarControllerParams, ChryslerFlags, RAM_DT
 from iqdbc.car.interfaces import CarControllerBase
 
-from iqdbc.iqpilot.car.chrysler.carcontroller_ext import CarControllerExt
-from iqdbc.iqpilot.car.chrysler.aol import AolCarController
-from iqdbc.iqpilot.car.chrysler.values_ext import ChryslerFlagsIQ
+from iqdbc.lvbs.car.chrysler.carcontroller_ext import CarControllerExt
+from iqdbc.lvbs.car.chrysler.aol import AolCarController
+from iqdbc.lvbs.car.chrysler.values_ext import ChryslerFlagsIQ
 
 
 class CarController(CarControllerBase, AolCarController, CarControllerExt):

@@ -18,17 +18,17 @@ from openpilot.selfdrive.ui.layouts.settings.software import time_ago
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.hardware.hw import Paths
-from openpilot.system.ui.iqpilot.lib.styles import style
-from openpilot.system.ui.iqpilot.lib.utils import NoElideButtonAction
-from openpilot.system.ui.iqpilot.widgets.list_view import IQListItem, toggle_item
-from openpilot.system.ui.iqpilot.widgets.list_view import OptionControl
-from openpilot.system.ui.iqpilot.widgets.list_view import multiple_button_item, toggle_item
-from openpilot.system.ui.iqpilot.widgets.list_view import option_item, toggle_item, ToggleAction
-from openpilot.system.ui.iqpilot.widgets.list_view import progress_item
-from openpilot.system.ui.iqpilot.widgets.list_view import toggle_item, multiple_button_item, IQListItem, IQLineSeparator
-from openpilot.system.ui.iqpilot.widgets.list_view import toggle_item, option_item, IQLineSeparator
-from openpilot.system.ui.iqpilot.widgets.list_view import toggle_item, simple_button_item, option_item, IQLineSeparator
-from openpilot.system.ui.iqpilot.widgets.list_view import TreeFolder, TreeNode, TreeOptionDialog
+from openpilot.system.ui.iqwidgets.lib.styles import style
+from openpilot.system.ui.iqwidgets.lib.utils import WideButtonAction
+from openpilot.system.ui.iqwidgets.widgets.list_view import IQListItem, toggle_item
+from openpilot.system.ui.iqwidgets.widgets.list_view import OptionControl
+from openpilot.system.ui.iqwidgets.widgets.list_view import multiple_button_item, toggle_item
+from openpilot.system.ui.iqwidgets.widgets.list_view import option_item, toggle_item, ToggleAction
+from openpilot.system.ui.iqwidgets.widgets.list_view import progress_item
+from openpilot.system.ui.iqwidgets.widgets.list_view import toggle_item, multiple_button_item, IQListItem, IQLineSeparator
+from openpilot.system.ui.iqwidgets.widgets.list_view import toggle_item, option_item, IQLineSeparator
+from openpilot.system.ui.iqwidgets.widgets.list_view import toggle_item, simple_button_item, option_item, IQLineSeparator
+from openpilot.system.ui.iqwidgets.widgets.list_view import PickerGroup, PickerItem, PickerDialog
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.multilang import tr, tr_noop
@@ -60,8 +60,8 @@ from openpilot.iqpilot.selfdrive.iqmodeld.models.runners.model_runner import CUS
 from openpilot.selfdrive.ui.layouts.settings import settings as OP
 from openpilot.selfdrive.ui.layouts.settings.toggles import TogglesLayout
 from openpilot.system.hardware import HARDWARE
-from openpilot.system.ui.iqpilot.lib.styles import metrics
-from openpilot.system.ui.iqpilot.widgets.list_view import (
+from openpilot.system.ui.iqwidgets.lib.styles import metrics
+from openpilot.system.ui.iqwidgets.widgets.list_view import (
   option_item as option_item,
   multiple_button_item as multiple_button_item,
   button_item as button_item,
@@ -69,11 +69,11 @@ from openpilot.system.ui.iqpilot.widgets.list_view import (
   NavSectionButton,
   Spacer,
 )
-from openpilot.system.ui.iqpilot.widgets.list_view import IQListItem
-from openpilot.system.ui.iqpilot.widgets.list_view import IQListItem, IQMultipleButtonAction, IQToggleAction, IQLineSeparator
-from openpilot.system.ui.iqpilot.widgets.list_view import button_item, toggle_item
-from openpilot.system.ui.iqpilot.widgets.list_view import NoticeModal
-from openpilot.system.ui.iqpilot.widgets.list_view import TreeOptionDialog, TreeNode, TreeFolder
+from openpilot.system.ui.iqwidgets.widgets.list_view import IQListItem
+from openpilot.system.ui.iqwidgets.widgets.list_view import IQListItem, IQMultipleButtonAction, IQToggleAction, IQLineSeparator
+from openpilot.system.ui.iqwidgets.widgets.list_view import button_item, toggle_item
+from openpilot.system.ui.iqwidgets.widgets.list_view import NoticeModal
+from openpilot.system.ui.iqwidgets.widgets.list_view import PickerDialog, PickerItem, PickerGroup
 from openpilot.system.ui.lib.application import gui_app, MousePos
 from openpilot.system.ui.lib.multilang import tr_noop
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -96,9 +96,9 @@ from iqdbc.car.hyundai.values import CAR, CANFD_UNSUPPORTED_LONGITUDINAL_CAR, UN
 from iqdbc.car.subaru.values import CAR, SubaruFlags
 from iqdbc.car.volkswagen.values import CAR, VolkswagenFlags
 from openpilot.common.basedir import BASEDIR
-from openpilot.system.ui.iqpilot.lib.styles import ink
-from openpilot.system.ui.iqpilot.widgets.list_view import multiple_button_item
-from openpilot.system.ui.iqpilot.widgets.list_view import toggle_item
+from openpilot.system.ui.iqwidgets.lib.styles import ink
+from openpilot.system.ui.iqwidgets.widgets.list_view import multiple_button_item
+from openpilot.system.ui.iqwidgets.widgets.list_view import toggle_item
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.widgets.list_view import ButtonAction
 import json
@@ -409,15 +409,15 @@ class IQMapsLayout(Widget):
          "take over the moment connectivity drops. Tiles come down with your selected region."),
       param="OfflineOSMaps",
     )
-    self._delete_maps_btn = IQListItem(tr("Downloaded Maps"), action_item=NoElideButtonAction(tr("DELETE"), enabled=True),
+    self._delete_maps_btn = IQListItem(tr("Downloaded Maps"), action_item=WideButtonAction(tr("DELETE"), enabled=True),
                                        callback=self._confirm_wipe)
     self._progress = progress_item(tr("Downloading Map"))
     self._tile_progress = progress_item(tr("Downloading Map Tiles"))
-    self._update_btn = IQListItem(tr("Database Update"), action_item=NoElideButtonAction(tr("CHECK"), enabled=True),
+    self._update_btn = IQListItem(tr("Database Update"), action_item=WideButtonAction(tr("CHECK"), enabled=True),
                                   callback=self._confirm_db_refresh)
-    self._country_btn = IQListItem(tr("Country"), action_item=NoElideButtonAction(tr("SELECT"), enabled=True),
+    self._country_btn = IQListItem(tr("Country"), action_item=WideButtonAction(tr("SELECT"), enabled=True),
                                    callback=lambda: self._open_region_picker("Country"))
-    self._state_btn = IQListItem(tr("State"), action_item=NoElideButtonAction(tr("SELECT"), enabled=True),
+    self._state_btn = IQListItem(tr("State"), action_item=WideButtonAction(tr("SELECT"), enabled=True),
                                  callback=lambda: self._open_region_picker("State"))
 
     self.items = [self._mapd_version, self._online_maps_toggle, self._offline_maps_toggle, self._delete_maps_btn,
@@ -483,7 +483,7 @@ class IQMapsLayout(Widget):
     url = _BOUNDS_BASE_URL + ("nation_bounding_boxes.json" if region_type == "Country" else "us_states_bounding_boxes.json")
     try:
       data = requests.get(url, timeout=10).json()
-      return sorted((TreeNode(ref=k, data={'display_name': v['full_name']}) for k, v in data.items()),
+      return sorted((PickerItem(ref=k, data={'display_name': v['full_name']}) for k, v in data.items()),
                     key=lambda n: n.data['display_name'])
     except Exception:
       return []
@@ -491,14 +491,14 @@ class IQMapsLayout(Widget):
   def _region_picker_worker(self, region_type, btn):
     locations = self._fetch_regions(region_type)
     if region_type == "State":
-      locations.insert(0, TreeNode(ref="All", data={'display_name': tr("All states (~6.0 GB)")}))
+      locations.insert(0, PickerItem(ref="All", data={'display_name': tr("All states (~6.0 GB)")}))
 
     btn.action_item.set_enabled(True)
     btn.action_item.set_text(tr("SELECT"))
 
     key = "OsmLocation" if region_type == "Country" else "OsmState"
     current = ui_state.params.get(f"{key}Name") or ""
-    dialog = TreeOptionDialog(tr(f"Select {region_type}"), [TreeFolder(folder="", nodes=locations)],
+    dialog = PickerDialog(tr(f"Select {region_type}"), [PickerGroup(folder="", nodes=locations)],
                               current_ref=current, search_prompt=tr("Perform a search"))
     done = lambda res: self._on_region_picked(region_type, locations, key, res, dialog.selection_ref)  # noqa: E731
     dialog.on_exit = done
@@ -1319,11 +1319,11 @@ class IQSoftwareLayout(SoftwareLayout):
 
     # single flat list: pinned branches first, then the rest alphabetically.
     # prebuilt ("-prebuilt") branches are internal build outputs, not user-selectable.
-    pinned_nodes = [TreeNode(b, {'display_name': b}) for b in top_level_branches if b in branches]
-    other_nodes = [TreeNode(b, {'display_name': b}) for b in sorted(branches)
+    pinned_nodes = [PickerItem(b, {'display_name': b}) for b in top_level_branches if b in branches]
+    other_nodes = [PickerItem(b, {'display_name': b}) for b in sorted(branches)
                    if b not in top_level_branches and not b.endswith("-prebuilt")]
 
-    folders = [TreeFolder("", pinned_nodes + other_nodes)]
+    folders = [PickerGroup("", pinned_nodes + other_nodes)]
 
     def _on_branch_selected(result):
       if result == DialogResult.CONFIRM and self._branch_dialog is not None:
@@ -1334,7 +1334,7 @@ class IQSoftwareLayout(SoftwareLayout):
           os.system("pkill -SIGUSR1 -f system.updated.updated")
       self._branch_dialog = None
 
-    self._branch_dialog = TreeOptionDialog(tr("Select a branch"), folders, current_target, "",
+    self._branch_dialog = PickerDialog(tr("Select a branch"), folders, current_target, "",
                                            on_exit=_on_branch_selected)
 
     gui_app.set_modal_overlay(self._branch_dialog, callback=_on_branch_selected)
@@ -1667,7 +1667,7 @@ class IQDeviceLayout(DeviceLayout):
 # ===== models =====
 
 if gui_app.iqpilot_ui():
-  from openpilot.system.ui.iqpilot.widgets.list_view import button_item as button_item
+  from openpilot.system.ui.iqwidgets.widgets.list_view import button_item as button_item
 
 _ACTIVE_BUNDLE_KEY = "ModelManager_ActiveBundle"
 _DOWNLOAD_INDEX_KEY = "ModelManager_DownloadIndex"
@@ -1694,7 +1694,7 @@ class ModelsLayout(Widget):
     self.current_model_item = IQListItem(
       title=tr("Current Model"),
       description="",
-      action_item=NoElideButtonAction(tr("SELECT")),
+      action_item=WideButtonAction(tr("SELECT")),
       callback=self._handle_current_model_clicked
     )
 
@@ -1707,7 +1707,7 @@ class ModelsLayout(Widget):
     self.clear_cache_item = IQListItem(
       title=tr("Clear Model Cache"),
       description="",
-      action_item=NoElideButtonAction(tr("CLEAR")),
+      action_item=WideButtonAction(tr("CLEAR")),
       callback=self._clear_cache
     )
 
@@ -1938,7 +1938,7 @@ class ModelsLayout(Widget):
 
   @staticmethod
   def _bundle_to_node(bundle):
-    return TreeNode(bundle.ref, {'display_name': bundle.displayName, 'short_name': bundle.internalName})
+    return PickerItem(bundle.ref, {'display_name': bundle.displayName, 'short_name': bundle.internalName})
 
   def _get_folders(self, favorites):
     bundles = self.model_manager.availableBundles
@@ -1946,14 +1946,14 @@ class ModelsLayout(Widget):
     for bundle in bundles:
       folders.setdefault(next((ov_ride.value for ov_ride in bundle.overrides if ov_ride.key == "folder"), ""), []).append(bundle)
 
-    folders_list = [TreeFolder("", [TreeNode("Default", {'display_name': tr("Default (CD210)"), 'short_name': "Default"})])]
+    folders_list = [PickerGroup("", [PickerItem("Default", {'display_name': tr("Default (CD210)"), 'short_name': "Default"})])]
     for folder, folder_bundles in sorted(folders.items(), key=lambda x: max((bundle.index for bundle in x[1]), default=-1), reverse=True):
       folder_bundles.sort(key=lambda bundle: bundle.index, reverse=True)
       name = folder + (f" - (Updated: {m.group(1)})" if folder_bundles and (m := re.search(r'\(([^)]*)\)[^(]*$', folder_bundles[0].displayName)) else "")
-      folders_list.append(TreeFolder(name, [self._bundle_to_node(bundle) for bundle in folder_bundles]))
+      folders_list.append(PickerGroup(name, [self._bundle_to_node(bundle) for bundle in folder_bundles]))
 
     if favorites and (fav_bundles := [bundle for bundle in bundles if bundle.ref in favorites]):
-      folders_list.insert(1, TreeFolder("Favorites", [self._bundle_to_node(bundle) for bundle in fav_bundles]))
+      folders_list.insert(1, PickerGroup("Favorites", [self._bundle_to_node(bundle) for bundle in fav_bundles]))
     return folders_list
 
   def _handle_current_model_clicked(self):
@@ -1962,7 +1962,7 @@ class ModelsLayout(Widget):
     folders_list = self._get_folders(favorites)
 
     active_ref = self.model_manager.activeBundle.ref if self._has_active_bundle_param() and self.model_manager.activeBundle else "Default"
-    self.model_dialog = TreeOptionDialog(tr("Select a Model"), folders_list, active_ref, "ModelManager_Favs",
+    self.model_dialog = PickerDialog(tr("Select a Model"), folders_list, active_ref, "ModelManager_Favs",
                                          get_folders_fn=self._get_folders, on_exit=self._on_model_selected)
     gui_app.set_modal_overlay(self.model_dialog, callback=self._on_model_selected)
 
@@ -2165,7 +2165,7 @@ class IQSettingsLayout(OP.SettingsLayout):
 
 # ===== vehicle_brands_base =====
 
-class BrandSettings:
+class BrandPanel:
   """Per-brand extra settings rows; brands without any simply don't register."""
 
   def __init__(self):
@@ -2184,7 +2184,7 @@ _TUNING_BLURBS = (
 )
 
 
-class HyundaiSettings(BrandSettings):
+class HyundaiSettings(BrandPanel):
   def __init__(self):
     super().__init__()
     self.alpha_long_available = False
@@ -2227,7 +2227,7 @@ class HyundaiSettings(BrandSettings):
 _UNSUPPORTED_FLAGS = SubaruFlags.GLOBAL_GEN2 | SubaruFlags.HYBRID
 
 
-class SubaruSettings(BrandSettings):
+class SubaruSettings(BrandPanel):
   def __init__(self):
     super().__init__()
     self._supported = False
@@ -2283,7 +2283,7 @@ def _speed_text(kmh: int) -> str:
   return f"{round(kmh * KM_TO_MILE)} mph"
 
 
-class TeslaSettings(BrandSettings):
+class TeslaSettings(BrandPanel):
   def __init__(self):
     super().__init__()
     self.coop_steering_toggle = toggle_item(tr("VTB (Virtual Torque Blending)"), "", param="TeslaCoopSteering")
@@ -2306,7 +2306,7 @@ class TeslaSettings(BrandSettings):
 
 # ===== vehicle_brands_toyota =====
 
-class ToyotaSettings(BrandSettings):
+class ToyotaSettings(BrandPanel):
   def __init__(self):
     super().__init__()
     self.enforce_stock_longitudinal = toggle_item(
@@ -2361,7 +2361,7 @@ DESCRIPTIONS = {
 }
 
 
-class VolkswagenSettings(BrandSettings):
+class VolkswagenSettings(BrandPanel):
   def __init__(self):
     super().__init__()
 
@@ -2445,7 +2445,7 @@ class VolkswagenSettings(BrandSettings):
 # ===== vehicle_brands_factory =====
 
 # Only brands that actually ship extra rows appear here; every other brand gets None.
-_REGISTRY: dict[str, type[BrandSettings]] = {
+_REGISTRY: dict[str, type[BrandPanel]] = {
   "hyundai": HyundaiSettings,
   "subaru": SubaruSettings,
   "tesla": TeslaSettings,
@@ -2454,12 +2454,12 @@ _REGISTRY: dict[str, type[BrandSettings]] = {
 }
 
 
-def brand_settings_for(brand: str) -> BrandSettings | None:
+def brand_settings_for(brand: str) -> BrandPanel | None:
   cls = _REGISTRY.get(brand)
   return cls() if cls else None
 
 
-class BrandSettingsFactory:
+class BrandPanelFactory:
   """Legacy shim for callers using the old factory name."""
 
   create_brand_settings = staticmethod(brand_settings_for)
@@ -2516,22 +2516,22 @@ class VehicleSelection:
   def clear():
     ui_state.params.remove("CarPlatformBundle")
 
-  def picker_folders(self) -> list[TreeFolder]:
-    def node_for(name: str) -> TreeNode:
+  def picker_folders(self) -> list[PickerGroup]:
+    def node_for(name: str) -> PickerItem:
       info = self.platforms[name]
       years = ' '.join(map(str, info.get('year', [])))
-      return TreeNode(name, {
+      return PickerItem(name, {
         'display_name': name,
         'search_tags': f"{name} {info.get('make')} {years} {info.get('model', name)}",
       })
 
     names = sorted(self.platforms)
     makes = sorted({self.platforms[n].get('make') for n in names})
-    return [TreeFolder(make, [node_for(n) for n in names if self.platforms[n].get('make') == make])
+    return [PickerGroup(make, [node_for(n) for n in names if self.platforms[n].get('make') == make])
             for make in makes]
 
 
-class PlatformSelector(Button):
+class VehiclePicker(Button):
   """Row button that either clears a forced platform or opens the vehicle picker."""
 
   def __init__(self, on_platform_change: Callable[[], None] | None = None):
@@ -2574,7 +2574,7 @@ class PlatformSelector(Button):
       self._open_picker()
 
   def _open_picker(self):
-    dialog = TreeOptionDialog(
+    dialog = PickerDialog(
       tr("Pick your vehicle"),
       self.selection.picker_folders(),
       search_prompt=tr("Search make or model"),
@@ -2609,7 +2609,7 @@ _LEGEND = (
 class LegendWidget(Widget):
   """Explains the fingerprint status colours; the active row is highlighted."""
 
-  def __init__(self, platform_selector: PlatformSelector):
+  def __init__(self, platform_selector: VehiclePicker):
     super().__init__()
     self.set_rect(rl.Rectangle(0, 0, 0, 350))
     self._selector = platform_selector
@@ -2650,7 +2650,7 @@ class VehicleLayout(Widget):
     super().__init__()
     self._brand_settings = None
     self._current_brand = None
-    self._platform_selector = PlatformSelector(self._on_vehicle_changed)
+    self._platform_selector = VehiclePicker(self._on_vehicle_changed)
     self._vehicle_item = IQListItem(title=self._platform_selector.text, action_item=ButtonAction(text=tr("SELECT")),
                                     callback=self._platform_selector._on_clicked)
     self._legend_widget = LegendWidget(self._platform_selector)

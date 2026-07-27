@@ -10,8 +10,8 @@ from iqdbc.car.gm.radar_interface import RadarInterface, RADAR_HEADER_MSG, CAMER
 from iqdbc.car.gm.values import CAR, CarControllerParams, EV_CAR, CAMERA_ACC_CAR, SDGM_CAR, ALT_ACCS, CanBus, GMSafetyFlags
 from iqdbc.car.interfaces import CarInterfaceBase, TorqueFromLateralAccelCallbackType, LateralAccelFromTorqueCallbackType
 
-from iqdbc.iqpilot.car.gm.interface_ext import CarInterfaceExt
-from iqdbc.iqpilot.car.gm.values_ext import GMFlagsIQ, GMSafetyFlagsIQ
+from iqdbc.lvbs.car.gm.interface_ext import CarInterfaceExt
+from iqdbc.lvbs.car.gm.values_ext import GMFlagsIQ, GMSafetyFlagsIQ
 
 TransmissionType = structs.CarParams.TransmissionType
 NetworkLocation = structs.CarParams.NetworkLocation

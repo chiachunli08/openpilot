@@ -5,7 +5,7 @@ from iqdbc.car import Bus, structs
 from iqdbc.car.interfaces import RadarInterfaceBase
 from iqdbc.car.hyundai.values import DBC
 
-from iqdbc.iqpilot.car.hyundai.radar_interface_ext import RadarInterfaceExt
+from iqdbc.lvbs.car.hyundai.radar_interface_ext import RadarInterfaceExt
 
 RADAR_START_ADDR = 0x500
 RADAR_MSG_COUNT = 32

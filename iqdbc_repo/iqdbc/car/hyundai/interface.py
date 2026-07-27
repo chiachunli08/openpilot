@@ -10,9 +10,9 @@ from iqdbc.car.hyundai.carcontroller import CarController
 from iqdbc.car.hyundai.carstate import CarState
 from iqdbc.car.hyundai.radar_interface import RadarInterface
 
-from iqdbc.iqpilot.car.hyundai.escc import ESCC_MSG
-from iqdbc.iqpilot.car.hyundai.longitudinal.helpers import get_longitudinal_tune
-from iqdbc.iqpilot.car.hyundai.values import HyundaiFlagsIQ, HyundaiSafetyFlagsIQ
+from iqdbc.lvbs.car.hyundai.escc import ESCC_MSG
+from iqdbc.lvbs.car.hyundai.longitudinal.helpers import get_longitudinal_tune
+from iqdbc.lvbs.car.hyundai.values import HyundaiFlagsIQ, HyundaiSafetyFlagsIQ
 
 ButtonType = structs.CarState.ButtonEvent.Type
 Ecu = structs.CarParams.Ecu

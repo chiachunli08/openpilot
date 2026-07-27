@@ -10,7 +10,7 @@ import iqdbc.safety.tests.common as common
 from iqdbc.safety.tests.common import CANPackerSafety
 from iqdbc.safety.tests.hyundai_common import HyundaiButtonBase, HyundaiLongitudinalBase
 
-from iqdbc.iqpilot.car.hyundai.values import HyundaiSafetyFlagsIQ
+from iqdbc.lvbs.car.hyundai.values import HyundaiSafetyFlagsIQ
 
 # LDA button availability
 LDA_BUTTON = [

@@ -5,8 +5,8 @@ from iqdbc.car.common.conversions import Conversions as CV
 from iqdbc.car.interfaces import CarStateBase
 from iqdbc.car.gm.values import DBC, AccState, CruiseButtons, STEER_THRESHOLD, SDGM_CAR, ALT_ACCS
 
-from iqdbc.iqpilot.car.gm.carstate_ext import CarStateExt
-from iqdbc.iqpilot.car.gm.values_ext import GMFlagsIQ
+from iqdbc.lvbs.car.gm.carstate_ext import CarStateExt
+from iqdbc.lvbs.car.gm.values_ext import GMFlagsIQ
 
 ButtonType = structs.CarState.ButtonEvent.Type
 TransmissionType = structs.CarParams.TransmissionType

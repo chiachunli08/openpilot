@@ -1,6 +1,6 @@
 import unittest
 
-from iqdbc.iqpilot.car.hyundai.values import HyundaiSafetyFlagsIQ
+from iqdbc.lvbs.car.hyundai.values import HyundaiSafetyFlagsIQ
 import iqdbc.safety.tests.common as common
 from iqdbc.safety.tests.libsafety import libsafety_py
 from iqdbc.safety.tests.common import make_msg

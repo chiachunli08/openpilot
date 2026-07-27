@@ -10,7 +10,7 @@ from iqdbc.car.honda.values import CAR, DBC, STEER_THRESHOLD, HONDA_BOSCH, HONDA
                                                  HondaFlags, CruiseButtons, CruiseSettings, GearShifter, CarControllerParams
 from iqdbc.car.interfaces import CarStateBase
 
-from iqdbc.iqpilot.car.honda.carstate_ext import CarStateExt
+from iqdbc.lvbs.car.honda.carstate_ext import CarStateExt
 
 TransmissionType = structs.CarParams.TransmissionType
 ButtonType = structs.CarState.ButtonEvent.Type

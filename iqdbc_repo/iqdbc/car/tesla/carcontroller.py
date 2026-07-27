@@ -7,7 +7,7 @@ from iqdbc.car.tesla.teslacan import TeslaCAN
 from iqdbc.car.tesla.values import CarControllerParams
 from iqdbc.car.vehicle_model import VehicleModel
 from openpilot.iqpilot.selfdrive.car.enhanced_stock_longitudinal_control import get_set_speed_kph_from_params
-from iqdbc.iqpilot.car.tesla.coop_steering import CoopSteeringCarController
+from iqdbc.lvbs.car.tesla.coop_steering import CoopSteeringCarController
 
 
 def get_safety_CP():

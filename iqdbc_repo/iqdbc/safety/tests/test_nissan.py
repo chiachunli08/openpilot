@@ -2,7 +2,7 @@
 import unittest
 
 from iqdbc.car.nissan.values import NissanSafetyFlags
-from iqdbc.iqpilot.car.nissan.values import NissanSafetyFlagsIQ
+from iqdbc.lvbs.car.nissan.values import NissanSafetyFlagsIQ
 from iqdbc.car.structs import CarParams
 from iqdbc.safety.tests.libsafety import libsafety_py
 import iqdbc.safety.tests.common as common

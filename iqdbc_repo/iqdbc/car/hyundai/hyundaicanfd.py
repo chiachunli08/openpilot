@@ -3,7 +3,7 @@ import numpy as np
 from iqdbc.car import CanBusBase
 from iqdbc.car.crc import CRC16_XMODEM
 from iqdbc.car.hyundai.values import HyundaiFlags
-from iqdbc.iqpilot.car.hyundai.lead_data_ext import CanFdLeadData
+from iqdbc.lvbs.car.hyundai.lead_data_ext import CanFdLeadData
 
 
 class CanBus(CanBusBase):

@@ -4,8 +4,8 @@ from iqdbc.car.chrysler.values import DBC, STEER_THRESHOLD, RAM_CARS
 from iqdbc.car.common.conversions import Conversions as CV
 from iqdbc.car.interfaces import CarStateBase
 
-from iqdbc.iqpilot.car.chrysler.carstate_ext import CarStateExt
-from iqdbc.iqpilot.car.chrysler.aol import AolCarState
+from iqdbc.lvbs.car.chrysler.carstate_ext import CarStateExt
+from iqdbc.lvbs.car.chrysler.aol import AolCarState
 
 ButtonType = structs.CarState.ButtonEvent.Type
 

@@ -7,7 +7,7 @@ from iqdbc.car.interfaces import CarStateBase
 from iqdbc.car.tesla.teslacan import get_steer_ctrl_type
 from iqdbc.car.tesla.values import DBC, CANBUS, GEAR_MAP, STEER_THRESHOLD, TeslaFlags
 
-from iqdbc.iqpilot.car.tesla.carstate_ext import CarStateExt
+from iqdbc.lvbs.car.tesla.carstate_ext import CarStateExt
 
 ButtonType = structs.CarState.ButtonEvent.Type
 

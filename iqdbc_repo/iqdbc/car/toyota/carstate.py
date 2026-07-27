@@ -8,8 +8,8 @@ from iqdbc.car.interfaces import CarStateBase
 from iqdbc.car.toyota.values import ToyotaFlags, CAR, DBC, STEER_THRESHOLD, NO_STOP_TIMER_CAR, \
                                                   TSS2_CAR, RADAR_ACC_CAR, EPS_SCALE, UNSUPPORTED_DSU_CAR, \
                                                   SECOC_CAR
-from iqdbc.iqpilot.car.toyota.carstate_ext import CarStateExt
-from iqdbc.iqpilot.car.toyota.values import ToyotaFlagsIQ
+from iqdbc.lvbs.car.toyota.carstate_ext import CarStateExt
+from iqdbc.lvbs.car.toyota.values import ToyotaFlagsIQ
 
 ButtonType = structs.CarState.ButtonEvent.Type
 SteerControlType = structs.CarParams.SteerControlType

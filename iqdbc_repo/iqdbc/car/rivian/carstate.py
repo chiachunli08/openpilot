@@ -4,7 +4,7 @@ from iqdbc.car import Bus, structs
 from iqdbc.car.interfaces import CarStateBase
 from iqdbc.car.rivian.values import DBC, GEAR_MAP
 from iqdbc.car.common.conversions import Conversions as CV
-from iqdbc.iqpilot.car.rivian.carstate_ext import CarStateExt
+from iqdbc.lvbs.car.rivian.carstate_ext import CarStateExt
 
 GearShifter = structs.CarState.GearShifter
 
