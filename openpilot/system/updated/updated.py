@@ -383,7 +383,7 @@ class Updater:
       self.fetch_update_force(branch)
       return
 
-    git_fetch_output = run(["git", "fetch", "origin", branch], OVERLAY_MERGED)
+    git_fetch_output = run(["git", "-c", "fetch.recurseSubmodules=false", "fetch", "--no-recurse-submodules", "origin", branch], OVERLAY_MERGED)
     cloudlog.info("git fetch success: %s", git_fetch_output)
 
     cloudlog.info("git reset in progress")
