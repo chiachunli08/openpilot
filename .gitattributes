@@ -17,5 +17,3 @@ openpilot/selfdrive/assets/fonts/SourceHanSansTC-Regular.otf -filter -diff -merg
 openpilot/selfdrive/car/tests/test_models_segs.txt filter=lfs diff=lfs merge=lfs -text
 openpilot/common/hardware/tici/updater filter=lfs diff=lfs merge=lfs -text
 openpilot/selfdrive/assets/fonts/Audiowide-Regular.ttf -filter -diff -merge -text
-openpilot/sunnypilot/selfdrive/assets/icons_mici/always_offroad.png -filter -diff -merge -text
-openpilot/sunnypilot/selfdrive/assets/icons_mici/disable_offroad.png -filter -diff -merge -text
