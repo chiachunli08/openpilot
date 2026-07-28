@@ -39,6 +39,14 @@ class UIState(UIStateSP):
   def _initialize(self):
     UIStateSP.__init__(self)
     self.params = Params()
+    ic_services = [
+      "liveCurvatureParameters",
+      "controlsStateIC",
+      "carStateIC",
+      "carControlIC",
+      "carParamsIC",
+      "longitudinalPlanIC",
+    ]
     self.sm = messaging.SubMaster(
       [
         "modelV2",
@@ -61,10 +69,9 @@ class UIState(UIStateSP):
         "carOutput",
         "carControl",
         "liveParameters",
-        "liveCurvatureParameters",
         "testJoystick",
         "rawAudioData",
-      ] + self.sm_services_ext
+      ] + ic_services + self.sm_services_ext
     )
 
     self.prime_state = PrimeState()
@@ -92,7 +99,7 @@ class UIState(UIStateSP):
     self.is_body: bool | None = None
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
-    
+    self.dark_mode: bool = False
     self.onroad_screen_timeout: bool = False
     self.enable_accel_bar: bool = False
     self.has_alert: bool = False
@@ -182,11 +189,11 @@ class UIState(UIStateSP):
         self.status = UIStatus.OVERRIDE
       else:
         self.status = UIStatus.ENGAGED if ss.enabled else UIStatus.DISENGAGED
-        
+
       # detect status change
       self.has_status_change = True if self.status != self._status_prev else False
       self._status_prev = self.status
-        
+
       # check for alert
       self.has_alert = True if ss.alertSize != 0 else False
 
@@ -331,9 +338,9 @@ class Device(DeviceSP):
       brightness = 0
 
     if brightness != self._last_brightness:
-      self._brightness_target = brightness
+      self._brightness_target = int(brightness)
       self._brightness_event.set()
-      self._last_brightness = brightness
+      self._last_brightness = int(brightness)
 
   def _update_wakefulness(self):
     # Handle interactive timeout
@@ -356,9 +363,9 @@ class Device(DeviceSP):
 
     self._set_awake((ui_state.ignition and not ui_state.onroad_screen_timeout) or not interaction_timeout or PC)
 
-  def _set_awake(self, on: bool):
+  def _set_awake(self, on: bool, _ui_state=None):
     if on != self._awake:
-      DeviceSP._set_awake(on, ui_state)
+      super()._set_awake(on, _ui_state or ui_state)
       self._awake = on
       cloudlog.debug(f"setting display power {int(on)}")
       HARDWARE.set_display_power(on)

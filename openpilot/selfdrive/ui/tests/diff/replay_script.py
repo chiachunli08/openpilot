@@ -357,7 +357,7 @@ def build_mici_script(pm: PubMaster, main_layout, script: Script) -> None:
     params = Params()
     main_layout._alerts_layout._pending_params = ({"UpdaterNewDescription": params.get("UpdaterNewDescription")} |
                                                   {alert_data.key: params.get(alert_data.key) for alert_data in main_layout._alerts_layout.sorted_alerts})
-    main_layout._alerts_layout._refresh()
+    main_layout._alerts_layout._update_state()
 
   swipe_right(width, wait_after=WAIT_SHORT)  # open alerts
   script.setup(setup_offroad_alerts_and_refresh)  # show alerts
@@ -380,6 +380,14 @@ def build_mici_script(pm: PubMaster, main_layout, script: Script) -> None:
 
 def build_tizi_script(pm: PubMaster, main_layout, script: Script) -> None:
   """Build the replay script for the tizi layout."""
+
+  def select_settings_panel(panel_name: str) -> None:
+    """Select a settings panel without relying on stock or sunnypilot sidebar coordinates."""
+    from openpilot.selfdrive.ui.layouts.main import MainState
+
+    settings_layout = main_layout._layouts[MainState.SETTINGS]
+    panel_type = next(panel_type for panel_type in settings_layout._panels if panel_type.name == panel_name)
+    settings_layout.set_current_panel(panel_type)
 
   def make_home_refresh_setup(fn: Callable) -> Callable:
     """Return setup function that calls the given function to modify state and forces an immediate refresh on the home layout."""
@@ -457,7 +465,7 @@ def build_tizi_script(pm: PubMaster, main_layout, script: Script) -> None:
   script.click(2000, 970)  # OK
 
   # === Settings - Network ===
-  script.click(278, 450)
+  script.setup(lambda: select_settings_panel("NETWORK"))
   # TODO: mock networks
   script.click(1880, 100)  # advanced network settings
 
@@ -473,12 +481,12 @@ def build_tizi_script(pm: PubMaster, main_layout, script: Script) -> None:
   script.click(630, 80)  # back from advanced network
 
   # === Settings - Toggles ===
-  script.click(278, 600)
+  script.setup(lambda: select_settings_panel("TOGGLES"))
   script.click(1200, 280)  # expand experimental mode description
 
   # === Settings - Software ===
   script.setup(lambda: setup_update_available(False), wait_after=0)  # start with no update available
-  script.click(278, 720)  # software
+  script.setup(lambda: select_settings_panel("SOFTWARE"))
   for _ in range(2):
     script.click(720, 120)  # toggle current release notes
   script.setup(setup_update_available)  # set update available
@@ -491,11 +499,11 @@ def build_tizi_script(pm: PubMaster, main_layout, script: Script) -> None:
   script.click(650, 750)  # cancel uninstall
 
   # === Settings - Firehose ===
-  script.click(278, 845)
+  script.setup(lambda: select_settings_panel("FIREHOSE"))
 
   # === Settings - Developer (set CarParamsPersistent first) ===
   script.setup(setup_developer_params, wait_after=0)
-  script.click(278, 950)
+  script.setup(lambda: select_settings_panel("DEVELOPER"))
   script.click(1930, 470)  # SSH keys (keyboard)
   script.click(1930, 115)  # click cancel on keyboard
   script.click(2000, 960)  # toggle alpha long

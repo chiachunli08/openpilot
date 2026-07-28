@@ -1,5 +1,6 @@
 import time
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pyray as rl
@@ -98,15 +99,15 @@ class DynamicSteeringLearnerGraph(Widget):
     if lcp_frame != self._cached_lcp_frame:
       abs_curvatures = np.abs(self._plot_x).astype(np.float64)
       # Recomputes only when liveCurvatureParameters changes (4Hz); cached across UI frames.
-      self._cached_fit_curve = CurvatureDLookup.interp_curve_value(
+      self._cached_fit_curve = cast(np.ndarray, CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, abs_curvatures
-      )
+      ))
       # Preview is only populated when ShowDynamicSteeringLearnerGraph is on.
       has_preview = preview_corrections.shape == fit_corrections.shape and np.any(preview_corrections)
       if has_preview:
-        self._cached_preview_curve = CurvatureDLookup.interp_curve_value(
+        self._cached_preview_curve = cast(np.ndarray, CurvatureDLookup.interp_curve_value(
           preview_corrections, preview_valid, v_ego, abs_curvatures
-        )
+        ))
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 
@@ -133,7 +134,6 @@ class DynamicSteeringLearnerGraph(Widget):
     rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
 
     lcp_frame = sm.recv_frame["liveCurvatureParameters"]
-    controls_state = sm["controlsState"]
     car_state = sm["carState"]
 
     fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
@@ -165,7 +165,8 @@ class DynamicSteeringLearnerGraph(Widget):
     _, _, min_y, max_y = self._draw_plot(
       plot_rect, preview_curve, corrections, min_y, max_y, transport_valid and payload_valid
     )
-    self._draw_overlay_info(graph_rect, lcp, float(car_state.vEgo), float(controls_state.modelDesiredCurvature),
+    cs_ic = sm["controlsStateIC"]
+    self._draw_overlay_info(graph_rect, lcp, float(car_state.vEgo), float(cs_ic.modelDesiredCurvature),
                             fit_corrections, fit_valid, min_y, max_y, transport_valid, payload_valid)
 
   def _build_graph_rect(self, rect: rl.Rectangle) -> rl.Rectangle:
@@ -275,17 +276,17 @@ class DynamicSteeringLearnerGraph(Widget):
     rl.draw_text_ex(self._font_bold, title, rl.Vector2(text_x, title_y), title_size, 0, self._text_color)
 
     status_text = (
-      f"live={payload_valid} transport={transport_valid} cal={int(getattr(lcp, 'calPerc', 0))}% "
+      f"live={payload_valid} transport={transport_valid} cal={int(getattr(lcp, 'calPerc', 0))}% " +
       f"points={int(getattr(lcp, 'totalBucketPoints', 0))}"
     )
     rl.draw_text_ex(self._font_medium, status_text, rl.Vector2(text_x, status_y), status_size, 0, self._muted_text_color)
 
     speed_mix = (
-      f"v={v_ego * 3.6:.0f} km/h  mix={CurvatureDLookup.SPEED_ANCHORS[low_idx] * 3.6:.0f}/"
+      f"v={v_ego * 3.6:.0f} km/h  mix={CurvatureDLookup.SPEED_ANCHORS[low_idx] * 3.6:.0f}/" +
       f"{CurvatureDLookup.SPEED_ANCHORS[high_idx] * 3.6:.0f} alpha={alpha:.2f}"
     )
     marker_info = (
-      f"k={desired_curvature:.2e}  corr={display_correction:.2e}  "
+      f"k={desired_curvature:.2e}  corr={display_correction:.2e}  " +
       f"bucket=({int(getattr(lcp, 'bucketSpeed', -1))}, {int(getattr(lcp, 'bucketCurvature', -1))})"
     )
     rl.draw_text_ex(self._font_medium, speed_mix, rl.Vector2(text_x, footer_y1), footer_size, 0, self._muted_text_color)

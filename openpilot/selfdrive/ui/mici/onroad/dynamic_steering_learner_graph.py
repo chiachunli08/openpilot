@@ -1,5 +1,6 @@
 import time
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pyray as rl
@@ -89,15 +90,15 @@ class DynamicSteeringLearnerGraphMici(Widget):
     if lcp_frame != self._cached_lcp_frame:
       abs_curvatures = np.abs(self._plot_x).astype(np.float64)
       # Recomputes only when liveCurvatureParameters changes (4Hz); cached across UI frames.
-      self._cached_fit_curve = CurvatureDLookup.interp_curve_value(
+      self._cached_fit_curve = cast(np.ndarray, CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, abs_curvatures
-      )
+      ))
       # Preview is only populated when ShowDynamicSteeringLearnerGraph is on.
       has_preview = preview_corrections.shape == fit_corrections.shape and np.any(preview_corrections)
       if has_preview:
-        self._cached_preview_curve = CurvatureDLookup.interp_curve_value(
+        self._cached_preview_curve = cast(np.ndarray, CurvatureDLookup.interp_curve_value(
           preview_corrections, preview_valid, v_ego, abs_curvatures
-        )
+        ))
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 
@@ -124,7 +125,6 @@ class DynamicSteeringLearnerGraphMici(Widget):
     lcp = sm["liveCurvatureParameters"]
     lcp_frame = sm.recv_frame["liveCurvatureParameters"]
     car_state = sm["carState"]
-    controls_state = sm["controlsState"]
 
     fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
@@ -152,13 +152,14 @@ class DynamicSteeringLearnerGraphMici(Widget):
       lcp_frame, preview_corrections, preview_valid, fit_corrections, fit_valid, float(car_state.vEgo)
     )
 
+    cs_ic = sm["controlsStateIC"]
     self._draw_plot(
       plot_rect,
       preview_curve,
       corrections,
       min_y,
       max_y,
-      float(controls_state.modelDesiredCurvature),
+      float(cs_ic.modelDesiredCurvature),
       payload_valid,
     )
 
@@ -193,7 +194,8 @@ class DynamicSteeringLearnerGraphMici(Widget):
       0.0, 1.0,
     ))
     marker_x = plot_rect.x + marker_alpha * plot_rect.width
-    marker_correction = float(np.interp(abs(desired_curvature), np.abs(self._plot_x), self._cached_fit_curve))
+    center_idx = len(self._plot_x) // 2
+    marker_correction = float(np.interp(abs(desired_curvature), self._plot_x[center_idx:], corrections[center_idx:]))
     marker_y = self._map_y(plot_rect, marker_correction, min_y, max_y)
     rl.draw_circle(int(marker_x), int(marker_y), 5, self._marker_glow_color)
     rl.draw_circle(int(marker_x), int(marker_y), 3, self._marker_color)

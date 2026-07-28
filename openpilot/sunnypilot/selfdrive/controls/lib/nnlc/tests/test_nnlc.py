@@ -52,7 +52,8 @@ class TestNeuralNetworkLateralControl:
     CarInterface = interfaces[car_name]
     CP = CarInterface.get_non_essential_params(car_name)
     CP_SP = CarInterface.get_non_essential_params_sp(CP, car_name)
-    CI = CarInterface(CP, CP_SP)
+    CP_IC = CarInterface.get_non_essential_params_ic(CP, car_name)
+    CI = CarInterface(CP, CP_SP, CP_IC)
 
     sunnypilot_interfaces.setup_interfaces(CI, params)
 
@@ -83,7 +84,7 @@ class TestNeuralNetworkLateralControl:
       controller.extension.update_lateral_lag(test_lag)
       controller.update_live_torque_params(torque_params.latAccelFactor, torque_params.latAccelOffset, torque_params.friction)
       controller.extension.update_limits()
-      _, _, lac_log = controller.update(True, CS, VM, params, False, 0, pose, True, 0.2)
+      _, _, _, lac_log = controller.update(True, CS, VM, params, False, 0, pose, True, 0.2)
     assert lac_log.saturated
 
     for _ in range(1000):
@@ -91,7 +92,7 @@ class TestNeuralNetworkLateralControl:
       controller.extension.update_lateral_lag(test_lag)
       controller.update_live_torque_params(torque_params.latAccelFactor, torque_params.latAccelOffset, torque_params.friction)
       controller.extension.update_limits()
-      _, _, lac_log = controller.update(True, CS, VM, params, False, 0, pose, False, 0.2)
+      _, _, _, lac_log = controller.update(True, CS, VM, params, False, 0, pose, False, 0.2)
     assert not lac_log.saturated
 
     for _ in range(1000):
@@ -99,5 +100,5 @@ class TestNeuralNetworkLateralControl:
       controller.extension.update_lateral_lag(test_lag)
       controller.update_live_torque_params(torque_params.latAccelFactor, torque_params.latAccelOffset, torque_params.friction)
       controller.extension.update_limits()
-      _, _, lac_log = controller.update(True, CS, VM, params, False, 1, pose, False, 0.2)
+      _, _, _, lac_log = controller.update(True, CS, VM, params, False, 1, pose, False, 0.2)
     assert lac_log.saturated

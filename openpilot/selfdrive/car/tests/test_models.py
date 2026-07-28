@@ -3,7 +3,7 @@ import copy
 import os
 import pytest
 import random
-import unittest # noqa: TID251
+import unittest
 from collections import defaultdict, Counter
 import hypothesis.strategies as st
 from hypothesis import Phase, given, settings
@@ -22,6 +22,7 @@ from openpilot.selfdrive.pandad import can_capnp_to_list
 from openpilot.selfdrive.test.helpers import read_segment_list
 from openpilot.common.hardware.hw import DEFAULT_DOWNLOAD_CACHE_ROOT
 from openpilot.tools.lib.logreader import LogReader, LogsUnavailable, openpilotci_source, internal_source, comma_api_source
+from openpilot.tools.lib.file_sources import Source
 from openpilot.tools.lib.route import SegmentName
 
 SafetyModel = car.CarParams.SafetyModel
@@ -131,7 +132,7 @@ class TestCarModelBase(unittest.TestCase):
       segment_range = f"{cls.test_route.route}/{seg}"
 
       try:
-        sources = [internal_source] if len(INTERNAL_SEG_LIST) else [openpilotci_source, comma_api_source]
+        sources: list[Source] = [internal_source] if len(INTERNAL_SEG_LIST) else [openpilotci_source, comma_api_source]
         lr = LogReader(segment_range, sources=sources, sort_by_time=True)
         return cls.get_testing_data_from_logreader(lr)
       except (LogsUnavailable, AssertionError):
@@ -159,8 +160,10 @@ class TestCarModelBase(unittest.TestCase):
     cls.CarInterface = interfaces[cls.platform]
     cls.CP = cls.CarInterface.get_params(cls.platform, cls.fingerprint, car_fw, alpha_long, False, docs=False)
     cls.CP_SP = cls.CarInterface.get_params_sp(cls.CP, cls.platform,  cls.fingerprint, car_fw, alpha_long, False, docs=False)
+    cls.CP_IC = cls.CarInterface.get_params_ic(cls.CP, cls.platform,  cls.fingerprint, car_fw, alpha_long, False, docs=False)
     assert cls.CP
     assert cls.CP_SP
+    assert cls.CP_IC
     assert cls.CP.carFingerprint == cls.platform
 
     os.environ["COMMA_CACHE"] = DEFAULT_DOWNLOAD_CACHE_ROOT
@@ -170,7 +173,7 @@ class TestCarModelBase(unittest.TestCase):
     del cls.can_msgs
 
   def setUp(self):
-    self.CI = self.CarInterface(self.CP.copy(), copy.deepcopy(self.CP_SP))
+    self.CI = self.CarInterface(self.CP.copy(), copy.deepcopy(self.CP_SP), copy.deepcopy(self.CP_IC))
     assert self.CI
 
     # TODO: check safetyModel is in release panda build
@@ -205,10 +208,11 @@ class TestCarModelBase(unittest.TestCase):
     can_invalid_cnt = 0
     CC = structs.CarControl().as_reader()
     CC_SP = structs.CarControlSP()
+    CC_IC = structs.CarControlIC()
 
     for i, msg in enumerate(self.can_msgs):
-      CS, _ = self.CI.update(msg)
-      self.CI.apply(CC, CC_SP, msg[0])
+      CS, _, _ = self.CI.update(msg)
+      self.CI.apply(CC, CC_SP, CC_IC, msg[0])
 
       # wait max of 2s for low frequency msgs to be seen
       if i > 250:
@@ -257,7 +261,7 @@ class TestCarModelBase(unittest.TestCase):
 
       # Don't check relay malfunction on disabled routes (relay closed),
       # or before fingerprinting is done (elm327 and noOutput)
-      if self.openpilot_enabled and t / 1e4 > self.car_safety_mode_frame:
+      if self.car_safety_mode_frame is not None and t / 1e4 > self.car_safety_mode_frame:
         self.assertFalse(self.safety.get_relay_malfunction())
       else:
         self.safety.set_relay_malfunction(False)
@@ -277,13 +281,13 @@ class TestCarModelBase(unittest.TestCase):
     if self.CP.notCar:
       self.skipTest("Skipping test for notCar")
 
-    def test_car_controller(car_control, car_control_sp):
+    def test_car_controller(car_control, car_control_sp, car_control_ic):
       now_nanos = 0
       msgs_sent = 0
-      CI = self.CarInterface(self.CP, self.CP_SP)
+      CI = self.CarInterface(self.CP, self.CP_SP, self.CP_IC)
       for _ in range(round(10.0 / DT_CTRL)):  # make sure we hit the slowest messages
         CI.update([])
-        _, sendcan = CI.apply(car_control, car_control_sp, now_nanos)
+        _, sendcan = CI.apply(car_control, car_control_sp, car_control_ic, now_nanos)
 
         now_nanos += DT_CTRL * 1e9
         msgs_sent += len(sendcan)
@@ -297,17 +301,18 @@ class TestCarModelBase(unittest.TestCase):
     # Make sure we can send all messages while inactive
     CC = structs.CarControl()
     CC_SP = structs.CarControlSP()
-    test_car_controller(CC.as_reader(), CC_SP)
+    CC_IC = structs.CarControlIC()
+    test_car_controller(CC.as_reader(), CC_SP, CC_IC)
 
     # Test cancel + general messages (controls_allowed=False & cruise_engaged=True)
     self.safety.set_cruise_engaged_prev(True)
     CC = structs.CarControl(cruiseControl=structs.CarControl.CruiseControl(cancel=True))
-    test_car_controller(CC.as_reader(), CC_SP)
+    test_car_controller(CC.as_reader(), CC_SP, CC_IC)
 
     # Test resume + general messages (controls_allowed=True & cruise_engaged=True)
     self.safety.set_controls_allowed(True)
     CC = structs.CarControl(cruiseControl=structs.CarControl.CruiseControl(resume=True))
-    test_car_controller(CC.as_reader(), CC_SP)
+    test_car_controller(CC.as_reader(), CC_SP, CC_IC)
 
   # Skip stdout/stderr capture with pytest, causes elevated memory usage
   @pytest.mark.nocapture
@@ -451,7 +456,7 @@ class TestCarModelBase(unittest.TestCase):
       # TODO: remove this exception once this mismatch is resolved
       brake_pressed = CS.brakePressed
       if CS.brakePressed and not self.safety.get_brake_pressed_prev():
-        if self.CP.carFingerprint in (HONDA.HONDA_PILOT, HONDA.HONDA_RIDGELINE) and CS.brakeDEPRECATED > 0.05:
+        if self.CP.carFingerprint in (HONDA.HONDA_PILOT, HONDA.HONDA_RIDGELINE) and CS.deprecated.brake > 0.05:
           brake_pressed = False
       checks['brakePressed'] += brake_pressed != self.safety.get_brake_pressed_prev()
       checks['regenBraking'] += CS.regenBraking != self.safety.get_regen_braking_prev()

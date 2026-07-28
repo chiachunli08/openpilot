@@ -100,14 +100,14 @@ class SoftwareLayout(Widget):
     self._version_item.action_item.set_text(current_desc)
     self._version_item.set_description(current_release_notes)
 
-    # Update download button visibility and state
-    self._download_btn.set_visible(ui_state.is_offroad())
-    self._force_download_btn.set_visible(ui_state.is_offroad())
-
     updater_state = ui_state.params.get("UpdaterState") or "idle"
     failed_count = ui_state.params.get("UpdateFailedCount") or 0
     fetch_available = ui_state.params.get_bool("UpdaterFetchAvailable")
     update_available = ui_state.params.get_bool("UpdateAvailable")
+
+    # Update download button visibility and state
+    self._download_btn.set_visible(ui_state.is_offroad())
+    self._force_download_btn.set_visible(ui_state.is_offroad() and not update_available)
 
     if updater_state != "idle":
       # Updater responded
@@ -189,7 +189,7 @@ class SoftwareLayout(Widget):
     self._force_download_btn.action_item.set_enabled(False)
     self._waiting_for_updater = True
     self._waiting_start_ts = time.monotonic()
-    os.system("pkill -SIGUSR2 -f system.updated.updated")
+    subprocess.run("pkill -SIGUSR2 -f openpilot.system.updated.updated", shell=True)
 
   def _on_select_branch(self):
     # Get available branches and order

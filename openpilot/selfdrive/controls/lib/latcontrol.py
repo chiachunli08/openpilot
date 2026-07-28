@@ -15,7 +15,7 @@ class LatControl(ABC):
     self.curvature_max = 0.2
 
   @abstractmethod
-  def update(self, active: bool, CS, VM, params, steer_limited_by_safety: bool, desired_curvature: float, calibrated_pose: Pose,
+  def update(self, active: bool, CS, VM, params, steer_limited_by_safety: bool, desired_curvature: float, calibrated_pose: Pose | None,
              curvature_limited: bool, lat_delay: float):
     pass
 

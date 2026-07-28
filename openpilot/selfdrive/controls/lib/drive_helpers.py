@@ -15,6 +15,9 @@ MAX_LATERAL_JERK = 5.0  # m/s^3
 MAX_LATERAL_ACCEL_NO_ROLL = 3.0  # m/s^2
 
 
+def should_stop(v_ego: float, a_target: float) -> bool:
+  return bool(v_ego < 0.25 and a_target < 0.1)
+
 def clamp(val, min_val, max_val):
   clamped_val = float(np.clip(val, min_val, max_val))
   return clamped_val, clamped_val != val
@@ -46,7 +49,7 @@ def get_speed_from_plan(speeds, t_idxs, action_t=DT_MDL):
     v_target = 0.0
   return v_target
 
-def get_accel_from_plan(speeds, accels, t_idxs, action_t=DT_MDL, vEgoStopping=0.3):
+def get_accel_from_plan(speeds, accels, t_idxs, action_t=DT_MDL):
   if len(speeds) == len(t_idxs):
     v_now = speeds[0]
     a_now = accels[0]
@@ -59,8 +62,7 @@ def get_accel_from_plan(speeds, accels, t_idxs, action_t=DT_MDL, vEgoStopping=0.
     v_now = 0.0
     v_target = 0.0
     a_target = 0.0
-  should_stop = (v_now < vEgoStopping and a_target < 0.1)
-  return a_target, should_stop
+  return a_target, should_stop(v_now, a_target)
 
 def curv_from_psis(psi_target, psi_rate, vego, action_t):
   vego = np.clip(vego, MIN_SPEED, np.inf)

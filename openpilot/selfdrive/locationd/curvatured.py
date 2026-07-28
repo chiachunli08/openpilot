@@ -39,6 +39,8 @@ PREVIEW_REFRESH_EVERY_N_UPDATES = 20
 #
 # Safety / scope:
 # - Learning is gated by valid upstream pose/calibration, low roll, low yaw uncertainty, and no steering override.
+# - TODO: Track 10 s override-free data quality and use it to weight sample counts/EMA updates after the hard override gate.
+# - TODO: Latch override events/durations so brief overrides cannot be missed by conflated messaging.
 # - Corrections are bounded by a relative cap envelope over the speed-available buckets:
 #   - up to 50% of local curvature through the last still-supported bucket
 #   - from there, the cap fades toward 0 at the next outer bucket center
@@ -463,29 +465,25 @@ class CurvatureDLookup:
         if in_range.any():
           row_out[in_range] = np.interp(log_curvatures[in_range], run_log_x, run_curve).astype(np.float32)
 
-        # Fade in (between previous bucket and first_edge)
-        if start > 0:
-          fade_in_start = float(curvature_edges[start - 1])
-          fade_in_mask = (abs_curvatures >= fade_in_start) & (abs_curvatures < first_edge)
-        else:
+        # Only fade from zero below the first bucket. Fading into a later valid
+        # run would leak a correction across an invalid gap.
+        if start == 0:
           fade_in_start = curvature_min
           fade_in_mask = (abs_curvatures >= curvature_min) & (abs_curvatures < first_edge)
-        if fade_in_mask.any():
-          fade_span = max(first_edge - fade_in_start, 1e-9)
-          fade_vals = cls.smoothstep((abs_curvatures[fade_in_mask] - fade_in_start) / fade_span)
-          row_out[fade_in_mask] = (run_curve[0] * fade_vals).astype(np.float32)
+          if fade_in_mask.any():
+            fade_span = max(first_edge - fade_in_start, 1e-9)
+            fade_vals = cls.smoothstep((abs_curvatures[fade_in_mask] - fade_in_start) / fade_span)
+            row_out[fade_in_mask] = (run_curve[0] * fade_vals).astype(np.float32)
 
-        # Fade out (between last_edge and next bucket)
-        if end < n_centers - 1:
-          fade_out_end = float(curvature_edges[end + 2])
-          fade_out_mask = (abs_curvatures > last_edge) & (abs_curvatures <= fade_out_end)
-        else:
+        # Only fade beyond the outermost learned bucket. An earlier run is
+        # followed by an invalid gap, which must remain correction-free.
+        if end == n_centers - 1:
           fade_out_end = curvature_max
           fade_out_mask = (abs_curvatures > last_edge) & (abs_curvatures <= fade_out_end)
-        if fade_out_mask.any():
-          fade_span = max(fade_out_end - last_edge, 1e-9)
-          fade_vals = 1.0 - cls.smoothstep((abs_curvatures[fade_out_mask] - last_edge) / fade_span)
-          row_out[fade_out_mask] = (run_curve[-1] * fade_vals).astype(np.float32)
+          if fade_out_mask.any():
+            fade_span = max(fade_out_end - last_edge, 1e-9)
+            fade_vals = 1.0 - cls.smoothstep((abs_curvatures[fade_out_mask] - last_edge) / fade_span)
+            row_out[fade_out_mask] = (run_curve[-1] * fade_vals).astype(np.float32)
 
       return row_out
 
@@ -515,11 +513,14 @@ class CurvatureEstimator(CurvatureDLookup):
 
     self.car_control_t = deque(maxlen=self.hist_len)
     self.lat_active = deque(maxlen=self.hist_len)
+    self.car_control_ic_t = deque(maxlen=self.hist_len)
     self.roll_compensation = deque(maxlen=self.hist_len)
     self.car_state_t = deque(maxlen=self.hist_len)
     self.vego = deque(maxlen=self.hist_len)
     self.steering_pressed = deque(maxlen=self.hist_len)
-    self.controls_state_t = deque(maxlen=self.hist_len)
+    self.car_state_ic_t = deque(maxlen=self.hist_len)
+    self.steering_slightly_pressed = deque(maxlen=self.hist_len)
+    self.controls_state_ic_t = deque(maxlen=self.hist_len)
     self.model_desired_curvature = deque(maxlen=self.hist_len)
 
     self.last_lat_inactive_t = 0.0
@@ -545,7 +546,7 @@ class CurvatureEstimator(CurvatureDLookup):
     self._restore_cached_params()
     self.update_use_params(force=True)
 
-    cloudlog.info(f"curvatured init brand={self.CP.brand} fingerprint={self.CP.carFingerprint} "
+    cloudlog.info(f"curvatured init brand={self.CP.brand} fingerprint={self.CP.carFingerprint} " +
                   f"steerControlType={self.CP.steerControlType} history={HISTORY:.2f}s")
 
   @staticmethod
@@ -591,8 +592,8 @@ class CurvatureEstimator(CurvatureDLookup):
       self.use_params = self.enable_curvatured and self.CP.brand in ALLOWED_CARS and \
                         self.CP.steerControlType == car.CarParams.SteerControlType.curvature
       if self.prev_use_params != self.use_params:
-        cloudlog.info(f"curvatured use_params={self.use_params} toggle={self.enable_curvatured} "
-                      f"brand={self.CP.brand} allowed={self.CP.brand in ALLOWED_CARS} "
+        cloudlog.info(f"curvatured use_params={self.use_params} toggle={self.enable_curvatured} " +
+                      f"brand={self.CP.brand} allowed={self.CP.brand in ALLOWED_CARS} " +
                       f"steerControlType={self.CP.steerControlType}")
         self.prev_use_params = self.use_params
       if not self.use_params:
@@ -601,16 +602,19 @@ class CurvatureEstimator(CurvatureDLookup):
         self.current_bias = 0.0
         self.current_bucket_points = 0
         if self.prev_use_params:
-          for d in [self.car_control_t, self.lat_active, self.roll_compensation,
+          for d in [self.car_control_t, self.lat_active, self.car_control_ic_t, self.roll_compensation,
                     self.car_state_t, self.vego, self.steering_pressed,
-                    self.controls_state_t, self.model_desired_curvature]:
+                    self.car_state_ic_t, self.steering_slightly_pressed,
+                    self.controls_state_ic_t, self.model_desired_curvature]:
             d.clear()
           self.last_lat_inactive_t = 0.0
           self.last_override_t = 0.0
     self.frame += 1
 
   def _history_ready(self) -> bool:
-    return min(len(self.car_control_t), len(self.car_state_t), len(self.controls_state_t)) == self.hist_len
+    histories = (self.car_control_t, self.car_control_ic_t, self.car_state_t,
+                 self.car_state_ic_t, self.controls_state_ic_t)
+    return min(map(len, histories)) == self.hist_len
 
   @staticmethod
   def _sample_at_or_before(target_t: float, ts: deque, values: deque):
@@ -623,6 +627,13 @@ class CurvatureEstimator(CurvatureDLookup):
       if ts[i] <= target_t:
         return values[i]
     return None
+
+  def _steering_override_at(self, t: float) -> bool | None:
+    steering_pressed = self._sample_at_or_before(t, self.car_state_t, self.steering_pressed)
+    steering_slightly_pressed = self._sample_at_or_before(t, self.car_state_ic_t, self.steering_slightly_pressed)
+    if steering_pressed is None or steering_slightly_pressed is None:
+      return None
+    return bool(steering_pressed or steering_slightly_pressed)
 
   def add_measurement(self, desired_curvature: float, actual_curvature: float, v_ego: float,
                       schedule_only: bool = False) -> None:
@@ -840,21 +851,28 @@ class CurvatureEstimator(CurvatureDLookup):
     if which == "carControl":
       self.car_control_t.append(t)
       self.lat_active.append(msg.latActive)
-      self.roll_compensation.append(msg.rollCompensation)
       if not msg.latActive:
         self.last_lat_inactive_t = t
+    elif which == "carControlIC":
+      self.car_control_ic_t.append(t)
+      self.roll_compensation.append(float(msg.rollCompensation))
     elif which == "carState":
-      steering_override = bool(msg.steeringPressed or msg.steeringSlightlyPressed)
       self.car_state_t.append(t)
       self.vego.append(msg.vEgo)
-      self.steering_pressed.append(steering_override)
-      if steering_override:
+      self.steering_pressed.append(bool(msg.steeringPressed))
+      if msg.steeringPressed:
         self.last_override_t = t
-    elif which == "controlsState":
-      self.controls_state_t.append(t)
+    elif which == "carStateIC":
+      self.car_state_ic_t.append(t)
+      self.steering_slightly_pressed.append(bool(msg.steeringSlightlyPressed))
+      if msg.steeringSlightlyPressed:
+        self.last_override_t = t
+    elif which == "controlsStateIC":
+      self.controls_state_ic_t.append(t)
       self.model_desired_curvature.append(msg.modelDesiredCurvature)
-      if self.car_state_t:
-        self._update_current_lookup(self.model_desired_curvature[-1], self.vego[-1])
+      v_ego = self._sample_at_or_before(t, self.car_state_t, self.vego)
+      if v_ego is not None:
+        self._update_current_lookup(self.model_desired_curvature[-1], v_ego)
     elif which == "liveCalibration":
       self.calibrator.feed_live_calib(msg)
     elif which == "liveDelay":
@@ -870,15 +888,16 @@ class CurvatureEstimator(CurvatureDLookup):
 
       target_t = t - self.lag
       lat_active = self._sample_at_or_before(target_t, self.car_control_t, self.lat_active)
-      roll_comp = self._sample_at_or_before(target_t, self.car_control_t, self.roll_compensation)
-      steering_pressed = self._sample_at_or_before(target_t, self.car_state_t, self.steering_pressed)
+      roll_comp = self._sample_at_or_before(target_t, self.car_control_ic_t, self.roll_compensation)
       v_ego = self._sample_at_or_before(target_t, self.car_state_t, self.vego)
-      desired_curvature = self._sample_at_or_before(target_t, self.controls_state_t, self.model_desired_curvature)
+      desired_curvature = self._sample_at_or_before(target_t, self.controls_state_ic_t, self.model_desired_curvature)
+      # Driver overrides apply immediately; only command-derived signals are lag aligned.
+      steering_override = self._steering_override_at(t)
 
-      if any(x is None for x in (lat_active, roll_comp, steering_pressed, v_ego, desired_curvature)):
+      if any(x is None for x in (lat_active, roll_comp, v_ego, desired_curvature, steering_override)):
         return
 
-      if not bool(lat_active) or bool(steering_pressed) or float(v_ego) < self.MIN_SPEED:
+      if not bool(lat_active) or bool(steering_override) or float(v_ego) < self.MIN_SPEED:
         return
 
       device_pose = Pose.from_live_pose(msg)
@@ -937,10 +956,10 @@ class CurvatureEstimator(CurvatureDLookup):
     self.last_status_log_t = t
 
     checks = sm.all_checks(tracked_services) if valid is None else valid
-    cloudlog.info(f"curvatured status use_params={self.use_params} checks={checks} "
-                  f"lag={self.lag:.3f} total_points={int(round(float(self.counts.sum())))} "
-                  f"bucket={self.current_bucket} bucket_points={self.current_bucket_points} "
-                  f"corr={self.current_correction:.8f} cal={self.calibration_percent(self.counts)} "
+    cloudlog.info(f"curvatured status use_params={self.use_params} checks={checks} " +
+                  f"lag={self.lag:.3f} total_points={int(round(float(self.counts.sum())))} " +
+                  f"bucket={self.current_bucket} bucket_points={self.current_bucket_points} " +
+                  f"corr={self.current_correction:.8f} cal={self.calibration_percent(self.counts)} " +
                    f"invalid={invalid} not_alive={not_alive}")
 
 
@@ -948,7 +967,8 @@ def main():
   config_realtime_process([0, 1, 2, 3], 5)
 
   pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(['carControl', 'carState', 'liveCalibration', 'livePose', 'liveDelay', 'controlsState'], poll='livePose')
+  sm = messaging.SubMaster(['carControlIC', 'carControl', 'carState', 'carStateIC', 'liveCalibration', 'livePose',
+                            'liveDelay', 'controlsStateIC'], poll='livePose')
 
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
@@ -990,4 +1010,3 @@ def main():
 
 if __name__ == "__main__":
   main()
-

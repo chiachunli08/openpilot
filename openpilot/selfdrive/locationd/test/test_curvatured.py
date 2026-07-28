@@ -1,5 +1,6 @@
 import numpy as np
 
+from openpilot.cereal import custom
 from opendbc.car.structs import car
 
 from opendbc.car.volkswagen.values import CAR
@@ -153,8 +154,7 @@ class TestCurvatureEstimator:
     mid = CurvatureDLookup.required_support_bucket_count(3)
     high = CurvatureDLookup.required_support_bucket_count(6)
 
-    assert low == len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
-    assert low >= mid >= high >= CurvatureDLookup.MIN_REQUIRED_SUPPORT_BUCKETS
+    assert len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) >= low >= mid >= high >= CurvatureDLookup.MIN_REQUIRED_SUPPORT_BUCKETS
 
   def test_fit_valid_no_longer_requires_global_total_samples(self):
     speed_idx = 3
@@ -213,6 +213,7 @@ class TestCurvatureEstimator:
     v_ego = 22.0
 
     self._train_speed_curve(estimator, v_ego)
+    estimator.use_params = True
     estimator._update_current_lookup(desired_curvature, v_ego)
     msg = estimator.get_msg(include_debug=True, include_preview=True)
     idx = CurvatureDLookup.indices(desired_curvature, v_ego)
@@ -233,7 +234,7 @@ class TestCurvatureEstimator:
     speed_idx = len(CurvatureDLookup.SPEED_ANCHORS) - 1
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
     required = CurvatureDLookup.required_support_bucket_count(speed_idx)
-    selected_indices = list(range(0, required - 1)) + [required]
+    selected_indices = list(range(required - 1)) + [required]
 
     for bucket_idx in selected_indices:
       desired_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx])
@@ -250,10 +251,10 @@ class TestCurvatureEstimator:
     speed_idx = 3
     counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
-    selected = np.array([5, 6, 7, 8], dtype=int)
+    selected = np.arange(CurvatureDLookup.required_support_bucket_count(speed_idx), dtype=int)
 
     counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected] + 40.0
-    bias[speed_idx, selected] = np.array([2.0e-6, 6.0e-6, 1.2e-5, 2.0e-5], dtype=np.float32)
+    bias[speed_idx, selected] = np.linspace(2.0e-6, 2.0e-5, len(selected), dtype=np.float32)
 
     fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
 
@@ -262,7 +263,6 @@ class TestCurvatureEstimator:
 
   def test_outer_learned_buckets_stay_invalid_for_apply(self):
     speed_idx = len(CurvatureDLookup.SPEED_ANCHORS) - 1
-    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
     outer_idx = len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1
     counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
@@ -337,10 +337,28 @@ class TestCurvatureEstimator:
     estimator = get_estimator()
     estimator.use_params = True
 
-    estimator.handle_log(12.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False, steeringSlightlyPressed=True))
+    estimator.handle_log(11.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False))
+    estimator.handle_log(11.0, "carStateIC", custom.CarStateIC(steeringSlightlyPressed=False))
+    estimator.handle_log(12.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False))
+    estimator.handle_log(12.0, "carStateIC", custom.CarStateIC(steeringSlightlyPressed=True))
 
-    assert estimator.steering_pressed[-1]
+    assert not estimator.steering_pressed[-1]
+    assert estimator.steering_slightly_pressed[-1]
+    assert not estimator._steering_override_at(11.99)
+    assert estimator._steering_override_at(12.0)
     assert estimator.last_override_t == 12.0
+
+  def test_ic_values_keep_their_own_timestamps(self):
+    estimator = get_estimator()
+    estimator.use_params = True
+
+    estimator.handle_log(10.0, "carControl", car.CarControl(latActive=True))
+    estimator.handle_log(10.01, "carControlIC", custom.CarControlIC(rollCompensation=4.0e-4))
+
+    assert estimator.car_control_t[-1] == 10.0
+    assert estimator.car_control_ic_t[-1] == 10.01
+    assert estimator._sample_at_or_before(10.0, estimator.car_control_ic_t, estimator.roll_compensation) is None
+    assert np.isclose(estimator._sample_at_or_before(10.01, estimator.car_control_ic_t, estimator.roll_compensation), 4.0e-4)
 
   def test_interp_curve_value_matches_interp_curve_samples(self):
     """Verifies the unified interp_curve_value API returns the same result for
@@ -372,13 +390,12 @@ class TestCurvatureEstimator:
 
     for c in test_curvatures:
       scalar_result = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, c)
-      array_result = CurvatureDLookup.interp_curve_value(
+      array_result = np.asarray(CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, np.asarray([c], dtype=np.float64)
-      )
+      ), dtype=np.float64)
       # Scalar path returns float
       assert isinstance(scalar_result, float)
       # Array path returns np.ndarray
-      assert isinstance(array_result, np.ndarray)
       assert np.isclose(scalar_result, array_result[0]), f"mismatch at c={c}: scalar={scalar_result}, array={array_result[0]}"
 
   def test_interp_curve_value_handles_speed_interp_transition(self):

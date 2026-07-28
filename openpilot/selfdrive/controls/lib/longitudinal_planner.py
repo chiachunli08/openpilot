@@ -32,7 +32,7 @@ def get_max_accel(v_ego):
 
 def get_coast_accel(pitch):
   return np.sin(pitch) * -5.65 - 0.3  # fitted from data using xx/projects/allow_throttle/compute_coast_accel.py
-  
+
 
 def get_lead_distance(radarState):
   if radarState.leadOne.present and (not radarState.leadTwo.present or radarState.leadOne.dRel < radarState.leadTwo.dRel):
@@ -40,7 +40,7 @@ def get_lead_distance(radarState):
   if radarState.leadTwo.present:
     return radarState.leadTwo.dRel
   return 0
-  
+
 
 def limit_accel_in_turns(v_ego, angle_steers, a_target, CP):
   """
@@ -147,7 +147,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
 
     action_t =  self.CP.longitudinalActuatorDelay + DT_MDL
     output_a_target_mpc, output_should_stop_mpc = get_accel_from_plan(self.v_desired_trajectory, self.a_desired_trajectory, CONTROL_N_T_IDX,
-                                                                                       action_t=action_t, vEgoStopping=self.CP.vEgoStopping)
+                                                                      action_t=action_t)
     output_v_target = get_speed_from_plan(self.v_desired_trajectory, CONTROL_N_T_IDX, action_t=action_t)
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
@@ -170,7 +170,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
   def publish(self, sm, pm):
     plan_send = messaging.new_message('longitudinalPlan')
 
-    plan_send.valid = sm.all_checks()
+    plan_send.valid = sm.all_checks(service_list=['carState', 'controlsState', 'selfdriveState', 'radarState'])
 
     longitudinalPlan = plan_send.longitudinalPlan
     longitudinalPlan.modelMonoTime = sm.logMonoTime['modelV2']
@@ -182,16 +182,21 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     longitudinalPlan.jerks = self.j_desired_trajectory.tolist()
 
     longitudinalPlan.hasLead = sm['radarState'].leadOne.present
-    longitudinalPlan.leadDistance = get_lead_distance(sm['radarState'])
     longitudinalPlan.longitudinalPlanSource = self.mpc.source
     longitudinalPlan.fcw = self.fcw
 
     longitudinalPlan.aTarget = float(self.output_a_target)
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
-    longitudinalPlan.vTarget = float(self.output_v_target)
     longitudinalPlan.allowBrake = True
     longitudinalPlan.allowThrottle = bool(self.allow_throttle)
 
     pm.send('longitudinalPlan', plan_send)
+
+    # infiniteCable longitudinal plan extension
+    plan_ic_send = messaging.new_message('longitudinalPlanIC')
+    plan_ic_send.valid = sm.all_checks()
+    plan_ic_send.longitudinalPlanIC.leadDistance = get_lead_distance(sm['radarState'])
+    plan_ic_send.longitudinalPlanIC.vTarget = float(self.output_v_target)
+    pm.send('longitudinalPlanIC', plan_ic_send)
 
     self.publish_longitudinal_plan_sp(sm, pm)
