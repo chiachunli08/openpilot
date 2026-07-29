@@ -260,6 +260,7 @@ class CarController(CarControllerBase, GasInterceptorCarController):
                                                freeze_integrator=actuators.longControlState != LongCtrlState.pid)
         else:
           self.long_pid.reset()
+          pcm_accel_cmd = 0.
 
         # Along with rate limiting positive jerk above, this greatly improves gas response time
         # Consider the net acceleration request that the PCM should be applying (pitch included)
@@ -269,7 +270,9 @@ class CarController(CarControllerBase, GasInterceptorCarController):
         elif net_acceleration_request_min > 0.3:
           self.permit_braking = False
 
-        pcm_accel_cmd = pcm_accel_cmd if self.CP.carFingerprint in TSS2_CAR else actuators.accel
+        sdsu_tssp_long_active = bool(self.CP_IQ.flags & ToyotaFlagsIQ.SMART_DSU) and \
+                                (self.CP.carFingerprint not in TSS2_CAR) and CC.longActive
+        pcm_accel_cmd = actuators.accel if sdsu_tssp_long_active else pcm_accel_cmd
         pcm_accel_cmd = float(np.clip(pcm_accel_cmd, self.params.ACCEL_MIN, self.params.ACCEL_MAX))
 
         main_accel_cmd = 0. if self.CP.flags & ToyotaFlags.SECOC.value else pcm_accel_cmd

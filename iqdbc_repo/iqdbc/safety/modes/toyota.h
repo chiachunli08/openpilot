@@ -375,11 +375,15 @@ static bool toyota_tx_hook(const CANPacket_t *msg) {
     }
   }
 
-  // UDS: Only tester present ("\x0F\x02\x3E\x00\x00\x00\x00\x00") allowed on diagnostics address
+  // UDS: Only tester present and door lock/unlock allowed on diagnostics address
   if (msg->addr == 0x750U) {
     // this address is sub-addressed. only allow tester present to radar (0xF)
-    bool invalid_uds_msg = (GET_BYTES(msg, 0, 4) != 0x003E020FU) || (GET_BYTES(msg, 4, 4) != 0x0U);
-    if (invalid_uds_msg) {
+    bool valid_tester_present = (GET_BYTES(msg, 0, 4) == 0x003E020FU) && (GET_BYTES(msg, 4, 4) == 0x0U);
+    // BCM door lock/unlock routine (0x40=BCM sub-addr, 0x05=len, 0x30 0x11=routine ID)
+    // Byte 5: 0x80=lock, 0x40=unlock. Only these two values allowed.
+    bool valid_door_lock = (GET_BYTES(msg, 0, 4) == 0x11300540U) &&
+                           ((GET_BYTES(msg, 5, 1) == 0x80U) || (GET_BYTES(msg, 5, 1) == 0x40U));
+    if (!valid_tester_present && !valid_door_lock) {
       tx = 0;
     }
   }

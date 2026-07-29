@@ -11,8 +11,7 @@ except ImportError:
   pytest.skip("requires openpilot dependencies", allow_module_level=True)
 
 from iqdbc.car.lateral import get_max_angle_delta_vm, get_max_angle_vm
-from iqdbc.car.tesla.teslacan import get_steer_ctrl_type
-from iqdbc.car.tesla.values import CarControllerParams, TeslaSafetyFlags, TeslaFlags, CANBUS
+from iqdbc.car.tesla.values import CarControllerParams, TeslaSafetyFlags, CANBUS
 from iqdbc.car.structs import CarParams
 from iqdbc.car.vehicle_model import VehicleModel
 from iqdbc.can import CANDefine
@@ -23,6 +22,7 @@ from iqdbc.safety.tests.common import CANPackerSafety, MAX_SPEED_DELTA, MAX_WRON
 MSG_DAS_steeringControl = 0x488
 MSG_APS_eacMonitor = 0x27d
 MSG_DAS_Control = 0x2b9
+MSG_DAS_bodyControls = 0x3E9
 
 
 def round_angle(apply_angle, can_offset=0):
@@ -34,6 +34,7 @@ def round_angle(apply_angle, can_offset=0):
 
 class TestTeslaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest, common.LongitudinalAccelSafetyTest):
   SAFETY_PARAM = 0
+  STEER_TYPE_SHIFT = 0  # legacy firmware uses a 2-bit field, one bit up from the 3-bit signal
 
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_DAS_steeringControl, MSG_APS_eacMonitor)}
   FWD_BLACKLISTED_ADDRS = {2: [MSG_DAS_steeringControl, MSG_APS_eacMonitor]}
@@ -83,11 +84,7 @@ class TestTeslaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest, 
     self.safety.init_tests()
 
   def _angle_cmd_msg(self, angle: float, state: bool | int, increment_timer: bool = True, bus: int = 0):
-    # If FSD 14, translate steer control type to new flipped definition
-    if self.safety.get_current_safety_param() & TeslaSafetyFlags.FSD_14:
-      state = get_steer_ctrl_type(TeslaFlags.FSD_14, int(state))
-
-    values = {"DAS_steeringAngleRequest": angle, "DAS_steeringControlType": state}
+    values = {"DAS_steeringAngleRequest": angle, "DAS_steeringControlType": int(state) << self.STEER_TYPE_SHIFT}
     if increment_timer:
       self.safety.set_timer(self.cnt_angle_cmd * int(1e6 / self.LATERAL_FREQUENCY))
       self.__class__.cnt_angle_cmd += 1
@@ -407,8 +404,9 @@ class TestTeslaStockSafety(TestTeslaSafetyBase):
     self.assertFalse(self._tx(no_aeb_msg))
 
 
-class TestTeslaFSD14StockSafety(TestTeslaStockSafety):
-  SAFETY_PARAM = TeslaSafetyFlags.FSD_14
+class TestTeslaLegacyDasSteeringStockSafety(TestTeslaStockSafety):
+  SAFETY_PARAM = TeslaSafetyFlags.LEGACY_DAS_STEERING
+  STEER_TYPE_SHIFT = 1
 
 
 class TestTeslaLongitudinalSafety(TestTeslaSafetyBase):
@@ -459,13 +457,17 @@ class TestTeslaLongitudinalSafety(TestTeslaSafetyBase):
     self.assertFalse(self._tx(self._long_control_msg(set_speed=0, accel_limits=(-0.1, -0.1))))
 
 
-class TestTeslaFSD14LongitudinalSafety(TestTeslaLongitudinalSafety):
-  SAFETY_PARAM = TeslaSafetyFlags.LONG_CONTROL | TeslaSafetyFlags.FSD_14
+class TestTeslaLegacyDasSteeringLongitudinalSafety(TestTeslaLongitudinalSafety):
+  SAFETY_PARAM = TeslaSafetyFlags.LONG_CONTROL | TeslaSafetyFlags.LEGACY_DAS_STEERING
+  STEER_TYPE_SHIFT = 1
 
 
 class TestTeslaVehicleBusSafety(TestTeslaSafetyBase):
 
   LONGITUDINAL = False
+
+  # With the vehicle bus harness, DAS_bodyControls is also TX'd on bus 1 (blinker MITM)
+  TX_MSGS = [*TestTeslaSafetyBase.TX_MSGS, [MSG_DAS_bodyControls, 1]]
 
   def setUp(self):
     super().setUp()

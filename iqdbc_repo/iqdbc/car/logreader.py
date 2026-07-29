@@ -3,7 +3,7 @@ import os
 import capnp
 import urllib.parse
 import warnings
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 import zstandard as zstd
 
 from iqdbc.car.common.basedir import BASEDIR
@@ -27,7 +27,7 @@ class LogReader:
     _, ext = os.path.splitext(urllib.parse.urlparse(fn).path)
 
     if fn.startswith("http"):
-      with urlopen(fn) as f:
+      with urlopen(Request(fn, headers={"User-Agent": "iqdbc"})) as f:
         dat = f.read()
     else:
       with open(fn, "rb") as f:
