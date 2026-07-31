@@ -10,6 +10,13 @@ import SCons.Errors
 
 SCons.Warnings.warningAsException(True)
 
+# scons only auto-loads a site dir named site_scons at the repo root; ours lives under tools/,
+# so replicate what _load_site_scons_dir does (sys.path for site_tools imports + run site_init)
+SITE_DIR = Dir('#tools/scons').abspath
+if SITE_DIR not in sys.path:
+  sys.path.insert(0, SITE_DIR)
+import site_init  # noqa: F401
+
 # capnp's kj library warns when $PWD is stale (doesn't match the real cwd); keep them in sync
 os.environ.pop('PWD', None)
 
@@ -100,7 +107,7 @@ env = Environment(
   COMPILATIONDB_USE_ABSPATH=True,
   REDNOSE_ROOT="#",
   tools=["default", "cython", "compilation_db", "rednose_filter"],
-  toolpath=["#site_scons/site_tools", "#rednose_repo/site_scons/site_tools"],
+  toolpath=["#tools/scons/site_tools", "#rednose_repo/site_scons/site_tools"],
 )
 
 # Arch-specific flags and paths

@@ -20,6 +20,9 @@ else:
   if os.getenv("DEBUG"):
     common_flags += ["-DDEBUG"]
 
+def objcopy(source, target, env, for_signature):
+    return '$OBJCOPY -O binary %s %s' % (source[0], target[0])
+
 def get_version(builder, build_type):
   try:
     git = subprocess.check_output(["git", "rev-parse", "--short=8", "HEAD"], encoding='utf8').strip()
@@ -89,19 +92,11 @@ def build_project(project_name, project, main, extra_flags):
     LINKFLAGS=flags,
     CPPPATH=[Dir("./"), "./board/stm32f4/inc", "./board/stm32h7/inc", iqdbc.INCLUDE_PATH],
     ASCOM="$AS $ASFLAGS -o $TARGET -c $SOURCES",
+    BUILDERS={
+      'Objcopy': Builder(generator=objcopy, suffix='.bin', src_suffix='.elf')
+    },
     tools=["default", "compilation_db"],
   )
-
-  # short colored build output shared with the top-level build (if present)
-  _pretty = Dir('#site_scons/site_tools').File('pretty.py')
-  if _pretty.exists():
-    env.Tool('pretty', toolpath=[_pretty.dir.abspath])
-  if not hasattr(env, 'PrettyAction'):
-    env.AddMethod(lambda e, cmd, label, **kw: Action(cmd), 'PrettyAction')
-  env.Append(BUILDERS={
-    'Objcopy': Builder(action=env.PrettyAction('$OBJCOPY -O binary $SOURCE $TARGET', 'OBJCOPY'),
-                       suffix='.bin', src_suffix='.elf')
-  })
 
   startup = env.Object(project["STARTUP_FILE"])
 
@@ -123,8 +118,7 @@ def build_project(project_name, project, main, extra_flags):
   ], LINKFLAGS=[f"-Wl,--section-start,.isr_vector={project['APP_START_ADDRESS']}"] + flags)
   main_bin = env.Objcopy(f"{project_dir}/main.bin", main_elf)
   sign_py = File(f"./crypto/sign.py").srcnode().relpath
-  env.Command(f"./board/obj/{project_name}.bin.signed", main_bin,
-              env.PrettyAction(f"SETLEN=1 {sign_py} $SOURCE $TARGET {cert_fn}", 'SIGN', logfile='/dev/null'))
+  env.Command(f"./board/obj/{project_name}.bin.signed", main_bin, f"SETLEN=1 {sign_py} $SOURCE $TARGET {cert_fn}")
 
 
 

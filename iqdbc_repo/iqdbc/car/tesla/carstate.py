@@ -1,37 +1,34 @@
 import copy
 from iqdbc.can import CANDefine, CANParser
 from iqdbc.car import Bus, create_button_events, structs
+from iqdbc.car.carlog import carlog
 from iqdbc.car.common.conversions import Conversions as CV
 from iqdbc.car.interfaces import CarStateBase
-from iqdbc.car.tesla import TESLA_BLINKERS
+from iqdbc.car.tesla.teslacan import get_steer_ctrl_type
 from iqdbc.car.tesla.values import DBC, CANBUS, GEAR_MAP, STEER_THRESHOLD, TeslaFlags
 
-from iqdbc.lvbs.car.tesla.iq_carstate import IQCarState
-from iqdbc.lvbs.car.tesla.values import TeslaFlagsIQ
-from openpilot.common.params import Params
-from openpilot.system.proprietary_runtime._verified_import import import_verified_module
-
-vehicle_state = import_verified_module("iqpilot_alc_private", "iqpilot_private.konn3kt.iqlvbs.vehicle_state")
+from iqdbc.lvbs.car.tesla.carstate_ext import CarStateExt
 
 ButtonType = structs.CarState.ButtonEvent.Type
 
 
-class CarState(CarStateBase, IQCarState):
+class CarState(CarStateBase, CarStateExt):
   def __init__(self, CP, CP_IQ):
     CarStateBase.__init__(self, CP, CP_IQ)
-    IQCarState.__init__(self, CP, CP_IQ)
+    CarStateExt.__init__(self, CP, CP_IQ)
     self.can_define = CANDefine(DBC[CP.carFingerprint][Bus.party])
     self.shifter_values = self.can_define.dv["DI_systemStatus"]["DI_gear"]
 
     self.summon = False
     self.summon_prev = False
     self.cruise_enabled_prev = False
+    self.fsd14_error_logged = False
+    self.suspected_fsd14 = False
+    self.suspected_fsd14_clear_frames = 0
 
     self.hands_on_level = 0
     self.acc_state_last = 0
     self.das_control = None
-    self.das_body_controls_dat = b""
-    self._odometer_store = vehicle_state.VehicleOdometerStore(CP, Params())
     self.cruise_override = False
 
   def update_summon_state(self, summon_state: str, cruise_enabled: bool):
@@ -139,40 +136,54 @@ class CarState(CarStateBase, IQCarState):
     ret.stockAeb = cp_ap_party.vl["DAS_control"]["DAS_aebEvent"] == 1
 
     # LKAS
-    steer_control_type = int(cp_ap_party.vl["DAS_steeringControl"]["DAS_steeringControlType"])
-    if self.CP.flags & TeslaFlags.LEGACY_DAS_STEERING:
-      steer_control_type >>= 1  # legacy firmware uses a 2-bit field, one bit up from the 3-bit signal
-    ret.stockLkas = steer_control_type == 2  # LANE_KEEP_ASSIST
+    # On FSD 14+, ANGLE_CONTROL behavior changed to allow user winddown while actuating.
+    # FSD switched from using ANGLE_CONTROL to LANE_KEEP_ASSIST to likely keep the old steering override disengage logic.
+    # LKAS switched from LANE_KEEP_ASSIST to ANGLE_CONTROL to likely allow overriding LKAS events smoothly
+    lkas_ctrl_type = get_steer_ctrl_type(self.CP.flags, 2)
+    ret.stockLkas = cp_ap_party.vl["DAS_steeringControl"]["DAS_steeringControlType"] == lkas_ctrl_type  # LANE_KEEP_ASSIST
 
-    # Stock Autosteer should be disengaged (includes FSD)
-    # TODO: find for TESLA_MODEL_X and HW2.5 vehicles
     if not (self.CP.flags & TeslaFlags.MISSING_DAS_SETTINGS):
       ret.invalidLkasSetting = cp_ap_party.vl["DAS_status"]["DAS_autopilotState"] not in (0, 1, 2)  # DISABLED, UNAVAILABLE, AVAILABLE
+
+      # Because we don't have FSD 14 detection outside of a set of FW, we should check if this FW is accidentally missing from FSD_14_FW
+      # 1. If in Autosteer or FSD, already caught by invalidLkasSetting
+      # 2. If in TACC and DAS ever sends ANGLE_CONTROL (1), we can infer it's trying to do LKAS on FSD 14+
+      # NOTE: Tesla's latest firmware changed ELDA (Emergency Lane Departure Assist) to use ANGLE_CONTROL (1)
+      # instead of EMERGENCY_LANE_KEEP (3). Exclude ELDA by checking eac_status so it doesn't latch suspected_fsd14.
+      eac_is_emergency = eac_status == "EMERGENCY_LANE_KEEP"
+      angle_control = cp_ap_party.vl["DAS_steeringControl"]["DAS_steeringControlType"] == 1 and not eac_is_emergency  # ANGLE_CONTROL, excluding ELDA
+      if not ret.invalidLkasSetting and angle_control and not self.CP.flags & TeslaFlags.FSD_14:
+        self.suspected_fsd14 = True
+        self.suspected_fsd14_clear_frames = 0
+
+      if self.suspected_fsd14:
+        ret.invalidLkasSetting = True
+        if not self.fsd14_error_logged:
+          carlog.error("FSD 14 detected, but FW not in FSD_14_FW set")
+          self.fsd14_error_logged = True
+        # Un-latch if ANGLE_CONTROL has been absent for ~3 s (100 frames @ ~33 Hz).
+        # This allows re-engagement after transient triggers (e.g. if ELDA slips through on new FW variants).
+        if not angle_control:
+          self.suspected_fsd14_clear_frames += 1
+          if self.suspected_fsd14_clear_frames >= 100:
+            self.suspected_fsd14 = False
+            self.suspected_fsd14_clear_frames = 0
+        else:
+          self.suspected_fsd14_clear_frames = 0
 
     # Buttons # ToDo: add Gap adjust button
 
     # Messages needed by carcontroller
     self.das_control = copy.copy(cp_ap_party.vl["DAS_control"])
 
-    # Raw stock DAS_bodyControls bytes (bus 2), used to ride the blinker on the vehicle bus.
-    # FIXME: gate by FingerPrint
-    if TESLA_BLINKERS and Bus.cam in can_parsers:
-      self.das_body_controls_dat = bytes(can_parsers[Bus.cam].dat.get(0x3E9, b""))
-
-    IQCarState.update(self, ret, ret_iq, can_parsers)
-    if ret.odometer > 0.0:
-      ret.odometer = self._odometer_store.record(ret.odometer) or 0.0
+    CarStateExt.update(self, ret, ret_iq, can_parsers)
 
     return ret, ret_iq
 
   @staticmethod
   def get_can_parsers(CP, CP_IQ):
-    parsers = {
+    return {
       Bus.party: CANParser(DBC[CP.carFingerprint][Bus.party], [], CANBUS.party),
       Bus.ap_party: CANParser(DBC[CP.carFingerprint][Bus.party], [], CANBUS.autopilot_party),
-      **IQCarState.get_parser(CP, CP_IQ),
+      **CarStateExt.get_parser(CP, CP_IQ),
     }
-    # Stock DAS_bodyControls from the AP bus (bus 2) for the nav blinker.
-    if TESLA_BLINKERS and CP_IQ.flags & TeslaFlagsIQ.HAS_VEHICLE_BUS and Bus.adas in DBC[CP.carFingerprint]:
-      parsers[Bus.cam] = CANParser(DBC[CP.carFingerprint][Bus.adas], [("DAS_bodyControls", 2)], CANBUS.autopilot_party)
-    return parsers

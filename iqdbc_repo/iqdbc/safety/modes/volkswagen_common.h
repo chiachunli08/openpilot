@@ -10,14 +10,6 @@ extern const uint16_t FLAG_VOLKSWAGEN_ALLOW_LONG_ACCEL_WITH_GAS_PRESSED;
 const uint16_t FLAG_VOLKSWAGEN_ALLOW_LONG_ACCEL_WITH_GAS_PRESSED = 8;
 extern const uint16_t FLAG_VOLKSWAGEN_PQ_ALC_MODULE;
 const uint16_t FLAG_VOLKSWAGEN_PQ_ALC_MODULE = 32;
-extern const uint16_t FLAG_VOLKSWAGEN_PQ_LOWLINE;
-const uint16_t FLAG_VOLKSWAGEN_PQ_LOWLINE = 64;
-extern const uint16_t FLAG_VOLKSWAGEN_PQ_NO_CAM_BUS;
-const uint16_t FLAG_VOLKSWAGEN_PQ_NO_CAM_BUS = 128;
-extern const uint16_t FLAG_VOLKSWAGEN_PQ_ACC_FTS_EPB;
-const uint16_t FLAG_VOLKSWAGEN_PQ_ACC_FTS_EPB = 256;
-extern const uint16_t FLAG_VOLKSWAGEN_PQ_SNG_ECD;
-const uint16_t FLAG_VOLKSWAGEN_PQ_SNG_ECD = 512;
 
 static uint8_t volkswagen_crc8_lut_8h2f[256]; // Static lookup table for CRC8 poly 0x2F, aka 8H2F/AUTOSAR
 
@@ -62,9 +54,6 @@ float vw_iq_measured_angle_deg = 0.0f;
 
 extern bool vw_iq_aol_active;
 bool vw_iq_aol_active = false;
-
-extern bool vw_iq_no_cam;
-bool vw_iq_no_cam = false;
 
 extern float vw_iq_angle_offset_deg;
 float vw_iq_angle_offset_deg = 0.0f;
@@ -114,7 +103,6 @@ static void volkswagen_common_init(void) {
   vw_iq_apd_wheelbase = 0.0f;
   vw_iq_apd_params_valid = false;
   vw_iq_aol_active = false;
-  vw_iq_no_cam = false;
   vw_iq_angle_offset_deg = 0.0f;
   vw_iq_alc_desired_angle_deg = 0.0f;
   vw_iq_alc_active = false;
@@ -226,7 +214,7 @@ static void volkswagen_iq_send_debug_la(uint32_t debug_addr, uint8_t bus) {
   float speed_kmh = ((float)(vehicle_speed.min) / VEHICLE_SPEED_FACTOR) * 3.6f;
   uint16_t spd_raw = (uint16_t)(speed_kmh * 100.0f);
   int16_t ang_raw = (int16_t)(vw_iq_measured_angle_deg * 100.0f);
-  uint8_t flags = (vw_iq_apd_params_valid ? 0x01U : 0x00U) | (vw_iq_aol_active ? 0x02U : 0x00U) | (vw_iq_no_cam ? 0x04U : 0x00U);
+  uint8_t flags = (vw_iq_apd_params_valid ? 0x01U : 0x00U);
 
   msg.data[0] = (uint8_t)(la_raw & 0xFFU);
   msg.data[1] = (uint8_t)((la_raw >> 8) & 0xFFU);

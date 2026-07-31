@@ -36,6 +36,7 @@ class CarInterface(CarInterfaceBase):
     if ret.flags & ToyotaFlags.SECOC.value:
       ret.secOcRequired = True
       ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.SECOC.value
+      ret.dashcamOnly = is_release
 
     if candidate in ANGLE_CONTROL_CAR:
       ret.steerControlType = SteerControlType.angle
@@ -118,6 +119,10 @@ class CarInterface(CarInterfaceBase):
     if candidate in TSS2_CAR:
       ret.flags |= ToyotaFlags.RAISED_ACCEL_LIMIT.value
 
+      ret.vEgoStopping = 0.25
+      ret.vEgoStarting = 0.25
+      ret.stoppingDecelRate = 0.3  # reach stopping target smoothly
+
       # Hybrids have much quicker longitudinal actuator response
       if ret.flags & ToyotaFlags.HYBRID.value:
         ret.longitudinalActuatorDelay = 0.05
@@ -127,6 +132,9 @@ class CarInterface(CarInterfaceBase):
   @staticmethod
   def _get_params_iq(stock_cp: structs.CarParams, ret: structs.IQCarParams, candidate, fingerprint: dict[int, dict[int, int]],
                      car_fw: list[structs.CarParams.CarFw], alpha_long: bool, is_release_iq: bool, docs: bool) -> structs.IQCarParams:
+    if stock_cp.flags & ToyotaFlags.SECOC.value and stock_cp.fingerprintSource == structs.CarParams.FingerprintSource.fixed:
+      stock_cp.dashcamOnly = False
+
     if candidate in UNSUPPORTED_DSU_CAR:
       ret.iqSafetyFlags |= ToyotaSafetyFlagsIQ.UNSUPPORTED_DSU
 

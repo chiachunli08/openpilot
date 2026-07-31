@@ -8,8 +8,12 @@ from collections.abc import Callable
 
 from iqdbc.car import structs
 from iqdbc.car.can_definitions import CanRecvCallable, CanSendCallable
+from iqdbc.car.hyundai.values import HyundaiFlags
 from iqdbc.car.subaru.values import SubaruFlags
-from iqdbc.lvbs.car.subaru.iq_values import SubaruFlagsIQ, SubaruSafetyFlagsIQ
+from iqdbc.lvbs.car.hyundai.enable_radar_tracks import enable_radar_tracks as hyundai_enable_radar_tracks
+from iqdbc.lvbs.car.hyundai.longitudinal.helpers import LongitudinalTuningType
+from iqdbc.lvbs.car.hyundai.values import HyundaiFlagsIQ
+from iqdbc.lvbs.car.subaru.values_ext import SubaruFlagsIQ, SubaruSafetyFlagsIQ
 from iqdbc.lvbs.car.tesla.values import TeslaFlagsIQ
 from iqdbc.lvbs.car.toyota.values import ToyotaFlagsIQ
 
@@ -77,12 +81,21 @@ def apply_iq_car_config(CI, CP: structs.CarParams, CP_IQ: structs.IQCarParams,
 
   _apply_long_tuning(CI, CP, CP_IQ, params_dict)
   _apply_torque_blend(CP, CP_IQ, params_dict)
+  _initialize_radar_tracks(CP, CP_IQ, can_recv, can_send)
   _apply_creep_assist(CP, CP_IQ, params_dict)
   _apply_toyota_options(CP, CP_IQ, params_dict)
 
 
 def _apply_long_tuning(CI, CP: structs.CarParams, CP_IQ: structs.IQCarParams,
                                            params_dict: dict[str, str]) -> None:
+
+  # Hyundai Custom Longitudinal Tuning
+  if CP.brand == 'hyundai':
+    hyundai_longitudinal_tuning = int(params_dict.get("HyundaiLongitudinalTuning", 0))
+    if hyundai_longitudinal_tuning == LongitudinalTuningType.DYNAMIC:
+      CP_IQ.flags |= HyundaiFlagsIQ.LONG_TUNING_DYNAMIC.value
+    if hyundai_longitudinal_tuning == LongitudinalTuningType.PREDICTIVE:
+      CP_IQ.flags |= HyundaiFlagsIQ.LONG_TUNING_PREDICTIVE.value
 
   _ = CI.get_longitudinal_tuning_iq(CP, CP_IQ)
 
@@ -95,18 +108,25 @@ def _apply_torque_blend(CP: structs.CarParams, CP_IQ: structs.IQCarParams,
       CP_IQ.flags |= TeslaFlagsIQ.COOP_STEERING.value
 
 
+def _initialize_radar_tracks(CP: structs.CarParams, CP_IQ: structs.IQCarParams,
+                             can_recv: CanRecvCallable | None = None, can_send: CanSendCallable | None = None) -> None:
+  if CP.brand == 'hyundai':
+    if CP.flags & HyundaiFlags.MANDO_RADAR and (CP.radarUnavailable or CP_IQ.flags & HyundaiFlagsIQ.ENHANCED_SCC):
+      tracks_enabled = hyundai_enable_radar_tracks(can_recv, can_send, bus=0, addr=0x7d0)
+      CP.radarUnavailable = not tracks_enabled
+
+
 def _apply_creep_assist(CP: structs.CarParams, CP_IQ: structs.IQCarParams, params_dict: dict[str, str]) -> None:
-  # Subaru stop-and-go; unsupported on gen2-global and hybrid platforms.
-  if CP.brand != 'subaru' or CP.flags & (SubaruFlags.GLOBAL_GEN2 | SubaruFlags.HYBRID):
-    return
+  if CP.brand == 'subaru' and not CP.flags & (SubaruFlags.GLOBAL_GEN2 | SubaruFlags.HYBRID):
+    stop_and_go = int(params_dict.get("IQSubaruCreepAssist", 0)) == 1
+    stop_and_go_manual_parking_brake = int(params_dict.get("IQSubaruCreepAssistManualBrake", 0)) == 1
 
-  if int(params_dict.get("IQSubaruCreepAssist", 0)) == 1:
-    CP_IQ.flags |= SubaruFlagsIQ.STOP_AND_GO.value
-  if int(params_dict.get("IQSubaruCreepAssistManualBrake", 0)) == 1:
-    CP_IQ.flags |= SubaruFlagsIQ.STOP_AND_GO_MANUAL_PARKING_BRAKE.value
-
-  if CP_IQ.flags & (SubaruFlagsIQ.STOP_AND_GO | SubaruFlagsIQ.STOP_AND_GO_MANUAL_PARKING_BRAKE):
-    CP_IQ.iqSafetyFlags |= SubaruSafetyFlagsIQ.STOP_AND_GO
+    if stop_and_go:
+      CP_IQ.flags |= SubaruFlagsIQ.STOP_AND_GO.value
+    if stop_and_go_manual_parking_brake:
+      CP_IQ.flags |= SubaruFlagsIQ.STOP_AND_GO_MANUAL_PARKING_BRAKE.value
+    if stop_and_go or stop_and_go_manual_parking_brake:
+      CP_IQ.safetyParam |= SubaruSafetyFlagsIQ.STOP_AND_GO
 
 
 def _apply_toyota_options(CP: structs.CarParams, CP_IQ: structs.IQCarParams, params_dict: dict[str, str]) -> None:

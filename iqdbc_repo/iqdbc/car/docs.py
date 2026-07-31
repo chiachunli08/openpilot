@@ -21,6 +21,7 @@ from iqdbc.car.extra_cars import CAR as EXTRA
 
 
 EXTRA_CARS_MD_OUT = os.path.join(BASEDIR, "../", "../", "docs", "CARS.md")
+EXTRA_CARS_MD_TEMPLATE = os.path.join(BASEDIR, "CARS_template.md")
 
 # TODO: merge these platforms into normal car ports with SupportType flag
 ExtraPlatform = Platform | EXTRA
@@ -105,6 +106,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Auto generates supportability info docs for all known cars",
                                    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+  parser.add_argument("--template", default=EXTRA_CARS_MD_TEMPLATE, help="Override default template filename")
   parser.add_argument("--out", default=EXTRA_CARS_MD_OUT, help="Override default generated filename")
   args = parser.parse_args()
 

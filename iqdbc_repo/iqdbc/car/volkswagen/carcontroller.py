@@ -14,16 +14,10 @@ from iqdbc.car.common.conversions import Conversions as CV
 from iqdbc.car.common.numpy_fast import clip, interp
 from iqdbc.car.interfaces import CarControllerBase
 from iqdbc.car.volkswagen import mlbcan, mqbcan, pqcan, mebcan
-from iqdbc.car.volkswagen.pq_radar_handler import PQRadarHandler
-from iqdbc.car.volkswagen.values import (
-  CanBus, CarControllerParams, MQB_A0_CARS, VolkswagenFlags, VolkswagenFlagsIQ, apply_pq_stopping_accel,
-)
+from iqdbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags, VolkswagenFlagsIQ
 from iqdbc.car.volkswagen.mebutils import LongControlJerk, LongControlLimit, LatControlCurvature
 from iqdbc.car.vehicle_model import VehicleModel
-from openpilot.system.proprietary_runtime._verified_import import import_verified_module
-
-iq_lvbs_alc = import_verified_module("iqpilot_alc_private", "iqpilot_private.konn3kt.iqlvbs.alc")
-iq_lvbs_commander = import_verified_module("iqpilot_commander_private", "iqpilot_private.konn3kt.iqlvbs.iqlvbs_commander")
+from openpilot.iqpilot.konn3kt.iqlvbs import alc as iq_lvbs_alc
 
 iqpilot_path = os.path.join(os.path.dirname(__file__), '..', '..', '..')
 sys.path.insert(0, iqpilot_path)
@@ -33,18 +27,8 @@ except ImportError:
   pass
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
-AudibleAlert = structs.CarControl.HUDControl.AudibleAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
-
-def dVisual(CCS, CS):
-  if CCS == mqbcan:
-    decelV = CS.tsk_verzoeg_anf
-  elif CCS == pqcan:
-    decelV = CS.br8_acc_anf
-  else:
-    decelV = False
-  return decelV
 
 class MQBStandstillManager:
   BRAKE_TORQUE_RAMP_RATE = 2000.0     # Nm/s
@@ -192,6 +176,7 @@ class MQBStandstillManager:
     self.prev_accel = accel
     return long_active, accel, stopping, starting, esp_starting_override, esp_stopping_override
 
+
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_IQ):
     super().__init__(dbc_names, CP, CP_IQ)
@@ -200,11 +185,8 @@ class CarController(CarControllerBase):
     self.CAN = CanBus(CP)
     self.packer_pt = CANPacker(dbc_names[Bus.pt])
 
-    self._pt_tx_bus = self.CAN.pt
     if CP.flags & VolkswagenFlags.PQ:
       self.CCS = pqcan
-      if CP.flags & VolkswagenFlagsIQ.IQ_PQ_LOWLINE:
-        self._pt_tx_bus = self.CAN.aux
     elif CP.flags & VolkswagenFlags.MLB:
       self.CCS = mlbcan
     elif CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
@@ -229,16 +211,13 @@ class CarController(CarControllerBase):
     self.long_jerk_control = LongControlJerk(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO) else None
     self.long_limit_control = LongControlLimit(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO) else None
     self.gra_acc_counter_last = None
-    self.motor3_frame_last = None
-    self.motor3_was_stopping = False
-    self.motor3_resuming = False
-    self.sng_handoff_active = False
     self.acc_counter_seeded = False
     self.klr_counter_last = None
     self.eps_timer_soft_disable_alert = False
     self.hca_frame_timer_running = 0
     self.hca_frame_same_torque = 0
     self.accel_last = 0
+    self.accel_diff = 0
     self.long_deviation = 0
     self.long_jerklimit = 0
     self.HCA_Status = 3
@@ -252,41 +231,17 @@ class CarController(CarControllerBase):
     self.radar_disabled_warning_timer = 0
     # Check once at init whether the DBC includes MEB_AWV_01 (AEB HUD for radar-disabled camera harness cars)
     self._has_aeb_hud_msg = "MEB_AWV_01" in self.packer_pt.dbc.name_to_msg
-    self.eps_timer_workaround = bool(CP.flags & (VolkswagenFlags.MLB | VolkswagenFlagsIQ.IQ_PQ_TIMEBOMB))
-    self._pq_patch_checked = not bool(CP.flags & VolkswagenFlags.PQ) or self.eps_timer_workaround
+    self.eps_timer_workaround = bool(CP.flags & VolkswagenFlags.MLB)
     self.hca_frame_timer_resetting = 0
     self.hca_frame_low_torque = 0
     self.long_override_counter = 0
     self.long_disabled_counter = 0
     self.standstill_manager = MQBStandstillManager(CP.mass, self.CCP.ACCEL_MIN) if self.CCS == mqbcan else None
-    self.radar_handler = PQRadarHandler(self.CAN) if self.CCS is pqcan else None
-    self.blend_stock_radar = False
-    self.unavailable = False
-    self.unavailable_hold = 0
     self.VM = VehicleModel(CP)
-    self.is_mqb_a0 = self._is_mqb_a0_car(CP.carFingerprint)
     self.LateralController = (
       LatControlCurvature(self.CCP.CURVATURE_PID, self.CCP.CURVATURE_LIMITS.CURVATURE_MAX, 1 / (DT_CTRL * self.CCP.STEER_STEP))
       if (CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO))
       else None
-    )
-
-  @staticmethod
-  def _is_mqb_a0_car(candidate) -> bool:
-    return candidate in MQB_A0_CARS
-
-  def _get_mqb_steering_torque_scale(self, v_ego: float, enabled: bool) -> float:
-    if enabled and self.CCS == mqbcan:
-      return float(np.interp(v_ego, [0.4, 3.5, 4.0], [0.8, 0.95, 1.0]))
-    return 1.0
-
-  def _should_spam_mqb_a0_resume(self, CS, enabled: bool) -> bool:
-    return bool(
-      enabled and
-      self.is_mqb_a0 and
-      self.CCS == mqbcan and
-      CS.out.standstill and
-      self.frame % 50 < 15
     )
 
   def update(self, CC, CC_IQ, CS, now_nanos):
@@ -297,22 +252,9 @@ class CarController(CarControllerBase):
     apply_torque = 0
     pqhca5or7Toggle = self._params.get_bool("pqhca5or7Toggle")
     eBrakeActive = self._params.get_bool("eBrakeActive")
-    iq_mqb_steering_lockout = self._params.get_bool("iqMqbSteeringLockout")
-    iq_mqb_acc_resume = self._params.get_bool("iqMqbAccResume")
-    self.blend_stock_radar = self._params.get_bool("IQDynamicBlendStockRadar")
-    if not self._pq_patch_checked:
-      self._pq_patch_checked = True
-      self.eps_timer_workaround = not self._params.get_bool("VwPqEpsPatched")
-    blend_active = bool(self.blend_stock_radar and self.radar_handler is not None and self.CP.openpilotLongitudinalControl)
     AngleLateralControl = iq_lvbs_alc.angle_lateral_control_enabled(self, CS)
     self.entering = CS.vw_iq_lvbs_alc_entering
     self.active = CS.vw_iq_lvbs_alc_active
-
-    if hud_control.audibleAlert == AudibleAlert.refuse:
-      self.unavailable_hold = self.CCP.IQ_PQ_UNAVAILABLE_HUD_FRAMES
-    else:
-      self.unavailable_hold = max(0, self.unavailable_hold - 1)
-    self.unavailable = self.unavailable_hold > 0
 
     CS.force_rhd_for_bsm = getattr(CC, "forceRHDForBSM", False)
     CS.enable_predicative_speed_limit = getattr(CC.cruiseControl, "speedLimitPredicative", False)
@@ -354,8 +296,7 @@ class CarController(CarControllerBase):
         self.steering_power_last = steering_power
       else:
         if CC.latActive and not AngleLateralControl:
-          torque_scale = self._get_mqb_steering_torque_scale(CS.out.vEgo, iq_mqb_steering_lockout)
-          new_torque = int(round(actuators.torque * self.CCP.STEER_MAX * torque_scale))
+          new_torque = int(round(actuators.torque * self.CCP.STEER_MAX))
           apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last, CS.out.steeringTorque, self.CCP)
           self.hca_frame_timer_running += self.CCP.STEER_STEP
           if self.apply_torque_last == apply_torque:
@@ -400,10 +341,10 @@ class CarController(CarControllerBase):
 
         self.eps_timer_soft_disable_alert = self.hca_frame_timer_running > self.CCP.STEER_TIME_ALERT / DT_CTRL
         self.apply_torque_last = apply_torque
-        if not (AngleLateralControl and self.CCS in (mqbcan, pqcan, mlbcan)):
-          can_sends.append(self.CCS.create_hca_steering_control(self.packer_pt, self._pt_tx_bus, output_torque, self.HCA_Status))
+        if not (AngleLateralControl and self.CCS in (mqbcan, pqcan)):
+          can_sends.append(self.CCS.create_hca_steering_control(self.packer_pt, self.CAN.pt, output_torque, self.HCA_Status))
 
-      if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT and self.CCS == mqbcan:
+      if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
         ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
         if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
           ea_simulated_torque = CS.out.steeringTorque
@@ -438,7 +379,7 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.ACC_CONTROL_STEP == 0 and self.CP.openpilotLongitudinalControl and not CS.out.radarDisableFailed:
       stopping = actuators.longControlState == LongCtrlState.stopping
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
-        starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < 0.25)
+        starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
         accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.enabled else 0)
 
         long_override = CC.cruiseControl.override or CS.out.gasPressed
@@ -468,7 +409,7 @@ class CarController(CarControllerBase):
         self.accel_last = accel
       else:
         stopping = actuators.longControlState == LongCtrlState.stopping
-        starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < 0.25)
+        starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
         long_active = CC.longActive
         accel = actuators.accel
         esp_starting_override = None
@@ -483,16 +424,10 @@ class CarController(CarControllerBase):
 
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, long_active, CC.cruiseControl.override, CS.out.accFaulted)
         accel = float(np.clip(accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if (long_active or CC.cruiseControl.override) else 0)
-        self.long_jerklimit = float(interp(accel, [-1.5, -0.3, 0.05], [2.0, 0.52, 0.30]))
-        self.long_deviation = float(interp(accel, [-0.3, 0.1], [0.0, 0.20]))
+        self.accel_diff = (0.0019 * (accel - self.accel_last)) + (1 - 0.0019) * self.accel_diff
+        self.long_jerklimit = 3.0 # AendGrad (0.01 * (np.clip(abs(accel), 0.7, 2))) + (1 - 0.01) * self.long_jerklimit
+        self.long_deviation = 0.2 # RegelAbw np.interp(abs(accel - self.accel_diff), [0, 0.3, 1.0], [0.02, 0.04, 0.08])
         self.accel_last = accel
-
-        if blend_active and getattr(CC_IQ, "useRadarAccel", False) and CS.acc_radar_sta_adr == 1 and not self.radar_handler.failed:
-          accel = float(np.clip(CS.acc_radar_sollbeschl, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX))
-          self.long_jerklimit = CS.acc_radar_aendgrad
-          self.long_deviation = CS.acc_radar_regelabw
-          self.accel_last = accel
-
         if self.CCS == mqbcan:
           can_sends.extend(self.CCS.create_acc_accel_control(
             self.packer_pt, self.CAN.pt, CS.acc_type, accel, acc_control, stopping, starting, CS.esp_hold_confirmation,
@@ -500,19 +435,10 @@ class CarController(CarControllerBase):
             esp_starting_override=esp_starting_override, esp_stopping_override=esp_stopping_override,
           ))
         else:
-          accel = apply_pq_stopping_accel(self.CP.carFingerprint, accel, stopping)
-
-          sng_ecd_enabled = bool(self.CP.flags & VolkswagenFlagsIQ.IQ_PQ_SNG_ECD)
-          low_speed = CS.out.vEgo <= self.CCP.SNG_HANDOFF_SPEED
-          if sng_ecd_enabled and long_active and low_speed and accel <= 0.05 and not starting:
-            self.sng_handoff_active = True
-          else:
-            self.sng_handoff_active = False
-          sng_decel_req = float(np.clip(accel, self.CCP.ACCEL_MIN, self.CCP.SNG_HOLD_DECEL_MAX)) if self.sng_handoff_active else 0.0
-
-          can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, accel, acc_control, stopping and not self.motor3_resuming, starting, CS.esp_hold_confirmation, self.long_deviation, self.long_jerklimit, eBrakeActive, sng_active=self.sng_handoff_active))
-          if sng_ecd_enabled:
-            can_sends.append(self.CCS.create_sng_handoff_control(self.packer_pt, self.CAN.aux, self.sng_handoff_active, sng_decel_req))
+          can_sends.extend(self.CCS.create_acc_accel_control(
+            self.packer_pt, self.CAN.pt, CS.acc_type, accel, acc_control, stopping, starting, CS.esp_hold_confirmation,
+            self.long_deviation, self.long_jerklimit, eBrakeActive,
+          ))
 
     if (self.CP.flags & VolkswagenFlags.DISABLE_RADAR) and self.CP.openpilotLongitudinalControl and not CS.out.radarDisableFailed:
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
@@ -542,16 +468,15 @@ class CarController(CarControllerBase):
         can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive, CS.out.steeringPressed,
                                                          hud_alert, hud_control, sound_alert))
       else:
-        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self._pt_tx_bus, CS.ldw_stock_values, CC.latActive, steering_pressed_hud,
+        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive, steering_pressed_hud,
                                                          hud_alert, hud_control, self.entering, self.CCS is pqcan and AngleLateralControl, self.active))
 
     if hud_control.leadDistanceBars != self.lead_distance_bars_last:
       self.distance_bar_frame = self.frame
 
-    if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
-      fcw_alert = hud_control.visualAlert == VisualAlert.fcw
-      d_unresponsive = hud_control.driverUnresponsive
+    if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl and not CS.out.radarDisableFailed:
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
+        fcw_alert = hud_control.visualAlert == VisualAlert.fcw
         show_distance_bars = self.frame - self.distance_bar_frame < 400
         gap = max(8, CS.out.vEgo * hud_control.leadFollowTime)
         distance = max(8, hud_control.leadDistance) if hud_control.leadDistance != 0 else 0
@@ -573,29 +498,23 @@ class CarController(CarControllerBase):
                                                          CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit))
       else:
         leadDistance = min(8, hud_control.leadDistance) if hud_control.leadDistance != 0 else 0
+        fcw_alert = hud_control.visualAlert == VisualAlert.fcw
         self.leadDistanceBars = min(3, hud_control.leadDistanceBars)
         acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive, CC.cruiseControl.override)
         set_speed = hud_control.setSpeed * CV.MS_TO_KPH
-        decel = dVisual(self.CCS, CS)
-        can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, set_speed, leadDistance, self.leadDistanceBars, fcw_alert, hud_control.leadVisible, self.unavailable, decel, d_unresponsive))
+        can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, set_speed,
+                                                         leadDistance, self.leadDistanceBars, fcw_alert, hud_control.leadVisible))
 
     if self.CP.flags & VolkswagenFlags.PQ:
-      iq_lvbs_commander.update_turn_signals(self, CC, CS, can_sends)
+      if self.frame % 2 == 0:
+        self.blinkerActive = CS.leftBlinkerUpdate or CS.rightBlinkerUpdate
+        leftBlinker = CC.leftBlinker if not self.blinkerActive else False
+        rightBlinker = CC.rightBlinker if not self.blinkerActive else False
+        can_sends.append(self.CCS.create_blinker_control(self.packer_pt, self.CAN.pt, leftBlinker, rightBlinker))
 
     if self.CP.openpilotLongitudinalControl and (self.CP.flags & VolkswagenFlags.PQ):
-      if blend_active:
-        can_sends.extend(self.radar_handler.update(
-          self.packer_pt, self.frame, CS,
-          blend_active=True,
-          engage_req=getattr(CC_IQ, "radarEngageReq", False),
-          cancel_req=getattr(CC_IQ, "radarCancelReq", False),
-          set_speed_kph=getattr(CC_IQ, "radarSetSpeedKph", 0.0),
-          gap_bars=getattr(CC_IQ, "radarGapBars", 0),
-          v_ego=CS.out.vEgo,
-        ))
-      elif self.frame % 2 == 0:
+      if self.frame % 2 == 0:
         can_sends.append(self.CCS.filter_motor2(self.packer_pt, self.CAN.ext, CS.motor2_stock))
-        can_sends.append(self.CCS.filter_motor5(self.packer_pt, self.CAN.ext, CS.motor5_stock))
 
     gra_send_ready = self.CP.pcmCruise and CS.gra_stock_values["COUNTER"] != self.gra_acc_counter_last
     if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
@@ -607,25 +526,15 @@ class CarController(CarControllerBase):
       stock_cancel_pressed = bool(CS.gra_stock_values["GRA_Abbrechen"])
 
     cancel_cmd = stock_cancel_pressed or CC.cruiseControl.cancel
-    resume_cmd = CC.cruiseControl.resume or self._should_spam_mqb_a0_resume(CS, iq_mqb_acc_resume)
-    if gra_send_ready and (cancel_cmd or resume_cmd):
+    if gra_send_ready and (cancel_cmd or CC.cruiseControl.resume):
       bus_send = self.CAN.aux if self.CP.flags & VolkswagenFlags.PQ else self.CAN.ext
       can_sends.append(self.CCS.create_acc_buttons_control(self.packer_pt, bus_send, CS.gra_stock_values,
-                                                           cancel=cancel_cmd, resume=resume_cmd))
+                                                           cancel=cancel_cmd, resume=CC.cruiseControl.resume))
 
-    if self.CP.openpilotLongitudinalControl and self.CCS == pqcan and not blend_active:
+    if self.CP.openpilotLongitudinalControl and self.CCS == pqcan:
       if self.frame % 3:
         can_sends.append(self.CCS.create_gra_neu(self.packer_pt, self.CAN.ext, CS.gra_stock_values, CC.longActive))
 
-    if self.CP.flags & VolkswagenFlagsIQ.IQ_PQ_ACC_FTS_EPB:
-      is_stopping = actuators.longControlState == LongCtrlState.stopping
-      if CS.out.vEgo > 0.5 or not CC.longActive:
-        self.motor3_resuming = False
-      elif (self.motor3_was_stopping and not is_stopping and self.CP.openpilotLongitudinalControl and CC.longActive):
-        self.motor3_resuming = True
-      if self.motor3_resuming and CS.motor3_stock:
-        can_sends.append(self.CCS.create_motor3_resume(self.packer_pt, self.CAN.aux, CS.motor1_stock, CS.motor3_stock, resume=True))
-      self.motor3_was_stopping = is_stopping
 
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque_last / self.CCP.STEER_MAX
@@ -638,6 +547,5 @@ class CarController(CarControllerBase):
 
     self.lead_distance_bars_last = hud_control.leadDistanceBars
     self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
-    self.motor3_frame_last = CS.motor3_frame
     self.frame += 1
     return new_actuators, can_sends

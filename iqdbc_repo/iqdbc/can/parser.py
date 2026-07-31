@@ -1,6 +1,5 @@
 import math
 import numbers
-import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
@@ -155,7 +154,7 @@ class CANParser:
     self.last_nonempty_nanos: int = 0
     self._last_update_nanos: int = 0
 
-  def _add_message(self, name_or_addr: str | int, freq: int | None = None, ignore_counter: bool = False) -> None:
+  def _add_message(self, name_or_addr: str | int, freq: int | None = None) -> None:
     if isinstance(name_or_addr, numbers.Number):
       msg = self.dbc.addr_to_msg.get(int(name_or_addr))
     else:
@@ -172,15 +171,16 @@ class CANParser:
     self.vl_all[msg.name] = self.vl_all[msg.address]
     self.ts_nanos[msg.address] = {s: 0 for s in signal_names}
     self.ts_nanos[msg.name] = self.ts_nanos[msg.address]
+    self.dat[msg.address] = b""
+    self.dat[msg.name] = b""
+
     state = MessageState(
       address=msg.address,
       name=msg.name,
       size=msg.size,
       signals=list(msg.sigs.values()),
       ignore_alive=freq is not None and math.isnan(freq),
-      ignore_counter=ignore_counter,
     )
-    state.first_seen_nanos = time.monotonic_ns()
     if freq is not None and freq > 0:
       state.frequency = freq
     else:

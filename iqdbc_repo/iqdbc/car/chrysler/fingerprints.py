@@ -1,9 +1,9 @@
 """ AUTO-FORMATTED USING iqdbc/car/debug/format_fingerprints.py, EDIT STRUCTURE THERE."""
 from iqdbc.car.structs import CarParams
 from iqdbc.car.chrysler.values import CAR
-from iqdbc.lvbs.car.iq_fingerprints import extend_fw_versions
-from iqdbc.lvbs.car.chrysler.iq_fingerprints import FW_VERSIONS_EXT
 
+from iqdbc.lvbs.car.fingerprints_ext import extend_fw_versions
+from iqdbc.lvbs.car.chrysler.fingerprints_ext import FW_VERSIONS_EXT
 
 Ecu = CarParams.Ecu
 
@@ -788,7 +788,5 @@ FW_VERSIONS = {
     ],
   },
 }
-
-
 
 FW_VERSIONS = extend_fw_versions(FW_VERSIONS, FW_VERSIONS_EXT)

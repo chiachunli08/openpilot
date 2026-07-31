@@ -2,7 +2,7 @@ from iqdbc.car import Bus, get_safety_config, structs
 from iqdbc.car.interfaces import CarInterfaceBase
 from iqdbc.car.tesla.carcontroller import CarController
 from iqdbc.car.tesla.carstate import CarState
-from iqdbc.car.tesla.values import TeslaSafetyFlags, TeslaFlags, CANBUS, CAR, DBC, LEGACY_DAS_STEERING_FW, Ecu
+from iqdbc.car.tesla.values import TeslaSafetyFlags, TeslaFlags, CANBUS, CAR, DBC, FSD_14_FW, Ecu
 from iqdbc.car.tesla.radar_interface import RadarInterface, RADAR_START_ADDR
 
 from iqdbc.lvbs.car.tesla.values import TeslaFlagsIQ, TeslaSafetyFlagsIQ
@@ -41,10 +41,14 @@ class CarInterface(CarInterfaceBase):
       ret.openpilotLongitudinalControl = True
       ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.LONG_CONTROL.value
 
-    legacy_das = any(fw.ecu == Ecu.eps and fw.fwVersion in LEGACY_DAS_STEERING_FW.get(candidate, []) for fw in car_fw)
-    if legacy_das:
-      ret.flags |= TeslaFlags.LEGACY_DAS_STEERING.value
-      ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.LEGACY_DAS_STEERING.value
+      ret.vEgoStopping = 0.1
+      ret.vEgoStarting = 0.1
+      ret.stoppingDecelRate = 0.3
+
+    fsd_14 = any(fw.ecu == Ecu.eps and fw.fwVersion in FSD_14_FW.get(candidate, []) for fw in car_fw)
+    if fsd_14:
+      ret.flags |= TeslaFlags.FSD_14.value
+      ret.safetyConfigs[0].safetyParam |= TeslaSafetyFlags.FSD_14.value
 
     ret.dashcamOnly = candidate in (CAR.TESLA_MODEL_X,)  # dashcam only, pending find invalidLkasSetting signal
 
@@ -59,10 +63,7 @@ class CarInterface(CarInterfaceBase):
     if candidate == CAR.TESLA_MODEL_X:
       stock_cp.dashcamOnly = False
 
-    # Vehicle-bus messages can be slow enough to miss the initial capture window.
-    # Accept either the established 0x3DF marker or the absolute odometer frame.
-    vehicle_bus_seen = any(0x3DF in bus or 0x3B6 in bus for bus in fingerprint.values())
-    if vehicle_bus_seen:
+    if 0x3DF in fingerprint[1]:
       ret.flags |= TeslaFlagsIQ.HAS_VEHICLE_BUS.value
       ret.iqSafetyFlags |= TeslaSafetyFlagsIQ.HAS_VEHICLE_BUS
 

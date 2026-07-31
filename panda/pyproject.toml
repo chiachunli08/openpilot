@@ -13,7 +13,7 @@ classifiers = [
 ]
 dependencies = [
   "libusb1",
-  "iqdbc @ git+https://git.konn3kt.com/teal/iqdbc.git@master#egg=iqdbc",
+  "iqdbc @ git+https://gitlvb.teallvbs.xyz/teal/iqdbc.git@master#egg=iqdbc",
 ]
 
 [project.optional-dependencies]
