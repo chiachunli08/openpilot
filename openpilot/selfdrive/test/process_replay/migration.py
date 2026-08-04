@@ -339,10 +339,10 @@ def migrate_pandaStates(msgs):
     safety_param = safety_param_migration[fingerprint].value
   elif len(CP.safetyConfigs):
     safety_param = CP.safetyConfigs[0].safetyParam
-    if CP.safetyConfigs[0].safetyParamDEPRECATED != 0:
-      safety_param = CP.safetyConfigs[0].safetyParamDEPRECATED
+    if CP.safetyConfigs[0].deprecated.safetyParam != 0:
+      safety_param = CP.safetyConfigs[0].deprecated.safetyParam
   else:
-    safety_param = CP.safetyParamDEPRECATED
+    safety_param = CP.deprecated.safetyParam
 
   ops = []
   for index, msg in msgs:
