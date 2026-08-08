@@ -56,6 +56,13 @@ assert arch in [
   "Darwin",   # macOS arm64 (x86 not supported)
 ]
 
+# ffmpeg comes from the system (brew on macOS, distro packages elsewhere) rather than
+# a vendored wheel, so it always needs the static-link deps. Exported so tools/ can
+# take upstream's `ffmpeg_libs` form instead of hand-listing codecs per SConscript.
+ffmpeg_libs = ['avformat', 'avcodec', 'avutil', 'x264', 'z']
+if arch != "Darwin":
+  ffmpeg_libs += ['va', 'va-drm', 'drm']
+
 env = Environment(
   ENV={
     "PATH": os.environ['PATH'],
@@ -194,7 +201,7 @@ else:
 np_version = SCons.Script.Value(np.__version__)
 Export('envCython', 'np_version')
 
-Export('env', 'arch')
+Export('env', 'arch', 'ffmpeg_libs')
 
 # Setup cache dir
 default_cache_dir = os.environ.get('SCONS_CACHE_DIR') or ('/data/scons_cache' if arch == "larch64" else '/tmp/scons_cache')

@@ -238,13 +238,36 @@ void ignition_can_hook(CANPacket_t *msg) {
     }
 
     // Volkswagen MEB exception
+    // GE_Fahrstufe: 5=P, 6=R, 7=N, 8/9=D, 10=E, 13/14=T; 0/1/15 transitional/init/error.
+    // Both gear messages are latched independently and OR'd: cars broadcast one
+    // authoritative source (Gateway_73 on ALT_GEAR platforms), and a stale parked
+    // reading on the unused one must not veto the real one.
+    static bool vw_meb_getriebe_out_of_p = false;
+    static bool vw_meb_gateway_out_of_p = false;
+
+    // Getriebe_11->GE_Fahrstufe
+    if ((msg->addr == 0xADU) && (len == 8)) {
+      int fahrstufe = (msg->data[5] >> 2) & 0xFU;
+      vw_meb_getriebe_out_of_p = (fahrstufe >= 6) && (fahrstufe <= 14);
+    }
+
+    // Gateway_73->GE_Fahrstufe
+    if ((msg->addr == 0x3DCU) && (len == 8)) {
+      int fahrstufe = msg->data[5] & 0xFU;
+      vw_meb_gateway_out_of_p = (fahrstufe >= 6) && (fahrstufe <= 14);
+    }
+
     if ((msg->addr == 0x3C0U) && (len == 4)) {
       int counter = msg->data[1] & 0xFU;
 
       static int prev_counter_vw_meb = -1;
       if ((counter == ((prev_counter_vw_meb + 1) % 16)) && (prev_counter_vw_meb != -1)) {
-        // Klemmen_Status_01->ZAS_Kl_15
-        ignition_can = ((msg->data[2] >> 1) & 1U) != 0U;
+        // Klemmen_Status_01->ZAS_Kl_15, gated on gear out of P: the gateway broadcasts
+        // ZAS_Kl_15=1 with a live counter during network wake with the car off (unlock,
+        // app poll), flapping onroad while parked. No gear message is broadcast while
+        // parked-and-asleep, so gear-unseen means parked.
+        bool vw_meb_out_of_park = vw_meb_getriebe_out_of_p || vw_meb_gateway_out_of_p;
+        ignition_can = (((msg->data[2] >> 1) & 1U) != 0U) && vw_meb_out_of_park;
         ignition_can_cnt = 0U;
       }
       prev_counter_vw_meb = counter;

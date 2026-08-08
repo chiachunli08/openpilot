@@ -9,10 +9,14 @@ static int get_health_pkt(void *dat) {
   struct health_t * health = (struct health_t*)dat;
 
   health->uptime_pkt = uptime_cnt;
-  health->voltage_pkt = current_board->read_voltage_mV();
-  health->current_pkt = current_board->read_current_mA();
+  // cached values sampled in thread context (see tick_sample_poll in main.c);
+  // reading the ADC here would busy-wait in interrupt context
+  health->voltage_pkt = voltage_mV;
+  health->current_pkt = current_mA;
 
-  health->ignition_line_pkt = (uint8_t)(harness_check_ignition());
+  // no ignition line on MEB/MQBevo (see started in main.c); pandad ORs line with
+  // CAN ignition, so reporting the floating SBU read would pin the device onroad
+  health->ignition_line_pkt = 0U;
   health->ignition_can_pkt = ignition_can;
 
   health->controls_allowed_pkt = controls_allowed;
