@@ -19,7 +19,6 @@ class ICTogglesLayoutMici(NavScroller):
     force_rhd_bsm               = BigParamControl("VW: Force RHD for BSM", "ForceRHDForBSM")
     disable_car_steer_alerts    = BigParamControl("VW: Disable Car Steer Alert Chime", "DisableCarSteerAlerts")
     enable_smooth_steer         = BigParamControl("Steer Smoothing", "EnableSmoothSteer")
-    enable_dark_mode            = BigParamControl("Dark Mode", "DarkMode")
     enable_onroad_screen_timer  = BigParamControl("Onroad Screen Timeout", "DisableScreenTimer")
     enable_accel_bar            = BigParamControl("Enable Accel Bar", "ShowAccelBar")
     enable_curvatured           = BigParamControl("Enable Dynamic Steering Learner", "EnableCurvatureD")
@@ -39,7 +38,6 @@ class ICTogglesLayoutMici(NavScroller):
       force_rhd_bsm,
       disable_car_steer_alerts,
       enable_smooth_steer,
-      enable_dark_mode,
       enable_onroad_screen_timer,
       enable_accel_bar,
       enable_curvatured,
@@ -57,7 +55,6 @@ class ICTogglesLayoutMici(NavScroller):
       ("ForceRHDForBSM", force_rhd_bsm),
       ("DisableCarSteerAlerts", disable_car_steer_alerts),
       ("EnableSmoothSteer", enable_smooth_steer),
-      ("DarkMode", enable_dark_mode),
       ("DisableScreenTimer", enable_onroad_screen_timer),
       ("ShowAccelBar", enable_accel_bar),
       ("EnableCurvatureD", enable_curvatured),

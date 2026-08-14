@@ -9,6 +9,7 @@ from openpilot.common.constants import CV
 from openpilot.common.git import get_short_branch
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.locationd.calibrationd import MIN_SPEED_FILTER
+from openpilot.selfdrive.selfdrived.blind_spot import LEFT, RIGHT, warning_direction
 from openpilot.system.micd import SAMPLE_RATE, SAMPLE_BUFFER
 from openpilot.selfdrive.ui.feedback.feedbackd import FEEDBACK_MAX_DURATION
 from openpilot.common.hardware import HARDWARE
@@ -86,6 +87,24 @@ def below_steer_speed_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.S
     "",
     AlertStatus.userPrompt, AlertSize.small,
     Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 0.4)
+
+
+def lane_change_blocked_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  direction = warning_direction(CS.leftBlinker, CS.rightBlinker, CS.leftBlindspot, CS.rightBlindspot)
+  audible_alert = AudibleAlert.prompt
+  if direction == LEFT:
+    text = "Vehicle in Left Blind Spot"
+  elif direction == RIGHT:
+    text = "Vehicle in Right Blind Spot"
+  else:
+    text = "Vehicle in Blind Spot"
+    audible_alert = AudibleAlert.none
+
+  return Alert(
+    text,
+    "",
+    AlertStatus.userPrompt, AlertSize.small,
+    Priority.LOW, VisualAlert.none, audible_alert, .1)
 
 
 def calibration_incomplete_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
@@ -445,11 +464,7 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   },
 
   EventName.laneChangeBlocked: {
-    ET.WARNING: Alert(
-      "Car Detected in Blindspot",
-      "",
-      AlertStatus.userPrompt, AlertSize.small,
-      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1),
+    ET.WARNING: lane_change_blocked_alert,
   },
 
   EventName.laneChange: {
@@ -926,11 +941,7 @@ if HARDWARE.get_device_type() == 'mici':
         Priority.LOW, VisualAlert.none, AudibleAlert.none, .1),
     },
     EventName.laneChangeBlocked: {
-      ET.WARNING: Alert(
-        "Car in Blindspot",
-        "",
-        AlertStatus.userPrompt, AlertSize.small,
-        Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1),
+      ET.WARNING: lane_change_blocked_alert,
     },
     EventName.steerSaturated: {
       ET.WARNING: Alert(

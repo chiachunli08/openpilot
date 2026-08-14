@@ -8,6 +8,7 @@ from openpilot.common.realtime import config_realtime_process, set_core_affinity
 from openpilot.common.hardware import HARDWARE, TICI
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.ui.lib.application import gui_app, FontWeight
+from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets.nav_widget import NavWidget
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.system.ui.widgets.label import UnifiedLabel
@@ -166,7 +167,7 @@ def main():
   manifest_path = sys.argv[2]
 
   try:
-    gui_app.init_window("System Update")
+    gui_app.init_window(tr("System Update"))
     updater = Updater(updater_path, manifest_path)
     gui_app.push_widget(updater)
     for _ in gui_app.render():

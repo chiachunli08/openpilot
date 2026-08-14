@@ -9,6 +9,7 @@ import pyray as rl
 
 from openpilot.common.hardware import HARDWARE, PC
 from openpilot.system.ui.lib.application import gui_app
+from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.system.ui.mici_setup import GreyBigButton, FailedPage
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigConfirmationCircleButton
@@ -142,7 +143,7 @@ def main():
     elif sys.argv[1] == '--tap-reset':
       mode = ResetMode.TAP_RESET
 
-  gui_app.init_window("System Reset")
+  gui_app.init_window(tr("System Reset"))
   reset = Reset(mode)
   gui_app.push_widget(reset)
 

@@ -4,6 +4,7 @@ from openpilot.system.ui.widgets.list_view import toggle_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
+from openpilot.selfdrive.ui.onroad.battery_visibility import supports_battery_details
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 if gui_app.sunnypilot_ui():
@@ -44,9 +45,6 @@ DESCRIPTIONS = {
   ),
   "EnableSmoothSteer": tr_noop(
     "Enables S-curving on lateral control for smoother steering"
-  ),
-  "DarkMode": tr_noop(
-    "Force brightness to a minimal value"
   ),
   "DisableScreenTimer": tr_noop(
     "The onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts"
@@ -118,12 +116,6 @@ class ICTogglesLayout(Widget):
         "chffr_wheel.png",
         False,
       ),
-      "DarkMode": (
-        lambda: tr("Dark Mode"),
-        DESCRIPTIONS["DarkMode"],
-        "eye_closed.png",
-        False,
-      ),
       "DisableScreenTimer": (
         lambda: tr("Onroad Screen Timeout"),
         DESCRIPTIONS["DisableScreenTimer"],
@@ -179,6 +171,8 @@ class ICTogglesLayout(Widget):
         self._locked_toggles.add(param)
 
       self._toggles[param] = toggle
+
+    self._toggles["BatteryDetails"].set_visible(lambda: supports_battery_details(ui_state.CP))
 
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
 

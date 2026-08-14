@@ -1,5 +1,6 @@
 import time
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pyray as rl
@@ -89,15 +90,15 @@ class DynamicSteeringLearnerGraphMici(Widget):
     if lcp_frame != self._cached_lcp_frame:
       abs_curvatures = np.abs(self._plot_x).astype(np.float64)
       # Recomputes only when liveCurvatureParameters changes (4Hz); cached across UI frames.
-      self._cached_fit_curve = CurvatureDLookup.interp_curve_value(
+      self._cached_fit_curve = cast(np.ndarray, CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, abs_curvatures
-      )
+      ))
       # Preview is only populated when ShowDynamicSteeringLearnerGraph is on.
       has_preview = preview_corrections.shape == fit_corrections.shape and np.any(preview_corrections)
       if has_preview:
-        self._cached_preview_curve = CurvatureDLookup.interp_curve_value(
+        self._cached_preview_curve = cast(np.ndarray, CurvatureDLookup.interp_curve_value(
           preview_corrections, preview_valid, v_ego, abs_curvatures
-        )
+        ))
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 
