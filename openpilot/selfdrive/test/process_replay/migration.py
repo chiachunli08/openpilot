@@ -24,21 +24,6 @@ MigrationOps = tuple[list[tuple[int, capnp.lib.capnp._DynamicStructReader]], lis
 MigrationFunc = Callable[[list[MessageWithIndex]], MigrationOps]
 
 
-def deprecated_or_current(msg):
-  """Read fields from the deprecated wrapper when it exists in this log schema."""
-  return msg.deprecated if hasattr(msg, "deprecated") else msg
-
-
-def car_control_actuators_output(car_control):
-  """Read actuator output from both pre- and post-wrapper carControl schemas."""
-  for value, field in ((car_control, "actuatorsOutputDEPRECATED"),
-                       (car_control, "actuatorsOutput"),
-                       (deprecated_or_current(car_control), "actuatorsOutput")):
-    if hasattr(value, field):
-      return getattr(value, field)
-  raise AttributeError("carControl has no actuator output field")
-
-
 # rules for migration functions
 # 1. must use the decorator @migration(inputs=[...], product="...") and MigrationFunc signature
 # 2. it only gets the messages that are in the inputs list
@@ -245,7 +230,7 @@ def migrate_controlsState(msgs):
     for field in ("enabled", "active", "state", "engageable", "alertText1", "alertText2",
                   "alertStatus", "alertSize", "alertType", "experimentalMode",
                   "personality"):
-      setattr(ss, field, getattr(deprecated_or_current(msg.controlsState), field))
+      setattr(ss, field, getattr(msg.controlsState.deprecated, field))
     add_ops.append(as_reader(m))
   return [], add_ops, []
 
@@ -258,11 +243,10 @@ def migrate_carState(msgs):
     if msg.which() == 'controlsState':
       last_cs = msg
     elif msg.which() == 'carState' and last_cs is not None:
-      controls_state = deprecated_or_current(last_cs.controlsState)
-      if controls_state.vCruise - msg.carState.vCruise > 0.1:
+      if last_cs.controlsState.deprecated.vCruise - msg.carState.vCruise > 0.1:
         msg = msg.as_builder()
-        msg.carState.vCruise = controls_state.vCruise
-        msg.carState.vCruiseCluster = controls_state.vCruiseCluster
+        msg.carState.vCruise = last_cs.controlsState.deprecated.vCruise
+        msg.carState.vCruiseCluster = last_cs.controlsState.deprecated.vCruiseCluster
         ops.append((index, as_reader(msg)))
   return ops, [], []
 
@@ -313,7 +297,7 @@ def migrate_carOutput(msgs):
     co = messaging.new_message('carOutput')
     co.valid = msg.valid
     co.logMonoTime = msg.logMonoTime
-    co.carOutput.actuatorsOutput = car_control_actuators_output(msg.carControl)
+    co.carOutput.actuatorsOutput = msg.carControl.deprecated.actuatorsOutput
     add_ops.append(as_reader(co))
   return [], add_ops, []
 

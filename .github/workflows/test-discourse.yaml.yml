@@ -10,7 +10,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Post test message to Discourse
-        if: ${{ vars.DISCOURSE_URL != '' && vars.DISCOURSE_UPDATES_TOPIC_ID != '' }}
         uses: ./.github/workflows/post-to-discourse
         with:
           discourse-url: ${{ vars.DISCOURSE_URL }}
@@ -42,7 +41,6 @@ jobs:
       
       
       - name: Create topic on Discourse
-        if: ${{ vars.DISCOURSE_URL != '' && vars.DISCOURSE_UPDATES_TOPIC_ID != '' }}
         uses: ./.github/workflows/post-to-discourse
         with:
           discourse-url: ${{ vars.DISCOURSE_URL }}

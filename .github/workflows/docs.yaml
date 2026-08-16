@@ -21,8 +21,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - uses: commaai/timeout@v1
-      with:
-        timeout: 180
 
     - uses: actions/checkout@v7
       with:

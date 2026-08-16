@@ -154,7 +154,8 @@ class TestCurvatureEstimator:
     mid = CurvatureDLookup.required_support_bucket_count(3)
     high = CurvatureDLookup.required_support_bucket_count(6)
 
-    assert len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) >= low >= mid >= high >= CurvatureDLookup.MIN_REQUIRED_SUPPORT_BUCKETS
+    assert low == len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
+    assert low >= mid >= high >= CurvatureDLookup.MIN_REQUIRED_SUPPORT_BUCKETS
 
   def test_fit_valid_no_longer_requires_global_total_samples(self):
     speed_idx = 3
@@ -213,7 +214,6 @@ class TestCurvatureEstimator:
     v_ego = 22.0
 
     self._train_speed_curve(estimator, v_ego)
-    estimator.use_params = True
     estimator._update_current_lookup(desired_curvature, v_ego)
     msg = estimator.get_msg(include_debug=True, include_preview=True)
     idx = CurvatureDLookup.indices(desired_curvature, v_ego)
@@ -251,10 +251,10 @@ class TestCurvatureEstimator:
     speed_idx = 3
     counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
-    selected = np.arange(CurvatureDLookup.required_support_bucket_count(speed_idx), dtype=int)
+    selected = np.array([5, 6, 7, 8], dtype=int)
 
     counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected] + 40.0
-    bias[speed_idx, selected] = np.linspace(2.0e-6, 2.0e-5, len(selected), dtype=np.float32)
+    bias[speed_idx, selected] = np.array([2.0e-6, 6.0e-6, 1.2e-5, 2.0e-5], dtype=np.float32)
 
     fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
 
@@ -390,12 +390,13 @@ class TestCurvatureEstimator:
 
     for c in test_curvatures:
       scalar_result = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, c)
-      array_result = np.asarray(CurvatureDLookup.interp_curve_value(
+      array_result = CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, np.asarray([c], dtype=np.float64)
-      ), dtype=np.float64)
+      )
       # Scalar path returns float
       assert isinstance(scalar_result, float)
       # Array path returns np.ndarray
+      assert isinstance(array_result, np.ndarray)
       assert np.isclose(scalar_result, array_result[0]), f"mismatch at c={c}: scalar={scalar_result}, array={array_result[0]}"
 
   def test_interp_curve_value_handles_speed_interp_transition(self):

@@ -2,9 +2,8 @@ import numpy as np
 
 from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup, VERSION
 
-# Cache granularity for get_correction(). Inputs within half a bucket reuse the
-# cached value so sensor noise does not invalidate it between consecutive 100Hz
-# calls, even when the first sample happens to be near a rounding boundary.
+# Cache granularity for get_correction(). Inputs are rounded before comparison so that
+# sensor noise does not invalidate the cache between consecutive 100Hz calls.
 #
 # Rationale per input:
 #   CACHE_V_EGO_DECIMALS = 1   (0.1 m/s granularity)
@@ -80,16 +79,14 @@ class CurvatureDController(CurvatureDLookup):
     if self._exceeds_safety_bounds(abs_curvature, v_ego):
       return 0.0
 
-    v_ego_tolerance = 0.5 * 10 ** -CACHE_V_EGO_DECIMALS
-    curvature_tolerance = 0.5 * 10 ** -CACHE_CURVATURE_DECIMALS
-    if (self._cached_v_ego_q is not None and self._cached_curvature_q is not None and
-        abs(v_ego - self._cached_v_ego_q) < v_ego_tolerance and
-        abs(abs_curvature - self._cached_curvature_q) < curvature_tolerance):
+    v_ego_q = round(v_ego, CACHE_V_EGO_DECIMALS)
+    curvature_q = round(abs_curvature, CACHE_CURVATURE_DECIMALS)
+    if v_ego_q == self._cached_v_ego_q and curvature_q == self._cached_curvature_q:
       projected = self._cached_projected
     else:
-      projected = float(CurvatureDLookup.interp_curve_value(self.fit_corrections, self.fit_valid, v_ego, abs_curvature))
-      self._cached_v_ego_q = float(v_ego)
-      self._cached_curvature_q = abs_curvature
+      projected = self.interp_curve_value(self.fit_corrections, self.fit_valid, v_ego, abs_curvature)
+      self._cached_v_ego_q = v_ego_q
+      self._cached_curvature_q = curvature_q
       self._cached_projected = projected
 
     direction = 1.0 if desired_curvature >= 0.0 else -1.0

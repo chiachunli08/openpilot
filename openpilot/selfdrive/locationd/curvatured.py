@@ -465,25 +465,29 @@ class CurvatureDLookup:
         if in_range.any():
           row_out[in_range] = np.interp(log_curvatures[in_range], run_log_x, run_curve).astype(np.float32)
 
-        # Only fade from zero below the first bucket. Fading into a later valid
-        # run would leak a correction across an invalid gap.
-        if start == 0:
+        # Fade in (between previous bucket and first_edge)
+        if start > 0:
+          fade_in_start = float(curvature_edges[start - 1])
+          fade_in_mask = (abs_curvatures >= fade_in_start) & (abs_curvatures < first_edge)
+        else:
           fade_in_start = curvature_min
           fade_in_mask = (abs_curvatures >= curvature_min) & (abs_curvatures < first_edge)
-          if fade_in_mask.any():
-            fade_span = max(first_edge - fade_in_start, 1e-9)
-            fade_vals = cls.smoothstep((abs_curvatures[fade_in_mask] - fade_in_start) / fade_span)
-            row_out[fade_in_mask] = (run_curve[0] * fade_vals).astype(np.float32)
+        if fade_in_mask.any():
+          fade_span = max(first_edge - fade_in_start, 1e-9)
+          fade_vals = cls.smoothstep((abs_curvatures[fade_in_mask] - fade_in_start) / fade_span)
+          row_out[fade_in_mask] = (run_curve[0] * fade_vals).astype(np.float32)
 
-        # Only fade beyond the outermost learned bucket. An earlier run is
-        # followed by an invalid gap, which must remain correction-free.
-        if end == n_centers - 1:
+        # Fade out (between last_edge and next bucket)
+        if end < n_centers - 1:
+          fade_out_end = float(curvature_edges[end + 2])
+          fade_out_mask = (abs_curvatures > last_edge) & (abs_curvatures <= fade_out_end)
+        else:
           fade_out_end = curvature_max
           fade_out_mask = (abs_curvatures > last_edge) & (abs_curvatures <= fade_out_end)
-          if fade_out_mask.any():
-            fade_span = max(fade_out_end - last_edge, 1e-9)
-            fade_vals = 1.0 - cls.smoothstep((abs_curvatures[fade_out_mask] - last_edge) / fade_span)
-            row_out[fade_out_mask] = (run_curve[-1] * fade_vals).astype(np.float32)
+        if fade_out_mask.any():
+          fade_span = max(fade_out_end - last_edge, 1e-9)
+          fade_vals = 1.0 - cls.smoothstep((abs_curvatures[fade_out_mask] - last_edge) / fade_span)
+          row_out[fade_out_mask] = (run_curve[-1] * fade_vals).astype(np.float32)
 
       return row_out
 
