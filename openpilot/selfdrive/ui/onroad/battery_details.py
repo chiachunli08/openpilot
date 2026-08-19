@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import pyray as rl
 
 from openpilot.common.params import Params
+from openpilot.selfdrive.ui.onroad.battery_visibility import supports_battery_details
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.widgets import Widget
@@ -75,7 +76,7 @@ class BatteryDetails(Widget):
 
   def _update_params(self) -> None:
     self._param_update_time = time.monotonic()
-    self._display_enabled = self._params.get_bool("BatteryDetails")
+    self._display_enabled = self._params.get_bool("BatteryDetails") and supports_battery_details(ui_state.CP)
 
   def _reset_values(self) -> None:
     self._capacity = 0.0
