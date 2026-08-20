@@ -19,7 +19,7 @@ from typing import NamedTuple
 from importlib.resources import as_file, files
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware import HARDWARE, PC
-from openpilot.system.ui.lib.multilang import FONT_FALLBACK_LANGUAGES, TRANSLATIONS_DIR, multilang
+from openpilot.system.ui.lib.multilang import C4_ZH_CHT_TRANSLATIONS, FONT_FALLBACK_LANGUAGES, TRANSLATIONS_DIR, multilang
 from openpilot.common.realtime import Ratekeeper
 
 from openpilot.system.ui.sunnypilot.lib.application import GuiApplicationExt
@@ -91,16 +91,18 @@ DEFAULT_TEXT_COLOR = rl.Color(255, 255, 255, int(255 * 0.9))
 # Qt draws fonts accounting for ascent/descent differently, so compensate to match old styles
 # The real scales for the fonts below range from 1.212 to 1.266
 FONT_SCALE = 1.242 if BIG_UI else 1.16
+ZH_CHT_TEXT_SCALE = 1.20
 
 ASSETS_DIR = files("openpilot.selfdrive").joinpath("assets")
 FONT_DIR = ASSETS_DIR.joinpath("fonts")
 EXTRA_FONT_CHARS = "–‑✓×°§•X⚙✕◀▶✔⌫⇧␣○●↳çêüñ–‑✓×°§•€£¥"
+UNIFONT_FALLBACK_CHARS = set("↳⌫⚙✔✕")
 NOTO_FONTS = {
   "ja": "NotoSansCJKjp-Regular.otf",
   "ko": "NotoSansCJKkr-Regular.otf",
   "th": "NotoSansThai-Regular.ttf",
   "zh-CHS": "NotoSansCJKsc-Regular.otf",
-  "zh-CHT": "NotoSansCJKtc-Regular.otf",
+  "zh-CHT": "SourceHanSansTC-Regular.otf",
 }
 
 
@@ -118,9 +120,18 @@ class FontWeight(StrEnum):
   DISPLAY = "Inter-Bold.ttf"
 
 
-def font_fallback(font: rl.Font) -> rl.Font:
-  """Use a Noto fallback for languages not covered by Inter."""
-  if multilang.requires_font_fallback():
+def text_size_scale(text: str = "") -> float:
+  """Return the render scale for the active language and text."""
+  if multilang.language == "zh-CHT" and any(ord(char) > 0x7F for char in text):
+    return FONT_SCALE * ZH_CHT_TEXT_SCALE
+  return FONT_SCALE
+
+
+def font_fallback(font: rl.Font, text: str = "") -> rl.Font:
+  """Use a language-appropriate fallback only when text needs it."""
+  if multilang.requires_font_fallback() and any(ord(char) > 0x7F for char in text):
+    if any(char in UNIFONT_FALLBACK_CHARS for char in text):
+      return gui_app.font(FontWeight.UNIFONT)
     return gui_app.fallback_font()
   return font
 
@@ -700,6 +711,9 @@ class GuiApplication(GuiApplicationExt):
     if language not in self._fallback_fonts:
       chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
       chars.update(TRANSLATIONS_DIR.joinpath(f"app_{language}.po").read_text(encoding="utf-8"))
+      if language == "zh-CHT":
+        chars.update("".join(C4_ZH_CHT_TRANSLATIONS))
+        chars.update("".join(C4_ZH_CHT_TRANSLATIONS.values()))
       codepoints = sorted(map(ord, chars))
       codepoint_buffer = rl.ffi.new("int[]", codepoints)
       with as_file(FONT_DIR) as fspath:
@@ -754,8 +768,8 @@ class GuiApplication(GuiApplicationExt):
       rl._orig_draw_text_ex = rl.draw_text_ex
 
     def _draw_text_ex_scaled(font, text, position, font_size, spacing, tint):
-      font = font_fallback(font)
-      return rl._orig_draw_text_ex(font, text, position, font_size * FONT_SCALE, spacing, tint)
+      font = font_fallback(font, text)
+      return rl._orig_draw_text_ex(font, text, position, font_size * text_size_scale(text), spacing, tint)
 
     rl.draw_text_ex = _draw_text_ex_scaled
 

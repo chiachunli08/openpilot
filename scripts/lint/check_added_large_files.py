@@ -5,6 +5,12 @@ import os
 import subprocess
 
 
+ALLOWED_LARGE_FILES = {
+  # Vendored so complete Traditional Chinese glyph coverage works offline.
+  "openpilot/selfdrive/assets/fonts/SourceHanSansTC-Regular.otf",
+}
+
+
 def lfs_files(filenames: list[str]) -> set[str]:
   if not filenames:
     return set()
@@ -24,6 +30,8 @@ def check_added_large_files(filenames: list[str], max_kb: int) -> int:
   failed = False
   ignored = lfs_files(filenames)
   for filename in filenames:
+    if filename in ALLOWED_LARGE_FILES:
+      continue
     if filename in ignored:
       continue
 
