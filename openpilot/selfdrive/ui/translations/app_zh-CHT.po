@@ -980,10 +980,6 @@ msgstr "隱藏網路"
 msgid "Hours"
 msgstr "小時"
 
-#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/display.py
-msgid "How long the screen saver runs before the screen turns off."
-msgstr "螢幕保護程式執行多久後關閉螢幕。"
-
 #: openpilot/selfdrive/ui/mici/layouts/settings/firehose.py
 msgid "INACTIVE: connect to an unmetered network"
 msgstr "未運作：請連線至非計量付費網路"
@@ -1652,14 +1648,6 @@ msgstr "掃描中…"
 msgid "Screen Off"
 msgstr "螢幕關閉"
 
-#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/display.py
-msgid "Screen Saver"
-msgstr "螢幕保護程式"
-
-#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/display.py
-msgid "Screen Saver Duration"
-msgstr "螢幕保護程式持續時間"
-
 #: openpilot/system/ui/sunnypilot/widgets/tree_dialog.py
 msgid "Search"
 msgstr "搜尋"
@@ -1741,10 +1729,6 @@ msgstr "顯示盲點警告"
 #: openpilot/selfdrive/ui/layouts/settings/ictoggles.py
 msgid "Show Dynamic Steering Learner Graph"
 msgstr "顯示動態轉向學習器圖表"
-
-#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/display.py
-msgid "Show a screen saver when the device is offroad and idle, instead of turning the screen off."
-msgstr "裝置離線且閒置時顯示螢幕保護程式，而不是關閉螢幕。"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
 msgid "Show a timer on the HUD when the car is at a standstill."

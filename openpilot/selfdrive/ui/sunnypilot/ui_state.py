@@ -182,7 +182,9 @@ class UIStateSP:
     self.turn_signals = self.params.get_bool("ShowTurnSignals")
     self.boot_offroad_mode = self.params.get("DeviceBootMode", return_default=True)
     self.always_offroad = self.params.get_bool("OffroadMode")
-    self.screensaver_enabled = self.params.get_bool("ScreenSaverEnabled")
+    # Keep the upstream screen saver disabled on C4. It can obstruct the
+    # driving UI when the display enters a low-brightness state.
+    self.screensaver_enabled = False
 
     if not self._sp_initialized:
       self._sp_initialized = True
