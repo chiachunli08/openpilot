@@ -15,6 +15,12 @@ export VECLIB_MAXIMUM_THREADS=1
 # headroom for this until ui is moved to the CPU.
 export QCOM_PRIORITY=12
 
+# This build targets hardware without a driver-facing camera. Keep this
+# separate from LITE, since LITE also changes modem, GPS, audio, and panda
+# handling on supported clone hardware.
+export NO_DRIVER_CAMERA=1
+export IQPILOT_ALLOW_DM_NO_CAMERA=1
+
 if [ -z "$AGNOS_VERSION" ]; then
   DEVICE_MODEL=""
   if [ -f /sys/firmware/devicetree/base/model ]; then

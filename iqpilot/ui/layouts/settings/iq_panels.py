@@ -59,7 +59,7 @@ from openpilot.iqpilot.selfdrive.iqmodeld.models.helpers import select_default_m
 from openpilot.iqpilot.selfdrive.iqmodeld.models.runners.model_runner import CUSTOM_MODEL_PATH
 from openpilot.selfdrive.ui.layouts.settings import settings as OP
 from openpilot.selfdrive.ui.layouts.settings.toggles import TogglesLayout
-from openpilot.system.hardware import HARDWARE
+from openpilot.system.hardware import HARDWARE, driver_camera_available
 from openpilot.system.ui.iqwidgets.lib.styles import metrics
 from openpilot.system.ui.iqwidgets.widgets.list_view import (
   option_item as option_item,
@@ -1653,7 +1653,7 @@ class IQDeviceLayout(DeviceLayout):
     self._system_sep_d.set_visible(system_menu)
     self._device_wake_mode.set_visible(system_menu)
     self._max_time_offroad.set_visible(system_menu)
-    self._driver_camera_btn.set_visible(system_menu)
+    self._driver_camera_btn.set_visible(system_menu and driver_camera_available())
     self._reg_and_training.set_visible(system_menu)
 
     self._onroad_uploads_and_reset_settings.set_visible(maintenance_menu)

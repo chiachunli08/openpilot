@@ -11,6 +11,7 @@ from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.button import Button, ButtonStyle
 from openpilot.system.ui.widgets.label import Label
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.hardware import driver_camera_available
 from openpilot.system.version import terms_version, training_version
 
 DEBUG = False
@@ -39,6 +40,11 @@ class TrainingGuide(Widget):
   def __init__(self, completed_callback=None):
     super().__init__()
     self._completed_callback = completed_callback
+
+    if not driver_camera_available():
+      ui_state.params.put_bool("RecordFront", False)
+      ui_state.params.put_bool("AlwaysOnDM", False)
+      ui_state.params.put_bool("IsDriverViewEnabled", False)
 
     self._step = 0
     self._load_image_paths()

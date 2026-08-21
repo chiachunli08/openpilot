@@ -10,6 +10,11 @@ AGNOS = os.path.isfile('/AGNOS')
 PC = not TICI
 
 
+def driver_camera_available() -> bool:
+  """Return whether this build should expect driver-camera messages."""
+  return os.getenv("NO_DRIVER_CAMERA", "0") != "1" and not os.path.exists("/tmp/lite_hw")
+
+
 if TICI:
   HARDWARE = cast(HardwareBase, Tici())
 else:
