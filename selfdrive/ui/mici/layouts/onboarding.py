@@ -6,7 +6,7 @@ import os
 import numpy as np
 import pyray as rl
 from openpilot.common.filter_simple import FirstOrderFilter
-from openpilot.system.hardware import HARDWARE, PC
+from openpilot.system.hardware import HARDWARE, PC, driver_camera_available
 from openpilot.system.ui.lib.application import FontWeight, gui_app
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.button import SmallButton, SmallCircleIconButton
@@ -143,7 +143,7 @@ class TrainingGuideDMTutorial(Widget):
     self._bad_face_page = DMBadFaceDetected(HARDWARE.shutdown, self._hide_bad_face_page)
     self._should_show_bad_face_page = False
     self._no_camera_elapsed_sec = 0.0
-    self._allow_no_camera_bypass = PC or os.getenv("IQPILOT_ALLOW_DM_NO_CAMERA", "0") == "1"
+    self._allow_no_camera_bypass = PC or not driver_camera_available() or os.getenv("IQPILOT_ALLOW_DM_NO_CAMERA", "0") == "1"
 
     # Disable driver monitoring model when device times out for inactivity
     def inactivity_callback():
@@ -367,12 +367,17 @@ class TrainingGuide(Widget):
       if obj := self_ref():
         obj._advance_step()
 
-    self._steps = [
-      TrainingGuideAttentionNotice(continue_callback=on_continue),
-      TrainingGuidePreDMTutorial(continue_callback=on_continue),
-      TrainingGuideDMTutorial(continue_callback=on_continue),
-      TrainingGuideRecordFront(continue_callback=on_continue),
-    ]
+    self._steps = [TrainingGuideAttentionNotice(continue_callback=on_continue)]
+    if driver_camera_available():
+      self._steps += [
+        TrainingGuidePreDMTutorial(continue_callback=on_continue),
+        TrainingGuideDMTutorial(continue_callback=on_continue),
+        TrainingGuideRecordFront(continue_callback=on_continue),
+      ]
+    else:
+      ui_state.params.put_bool("RecordFront", False)
+      ui_state.params.put_bool("AlwaysOnDM", False)
+      ui_state.params.put_bool("IsDriverViewEnabled", False)
 
   def show_event(self):
     super().show_event()

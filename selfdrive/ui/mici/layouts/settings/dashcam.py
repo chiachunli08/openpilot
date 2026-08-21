@@ -6,6 +6,7 @@ from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.selfdrive.ui.mici.widgets.stock_button import BigParamControl
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.hardware import driver_camera_available
 
 
 class DashcamLayoutMici(NavScroller):
@@ -15,7 +16,12 @@ class DashcamLayoutMici(NavScroller):
     self._record_front = BigParamControl("record driver camera", "RecordFront", toggle_callback=restart_needed_callback)
     self._record_audio = BigParamControl("record microphone audio", "RecordAudio", toggle_callback=restart_needed_callback)
 
-    self._scroller.add_widgets([self._dashcam, self._record_front, self._record_audio])
+    widgets = [self._dashcam, self._record_audio]
+    if driver_camera_available():
+      widgets.insert(1, self._record_front)
+    else:
+      ui_state.params.put_bool("RecordFront", False)
+    self._scroller.add_widgets(widgets)
 
     self._refresh_toggles = (
       ("DashcamEnabled", self._dashcam),

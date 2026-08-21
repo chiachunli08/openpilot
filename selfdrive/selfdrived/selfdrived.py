@@ -23,7 +23,7 @@ from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
 from openpilot.system.version import get_build_metadata
-from openpilot.system.hardware import HARDWARE
+from openpilot.system.hardware import HARDWARE, driver_camera_available
 
 from openpilot.iqpilot.sab.behavior import SteeringAssistanceBehavior
 def get_sanitize_int_param(key, min_val, max_val, params):
@@ -100,14 +100,14 @@ class SelfdriveD(GapButtonActions):
     self.gps_packets = [self.gps_location_service]
     self.sensor_packets = ["accelerometer", "gyroscope"]
     self.camera_packets = ["roadCameraState", "driverCameraState", "wideRoadCameraState"]
-    if os.path.exists('/tmp/lite_hw'):
+    if not driver_camera_available():
       self.camera_packets.remove("driverCameraState")
 
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
 
     ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan', 'iqDriveModelData', 'iqNavState', 'liveParameters', 'driverAssistance', 'testJoystick']
-    if os.path.exists('/tmp/lite_hw'):
+    if not driver_camera_available():
       ignore += ['driverCameraState', 'driverMonitoringState']
     if SIMULATION:
       ignore += ['driverCameraState', 'managerState']

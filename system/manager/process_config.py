@@ -4,7 +4,7 @@ from pathlib import Path
 
 from cereal import car, custom
 from openpilot.common.params import Params
-from openpilot.system.hardware import HARDWARE, PC, TICI
+from openpilot.system.hardware import HARDWARE, PC, TICI, driver_camera_available
 from openpilot.system.hardware.hw import Paths
 from openpilot.system.manager.process import PythonProcess, NativeProcess, BundleProcess
 
@@ -14,11 +14,15 @@ from iqpilot.konn3kt.service_health import hephaestus_ready
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 
 def driverview(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started or params.get_bool("IsDriverViewEnabled")
+  return started or (driver_camera_available() and params.get_bool("IsDriverViewEnabled"))
 
 def driver_monitoring(started: bool, params: Params, CP: car.CarParams) -> bool:
-  if os.path.exists('/tmp/lite_hw'):
+  if not driver_camera_available():
     return False
+  return driverview(started, params, CP)
+
+def driver_monitoring_state(started: bool, params: Params, CP: car.CarParams) -> bool:
+  # On camera-less hardware dmonitoringd publishes a synthetic healthy state.
   return driverview(started, params, CP)
 
 def notcar(started: bool, params: Params, CP: car.CarParams) -> bool:
@@ -153,7 +157,8 @@ procs = [
   PythonProcess("micd", "system.micd", or_(iscar, livestream)),
   PythonProcess("timed", "system.timed", always_run, enabled=not PC),
 
-  PythonProcess("dmonitoringmodeld", "selfdrive.modeld.dmonitoringmodeld", driver_monitoring, enabled=(WEBCAM or not PC)),
+  PythonProcess("dmonitoringmodeld", "selfdrive.modeld.dmonitoringmodeld", driver_monitoring,
+                enabled=(WEBCAM or not PC) and driver_camera_available()),
 
   PythonProcess("sensord", "system.sensord.sensord", only_onroad, enabled=not PC),
   PythonProcess("ui", "selfdrive.ui.ui", not_low_power, restart_if_crash=True),
@@ -167,7 +172,7 @@ procs = [
   PythonProcess("selfdrived", "selfdrive.selfdrived.selfdrived", only_onroad),
   PythonProcess("card", "selfdrive.car.card", only_onroad),
   PythonProcess("deleter", "system.loggerd.deleter", always_run),
-  PythonProcess("dmonitoringd", "selfdrive.monitoring.dmonitoringd", driver_monitoring, enabled=(WEBCAM or not PC)),
+  PythonProcess("dmonitoringd", "selfdrive.monitoring.dmonitoringd", driver_monitoring_state, enabled=(WEBCAM or not PC)),
   PythonProcess("qcomgpsd", "system.qcomgpsd.qcomgpsd", qcomgps, enabled=TICI),
   PythonProcess("pandad", "selfdrive.pandad.pandad", always_run),
   PythonProcess("paramsd", "selfdrive.locationd.paramsd", only_onroad),
