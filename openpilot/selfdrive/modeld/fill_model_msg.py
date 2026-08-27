@@ -73,7 +73,9 @@ def fill_driving_model_data(msg: capnp._DynamicStructBuilder, modelv2_send: capn
 def fill_model_msg(msg: capnp._DynamicStructBuilder, net_output_data: dict[str, np.ndarray], action: log.ModelDataV2.Action,
                    publish_state: PublishState, vipc_frame_id: int, vipc_frame_id_extra: int,
                    frame_id: int, frame_drop: float, timestamp_eof: int, model_execution_time: float,
-                   valid: bool) -> None:
+                   valid: bool, model_constants=None, model_meta=None) -> None:
+  model_constants = model_constants or ModelConstants
+  model_meta = model_meta or Meta
   frame_age = frame_id - vipc_frame_id if frame_id > vipc_frame_id else 0
   frame_drop_perc = frame_drop * 100
   msg.valid = valid
@@ -87,11 +89,11 @@ def fill_model_msg(msg: capnp._DynamicStructBuilder, net_output_data: dict[str, 
   modelV2.modelExecutionTime = model_execution_time
 
   # plan
-  fill_xyzt(modelV2.position, ModelConstants.T_IDXS, *net_output_data['plan'][0,:,Plan.POSITION].T, *net_output_data['plan_stds'][0,:,Plan.POSITION].T)
-  fill_xyzt(modelV2.velocity, ModelConstants.T_IDXS, *net_output_data['plan'][0,:,Plan.VELOCITY].T)
-  fill_xyzt(modelV2.acceleration, ModelConstants.T_IDXS, *net_output_data['plan'][0,:,Plan.ACCELERATION].T)
-  fill_xyzt(modelV2.orientation, ModelConstants.T_IDXS, *net_output_data['plan'][0,:,Plan.T_FROM_CURRENT_EULER].T)
-  fill_xyzt(modelV2.orientationRate, ModelConstants.T_IDXS, *net_output_data['plan'][0,:,Plan.ORIENTATION_RATE].T)
+  fill_xyzt(modelV2.position, model_constants.T_IDXS, *net_output_data['plan'][0,:,Plan.POSITION].T, *net_output_data['plan_stds'][0,:,Plan.POSITION].T)
+  fill_xyzt(modelV2.velocity, model_constants.T_IDXS, *net_output_data['plan'][0,:,Plan.VELOCITY].T)
+  fill_xyzt(modelV2.acceleration, model_constants.T_IDXS, *net_output_data['plan'][0,:,Plan.ACCELERATION].T)
+  fill_xyzt(modelV2.orientation, model_constants.T_IDXS, *net_output_data['plan'][0,:,Plan.T_FROM_CURRENT_EULER].T)
+  fill_xyzt(modelV2.orientationRate, model_constants.T_IDXS, *net_output_data['plan'][0,:,Plan.ORIENTATION_RATE].T)
 
   # action
   modelV2.action = action
@@ -100,35 +102,34 @@ def fill_model_msg(msg: capnp._DynamicStructBuilder, net_output_data: dict[str, 
   # LINE_T_IDXS: list[float] = []
 
   # times at X_IDXS according to model plan
-  LINE_T_IDXS = [np.nan] * ModelConstants.IDX_N
+  LINE_T_IDXS = [np.nan] * model_constants.IDX_N
   LINE_T_IDXS[0] = 0.0
   plan_x = net_output_data['plan'][0, :, Plan.POSITION][:, 0].tolist()
-  Tmax = ModelConstants.T_IDXS[ModelConstants.IDX_N - 1]
-  for xidx in range(1, ModelConstants.IDX_N):
+  Tmax = model_constants.T_IDXS[model_constants.IDX_N - 1]
+  for xidx in range(1, model_constants.IDX_N):
     tidx = 0
     # increment tidx until we find an element that's further away than the current xidx
-    while tidx < ModelConstants.IDX_N - 1 and plan_x[tidx + 1] < ModelConstants.X_IDXS[xidx]:
+    while tidx < model_constants.IDX_N - 1 and plan_x[tidx + 1] < model_constants.X_IDXS[xidx]:
       tidx += 1
-    if tidx == ModelConstants.IDX_N - 1:
-      for k in range(xidx, ModelConstants.IDX_N):
+    if tidx == model_constants.IDX_N - 1:
+      for k in range(xidx, model_constants.IDX_N):
         LINE_T_IDXS[k] = Tmax
-      break  
+      break
     # interpolate to find `t` for the current xidx
     current_x_val = plan_x[tidx]
     next_x_val = plan_x[tidx + 1]
 
     dx = next_x_val - current_x_val
     if dx <= 1e-9:
-      LINE_T_IDXS[xidx] = ModelConstants.T_IDXS[tidx]
+      LINE_T_IDXS[xidx] = model_constants.T_IDXS[tidx]
     else:
-      p = (ModelConstants.X_IDXS[xidx] - current_x_val) / dx
-      if p < 0.0: p = 0.0                                   
-      elif p > 1.0: p = 1.0                                 
-      LINE_T_IDXS[xidx] = p * ModelConstants.T_IDXS[tidx + 1] + (1.0 - p) * ModelConstants.T_IDXS[tidx]
+      p = (model_constants.X_IDXS[xidx] - current_x_val) / dx
+      p = float(np.clip(p, 0.0, 1.0))
+      LINE_T_IDXS[xidx] = p * model_constants.T_IDXS[tidx + 1] + (1.0 - p) * model_constants.T_IDXS[tidx]
 
-    #p = (ModelConstants.X_IDXS[xidx] - current_x_val) / (next_x_val - current_x_val) if abs(
+    #p = (model_constants.X_IDXS[xidx] - current_x_val) / (next_x_val - current_x_val) if abs(
     #  next_x_val - current_x_val) > 1e-9 else float('nan')
-    #LINE_T_IDXS[xidx] = p * ModelConstants.T_IDXS[tidx + 1] + (1 - p) * ModelConstants.T_IDXS[tidx]
+    #LINE_T_IDXS[xidx] = p * model_constants.T_IDXS[tidx + 1] + (1 - p) * model_constants.T_IDXS[tidx]
 
   LINE_T_IDXS = [float(Tmax if math.isnan(float(v)) else float(v)) for v in LINE_T_IDXS]
 
@@ -144,7 +145,7 @@ def fill_model_msg(msg: capnp._DynamicStructBuilder, net_output_data: dict[str, 
   modelV2.init('laneLines', 4)
   for i in range(4):
     lane_line = modelV2.laneLines[i]
-    fill_xyzt(lane_line, LINE_T_IDXS, np.array(ModelConstants.X_IDXS), net_output_data['lane_lines'][0,i,:,0], net_output_data['lane_lines'][0,i,:,1])
+    fill_xyzt(lane_line, LINE_T_IDXS, np.array(model_constants.X_IDXS), net_output_data['lane_lines'][0,i,:,0], net_output_data['lane_lines'][0,i,:,1])
   modelV2.laneLineStds = net_output_data['lane_lines_stds'][0,:,0,0].tolist()
   modelV2.laneLineProbs = net_output_data['lane_lines_prob'][0,1::2].tolist()
 
@@ -152,61 +153,63 @@ def fill_model_msg(msg: capnp._DynamicStructBuilder, net_output_data: dict[str, 
   modelV2.init('roadEdges', 2)
   for i in range(2):
     road_edge = modelV2.roadEdges[i]
-    fill_xyzt(road_edge, LINE_T_IDXS, np.array(ModelConstants.X_IDXS), net_output_data['road_edges'][0,i,:,0], net_output_data['road_edges'][0,i,:,1])
+    fill_xyzt(road_edge, LINE_T_IDXS, np.array(model_constants.X_IDXS), net_output_data['road_edges'][0,i,:,0], net_output_data['road_edges'][0,i,:,1])
   modelV2.roadEdgeStds = net_output_data['road_edges_stds'][0,:,0,0].tolist()
 
   # leads
   modelV2.init('leadsV3', 3)
   for i in range(3):
     lead = modelV2.leadsV3[i]
-    fill_xyvat(lead, ModelConstants.LEAD_T_IDXS, *net_output_data['lead'][0,i].T, *net_output_data['lead_stds'][0,i].T)
+    fill_xyvat(lead, model_constants.LEAD_T_IDXS, *net_output_data['lead'][0,i].T, *net_output_data['lead_stds'][0,i].T)
     lead.prob = net_output_data['lead_prob'][0,i].tolist()
-    lead.probTime = ModelConstants.LEAD_T_OFFSETS[i]
+    lead.probTime = model_constants.LEAD_T_OFFSETS[i]
 
   # meta
   meta = modelV2.meta
   meta.desireState = net_output_data['desire_state'][0].reshape(-1).tolist()
   meta.desirePrediction = net_output_data['desire_pred'][0].reshape(-1).tolist()
-  meta.engagedProb = net_output_data['meta'][0,Meta.ENGAGED].item()
+  meta.engagedProb = net_output_data['meta'][0,model_meta.ENGAGED].item()
   meta.init('disengagePredictions')
   disengage_predictions = meta.disengagePredictions
-  disengage_predictions.t = ModelConstants.META_T_IDXS
-  disengage_predictions.brakeDisengageProbs = net_output_data['meta'][0,Meta.BRAKE_DISENGAGE].tolist()
-  disengage_predictions.gasDisengageProbs = net_output_data['meta'][0,Meta.GAS_DISENGAGE].tolist()
-  disengage_predictions.steerOverrideProbs = net_output_data['meta'][0,Meta.STEER_OVERRIDE].tolist()
-  disengage_predictions.brake3MetersPerSecondSquaredProbs = net_output_data['meta'][0,Meta.HARD_BRAKE_3].tolist()
-  disengage_predictions.brake4MetersPerSecondSquaredProbs = net_output_data['meta'][0,Meta.HARD_BRAKE_4].tolist()
-  disengage_predictions.brake5MetersPerSecondSquaredProbs = net_output_data['meta'][0,Meta.HARD_BRAKE_5].tolist()
-  disengage_predictions.gasPressProbs = net_output_data['meta'][0,Meta.GAS_PRESS].tolist()
-  disengage_predictions.brakePressProbs = net_output_data['meta'][0,Meta.BRAKE_PRESS].tolist()
+  disengage_predictions.t = model_constants.META_T_IDXS
+  disengage_predictions.brakeDisengageProbs = net_output_data['meta'][0,model_meta.BRAKE_DISENGAGE].tolist()
+  disengage_predictions.gasDisengageProbs = net_output_data['meta'][0,model_meta.GAS_DISENGAGE].tolist()
+  disengage_predictions.steerOverrideProbs = net_output_data['meta'][0,model_meta.STEER_OVERRIDE].tolist()
+  disengage_predictions.brake3MetersPerSecondSquaredProbs = net_output_data['meta'][0,model_meta.HARD_BRAKE_3].tolist()
+  disengage_predictions.brake4MetersPerSecondSquaredProbs = net_output_data['meta'][0,model_meta.HARD_BRAKE_4].tolist()
+  disengage_predictions.brake5MetersPerSecondSquaredProbs = net_output_data['meta'][0,model_meta.HARD_BRAKE_5].tolist()
+  if hasattr(model_meta, 'GAS_PRESS'):
+    disengage_predictions.gasPressProbs = net_output_data['meta'][0,model_meta.GAS_PRESS].tolist()
+  if hasattr(model_meta, 'BRAKE_PRESS'):
+    disengage_predictions.brakePressProbs = net_output_data['meta'][0,model_meta.BRAKE_PRESS].tolist()
 
   publish_state.prev_brake_5ms2_probs[:-1] = publish_state.prev_brake_5ms2_probs[1:]
-  publish_state.prev_brake_5ms2_probs[-1] = net_output_data['meta'][0,Meta.HARD_BRAKE_5][0]
+  publish_state.prev_brake_5ms2_probs[-1] = net_output_data['meta'][0,model_meta.HARD_BRAKE_5][0]
   publish_state.prev_brake_3ms2_probs[:-1] = publish_state.prev_brake_3ms2_probs[1:]
-  publish_state.prev_brake_3ms2_probs[-1] = net_output_data['meta'][0,Meta.HARD_BRAKE_3][0]
-  hard_brake_predicted = (publish_state.prev_brake_5ms2_probs > ModelConstants.FCW_THRESHOLDS_5MS2).all() and \
-    (publish_state.prev_brake_3ms2_probs > ModelConstants.FCW_THRESHOLDS_3MS2).all()
+  publish_state.prev_brake_3ms2_probs[-1] = net_output_data['meta'][0,model_meta.HARD_BRAKE_3][0]
+  hard_brake_predicted = (publish_state.prev_brake_5ms2_probs > model_constants.FCW_THRESHOLDS_5MS2).all() and \
+    (publish_state.prev_brake_3ms2_probs > model_constants.FCW_THRESHOLDS_3MS2).all()
   meta.hardBrakePredicted = hard_brake_predicted.item()
 
   # confidence
-  if vipc_frame_id % (2*ModelConstants.MODEL_RUN_FREQ) == 0:
+  if vipc_frame_id % (2*model_constants.MODEL_RUN_FREQ) == 0:
     # any disengage prob
-    brake_disengage_probs = net_output_data['meta'][0,Meta.BRAKE_DISENGAGE]
-    gas_disengage_probs = net_output_data['meta'][0,Meta.GAS_DISENGAGE]
-    steer_override_probs = net_output_data['meta'][0,Meta.STEER_OVERRIDE]
+    brake_disengage_probs = net_output_data['meta'][0,model_meta.BRAKE_DISENGAGE]
+    gas_disengage_probs = net_output_data['meta'][0,model_meta.GAS_DISENGAGE]
+    steer_override_probs = net_output_data['meta'][0,model_meta.STEER_OVERRIDE]
     any_disengage_probs = 1-((1-brake_disengage_probs)*(1-gas_disengage_probs)*(1-steer_override_probs))
     # independent disengage prob for each 2s slice
     ind_disengage_probs = np.r_[any_disengage_probs[0], np.diff(any_disengage_probs) / (1 - any_disengage_probs[:-1])]
     # rolling buf for 2, 4, 6, 8, 10s
-    publish_state.disengage_buffer[:-ModelConstants.DISENGAGE_WIDTH] = publish_state.disengage_buffer[ModelConstants.DISENGAGE_WIDTH:]
-    publish_state.disengage_buffer[-ModelConstants.DISENGAGE_WIDTH:] = ind_disengage_probs
+    publish_state.disengage_buffer[:-model_constants.DISENGAGE_WIDTH] = publish_state.disengage_buffer[model_constants.DISENGAGE_WIDTH:]
+    publish_state.disengage_buffer[-model_constants.DISENGAGE_WIDTH:] = ind_disengage_probs
 
   score = 0.
-  for i in range(ModelConstants.DISENGAGE_WIDTH):
-    score += publish_state.disengage_buffer[i*ModelConstants.DISENGAGE_WIDTH+ModelConstants.DISENGAGE_WIDTH-1-i].item() / ModelConstants.DISENGAGE_WIDTH
-  if score < ModelConstants.RYG_GREEN:
+  for i in range(model_constants.DISENGAGE_WIDTH):
+    score += publish_state.disengage_buffer[i*model_constants.DISENGAGE_WIDTH+model_constants.DISENGAGE_WIDTH-1-i].item() / model_constants.DISENGAGE_WIDTH
+  if score < model_constants.RYG_GREEN:
     modelV2.confidence = ConfidenceClass.green
-  elif score < ModelConstants.RYG_YELLOW:
+  elif score < model_constants.RYG_YELLOW:
     modelV2.confidence = ConfidenceClass.yellow
   else:
     modelV2.confidence = ConfidenceClass.red
