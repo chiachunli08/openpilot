@@ -251,8 +251,7 @@ class SelectedModelState:
       buf[0, -1, :] = outputs['desired_curvature'][0, :] if not self.mlsim else 0
 
     if self.usbgpu and not np.all(np.isfinite(outputs.get('plan', np.array([0.])))):
-      cloudlog.error("model output not finite, dropping frame")
-      return None
+      raise RuntimeError("eGPU model output is not finite")
 
     return outputs
 
