@@ -63,6 +63,7 @@ class UIState:
         "liveDelay",
         "liveTorqueParameters",
         "lateralPlan",
+        "modelManagerSP",
       ]
     )
 

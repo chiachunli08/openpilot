@@ -8,6 +8,7 @@ from openpilot.selfdrive.ui.mici.layouts.settings.developer import DeveloperLayo
 from openpilot.selfdrive.ui.mici.layouts.settings.firehose import FirehoseLayout
 from openpilot.selfdrive.ui.mici.layouts.settings.usbgpu import UsbGpuLayoutMici
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui.mici.layouts.settings.models import ModelsLayoutMici
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 
 
@@ -47,6 +48,10 @@ class SettingsLayout(NavScroller):
                           ui_state.params.get("GitBranch") == "carrot-egpu")
     usbgpu_btn.set_click_callback(lambda: gui_app.push_widget(usbgpu_panel))
 
+    models_panel = ModelsLayoutMici()
+    models_btn = SettingsBigButton("models", "", gui_app.texture("icons_mici/settings.png", 64, 64))
+    models_btn.set_click_callback(lambda: gui_app.push_widget(models_panel))
+
     self._scroller.add_widgets([
       toggles_btn,
       network_btn,
@@ -55,6 +60,7 @@ class SettingsLayout(NavScroller):
       #BigDialogButton("manual", "", "icons_mici/settings/manual_icon.png", "Check out the mici user\nmanual at comma.ai/setup"),
       firehose_btn,
       usbgpu_btn,
+      models_btn,
       developer_btn,
     ])
 

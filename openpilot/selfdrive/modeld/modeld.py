@@ -27,6 +27,7 @@ from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
 from openpilot.selfdrive.modeld.helpers import (get_tg_input_devices, load_oob, modeld_pkl_path,
                                                 refresh_usbgpu_device_cache, select_vision_streams, usbgpu_compiled_path,
                                                 usbgpu_pcie_not_ready, usbgpu_present)
+from openpilot.selfdrive.modeld.model_manager.helpers import get_selected_bundle, selected_model_path
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld"
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
@@ -123,6 +124,12 @@ class ModelState:
     self.full_frames: dict[str, Tensor] = {}
     self._blob_cache: dict[int, Tensor] = {}
     self.parser = Parser()
+    self.constants = ModelConstants
+    self.meta_constants = None
+    self.model_freq = ModelConstants.MODEL_RUN_FREQ
+    self.numpy_inputs = self.npy
+    self.desire_key = 'desire_pulse'
+    self.selected_model = False
     self.frame_buf_params = {k: get_nv12_info(cam_w, cam_h) for k in ('img', 'big_img')}
     self.run_policy = jits['run_policy']
     self.warp = jits[(cam_w,cam_h)]
@@ -199,7 +206,11 @@ def main(demo=False):
   params = Params()
   _present = usbgpu_present()
   usbgpu_pkl_path = usbgpu_compiled_path()
-  _compiled = usbgpu_pkl_path is not None
+  selected_usbgpu = get_selected_bundle(source="usbgpu") if _present else None
+  selected_qcom = get_selected_bundle(source="qcom")
+  selected_usbgpu_path = selected_model_path(usbgpu=True) if selected_usbgpu is not None else None
+  selected_qcom_path = selected_model_path(usbgpu=False) if selected_qcom is not None else None
+  _compiled = usbgpu_pkl_path is not None or selected_usbgpu_path is not None
   _startup_failed = params.get_bool("UsbGpuStartupFailed")
   USBGPU = _present and _compiled and not _startup_failed
   cloudlog.warning(f"usbgpu present: {_present}, compiled: {_compiled}, startup_failed: {_startup_failed}, requested: {USBGPU}")
@@ -250,7 +261,11 @@ def main(demo=False):
       nonlocal usbgpu_model
       for attempt in range(1, USBGPU_INIT_ATTEMPTS + 1):
         try:
-          usbgpu_model = ModelState(vipc_client_main.width, vipc_client_main.height, True, usbgpu_pkl_path)
+          if selected_usbgpu_path is not None:
+            from openpilot.selfdrive.modeld.model_manager.selected_model import SelectedModelState
+            usbgpu_model = SelectedModelState(vipc_client_main.width, vipc_client_main.height, True, selected_usbgpu)
+          else:
+            usbgpu_model = ModelState(vipc_client_main.width, vipc_client_main.height, True, usbgpu_pkl_path)
           return
         except Exception as exc:
           if usbgpu_pcie_not_ready(exc) and attempt < USBGPU_INIT_ATTEMPTS:
@@ -279,7 +294,16 @@ def main(demo=False):
 
   # Keep the internal-GPU model ready so a USB disconnect or runtime error does
   # not take modeld down while driving.
-  small_model = ModelState(vipc_client_main.width, vipc_client_main.height, False) if model is None or USBGPU else None
+  small_model = None
+  if model is None or USBGPU:
+    if selected_qcom_path is not None:
+      try:
+        from openpilot.selfdrive.modeld.model_manager.selected_model import SelectedModelState
+        small_model = SelectedModelState(vipc_client_main.width, vipc_client_main.height, False, selected_qcom)
+      except Exception:
+        cloudlog.exception("selected QCOM model load failed, using built-in model")
+    if small_model is None:
+      small_model = ModelState(vipc_client_main.width, vipc_client_main.height, False)
   if model is None:
     model = small_model
   # Loading is not complete until the first model result is published. The
@@ -293,13 +317,14 @@ def main(demo=False):
 
   # messaging
   pm = PubMaster(["modelV2", "drivingModelData", "cameraOdometry"])
-  sm = SubMaster(["deviceState", "carState", "roadCameraState", "liveCalibration", "driverMonitoringState", "carControl", "liveDelay", "carrotMan", "radarState"])
+  sm = SubMaster(["deviceState", "carState", "roadCameraState", "liveCalibration", "driverMonitoringState",
+                  "carControl", "liveDelay", "carrotMan", "radarState"])
 
   publish_state = PublishState()
   params = Params()
 
   # setup filter to track dropped frames
-  frame_dropped_filter = FirstOrderFilter(0., 10., 1. / ModelConstants.MODEL_RUN_FREQ)
+  frame_dropped_filter = FirstOrderFilter(0., 10., 1. / model.model_freq)
   frame_id = 0
   last_vipc_frame_id = 0
   run_count = 0
@@ -320,7 +345,6 @@ def main(demo=False):
 
   # TODO this needs more thought, use .2s extra for now to estimate other delays
   # TODO Move smooth seconds to action function
-  lat_delay = CP.steerActuatorDelay + .2 + LAT_SMOOTH_SECONDS
   long_delay = CP.longitudinalActuatorDelay + LONG_SMOOTH_SECONDS
   prev_action = log.ModelDataV2.Action()
 
@@ -346,7 +370,7 @@ def main(demo=False):
       params.put_bool_nonblocking("UsbGpuPresent", usbgpu_present_now)
       if usbgpu_present_now:
         params.put_bool_nonblocking("UsbGpuEverPresent", True)
-      params.put_bool_nonblocking("UsbGpuCompiled", usbgpu_compiled_path() is not None)
+      params.put_bool_nonblocking("UsbGpuCompiled", usbgpu_compiled_path() is not None or selected_model_path(usbgpu=True) is not None)
 
     # Keep receiving frames until we are at least 1 frame ahead of previous extra frame
     while meta_main.timestamp_sof < meta_extra.timestamp_sof + 25000000:
@@ -404,8 +428,8 @@ def main(demo=False):
     traffic_convention = np.zeros(2)
     traffic_convention[int(is_rhd)] = 1
 
-    vec_desire = np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
-    if desire >= 0 and desire < ModelConstants.DESIRE_LEN:
+    vec_desire = np.zeros(model.constants.DESIRE_LEN, dtype=np.float32)
+    if desire >= 0 and desire < model.constants.DESIRE_LEN:
       vec_desire[desire] = 1
 
     # tracked dropped frames
@@ -428,10 +452,13 @@ def main(demo=False):
     lat_action_t = lat_delay_dynamic + frame_delay + action_delay
     long_action_t = long_delay + frame_delay + action_delay
     inputs: dict[str, np.ndarray] = {
-      'desire_pulse': vec_desire,
+      model.desire_key: vec_desire,
       'traffic_convention': traffic_convention,
-      'action_t': np.array([lat_action_t, long_action_t], dtype=np.float32),
     }
+    if 'action_t' in model.numpy_inputs:
+      inputs['action_t'] = np.array([lat_action_t, long_action_t], dtype=np.float32)
+    if 'lateral_control_params' in model.numpy_inputs:
+      inputs['lateral_control_params'] = np.array([v_ego, lat_delay_dynamic], dtype=np.float32)
 
     mt1 = time.perf_counter()
     try:
@@ -442,10 +469,21 @@ def main(demo=False):
       cloudlog.exception("eGPU model failed, falling back to internal GPU")
       params.put_bool("UsbGpuActive", False)
       model = small_model
+      frame_dropped_filter = FirstOrderFilter(0., 10., 1. / model.model_freq)
       run_count = 0
       # Run the already-loaded internal model for this same camera frame. A
       # missing modelV2 frame during fallback can otherwise cascade into a
       # misleading communication/CAN error while selfdrived waits for modeld.
+      bufs = {name: buf_extra if 'big' in name else buf_main for name in model.vision_input_names}
+      transforms = {name: model_transform_extra if 'big' in name else model_transform_main for name in model.vision_input_names}
+      vec_desire = np.zeros(model.constants.DESIRE_LEN, dtype=np.float32)
+      if 0 <= desire < model.constants.DESIRE_LEN:
+        vec_desire[desire] = 1
+      inputs = {model.desire_key: vec_desire, 'traffic_convention': traffic_convention}
+      if 'action_t' in model.numpy_inputs:
+        inputs['action_t'] = np.array([lat_action_t, long_action_t], dtype=np.float32)
+      if 'lateral_control_params' in model.numpy_inputs:
+        inputs['lateral_control_params'] = np.array([v_ego, lat_delay_dynamic], dtype=np.float32)
       model_output = model.run(bufs, transforms, inputs, prepare_only)
     mt2 = time.perf_counter()
     model_execution_time = mt2 - mt1
@@ -464,11 +502,15 @@ def main(demo=False):
       else:
         lat_delay_dynamic = sm["liveDelay"].lateralDelay + lat_smooth_seconds_dynamic
 
-      action = get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego, lat_smooth_seconds_dynamic, vEgoStopping)
+      if model.selected_model:
+        action = model.get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego, vEgoStopping)
+      else:
+        action = get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego, lat_smooth_seconds_dynamic, vEgoStopping)
       prev_action = action
       fill_model_msg(modelv2_send, model_output, action,
                      publish_state, meta_main.frame_id, meta_extra.frame_id, frame_id,
-                     frame_drop_ratio, meta_main.timestamp_eof, model_execution_time, live_calib_seen)
+                     frame_drop_ratio, meta_main.timestamp_eof, model_execution_time, live_calib_seen,
+                     model_constants=model.constants, model_meta=model.meta_constants)
 
       desire_state = modelv2_send.modelV2.meta.desireState
       l_lane_change_prob = desire_state[log.Desire.laneChangeLeft]
