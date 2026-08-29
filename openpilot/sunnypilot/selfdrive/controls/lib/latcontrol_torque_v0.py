@@ -50,7 +50,7 @@ class LatControlTorque(LatControl):
 
     self.extension = LatControlTorqueExt(self, CP, CP_SP, CI)
 
-  def update_live_torque_params(self, latAccelFactor, latAccelOffset, friction):
+  def update_torque_parameters(self, latAccelFactor, latAccelOffset, friction):
     self.torque_params.latAccelFactor = latAccelFactor
     self.torque_params.latAccelOffset = latAccelOffset
     self.torque_params.friction = friction
@@ -82,7 +82,7 @@ class LatControlTorque(LatControl):
       future_desired_lateral_accel = desired_curvature * CS.vEgo ** 2
       self.lat_accel_request_buffer.append(future_desired_lateral_accel)
       gravity_adjusted_future_lateral_accel = future_desired_lateral_accel - roll_compensation
-      desired_lateral_jerk = (future_desired_lateral_accel - expected_lateral_accel) / lat_delay
+      desired_lateral_jerk = (future_desired_lateral_accel - expected_lateral_accel) / max(lat_delay, self.dt)
 
       measurement = measured_curvature * CS.vEgo ** 2
       measurement_rate = self.measurement_rate_filter.update((measurement - self.previous_measurement) / self.dt)
@@ -125,4 +125,4 @@ class LatControlTorque(LatControl):
       pid_log.saturated = bool(self._check_saturation(self.steer_max - abs(output_torque) < 1e-3, CS, steer_limited_by_safety, curvature_limited))
 
     # TODO left is positive in this convention
-    return -output_torque, 0.0, desired_curvature, pid_log
+    return -output_torque, 0.0, pid_log

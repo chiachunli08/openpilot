@@ -19,7 +19,7 @@ from typing import NamedTuple
 from importlib.resources import as_file, files
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware import HARDWARE, PC
-from openpilot.system.ui.lib.multilang import multilang
+from openpilot.system.ui.lib.multilang import C4_ZH_CHT_TRANSLATIONS, FONT_FALLBACK_LANGUAGES, TRANSLATIONS_DIR, multilang
 from openpilot.common.realtime import Ratekeeper
 
 from openpilot.system.ui.sunnypilot.lib.application import GuiApplicationExt
@@ -95,21 +95,29 @@ ZH_CHT_TEXT_SCALE = 1.20
 
 ASSETS_DIR = files("openpilot.selfdrive").joinpath("assets")
 FONT_DIR = ASSETS_DIR.joinpath("fonts")
+EXTRA_FONT_CHARS = "–‑✓×°§•X⚙✕◀▶✔⌫⇧␣○●↳çêüñ–‑✓×°§•€£¥"
+UNIFONT_FALLBACK_CHARS = set("↳⌫⚙✔✕")
+NOTO_FONTS = {
+  "ja": "NotoSansCJKjp-Regular.otf",
+  "ko": "NotoSansCJKkr-Regular.otf",
+  "th": "NotoSansThai-Regular.ttf",
+  "zh-CHS": "NotoSansCJKsc-Regular.otf",
+  "zh-CHT": "SourceHanSansTC-Regular.otf",
+}
 
 
 class FontWeight(StrEnum):
-  NORMAL = "Inter-Regular.fnt" if BIG_UI else "Inter-Medium.fnt"
-  MEDIUM = "Inter-Medium.fnt"
-  BOLD = "Inter-Bold.fnt"
-  SEMI_BOLD = "Inter-SemiBold.fnt"
-  UNIFONT = "unifont.fnt"
-  SOURCE_HAN_SANS_TC = "C4SourceHanSansTC-Regular.fnt"
-  AUDIOWIDE = "Audiowide-Regular.fnt"
+  NORMAL = "Inter-Regular.ttf" if BIG_UI else "Inter-Medium.ttf"
+  MEDIUM = "Inter-Medium.ttf"
+  BOLD = "Inter-Bold.ttf"
+  SEMI_BOLD = "Inter-SemiBold.ttf"
+  UNIFONT = "unifont.otf"
+  AUDIOWIDE = "Audiowide-Regular.ttf"
 
   # Small UI fonts
-  DISPLAY_REGULAR = "Inter-Regular.fnt"
-  ROMAN = "Inter-Regular.fnt"
-  DISPLAY = "Inter-Bold.fnt"
+  DISPLAY_REGULAR = "Inter-Regular.ttf"
+  ROMAN = "Inter-Regular.ttf"
+  DISPLAY = "Inter-Bold.ttf"
 
 
 def text_size_scale(text: str = "") -> float:
@@ -120,13 +128,11 @@ def text_size_scale(text: str = "") -> float:
 
 
 def font_fallback(font: rl.Font, text: str = "") -> rl.Font:
-  """Use a language-appropriate font only when text needs non-ASCII glyphs."""
-  if multilang.requires_unifont() and any(ord(char) > 0x7F for char in text):
-    if multilang.language == "zh-CHT":
-      if FONT_DIR.joinpath(FontWeight.SOURCE_HAN_SANS_TC).is_file():
-        return gui_app.font(FontWeight.SOURCE_HAN_SANS_TC)
+  """Use a language-appropriate fallback only when text needs it."""
+  if multilang.requires_font_fallback() and any(ord(char) > 0x7F for char in text):
+    if any(char in UNIFONT_FALLBACK_CHARS for char in text):
       return gui_app.font(FontWeight.UNIFONT)
-    return gui_app.font(FontWeight.UNIFONT)
+    return gui_app.fallback_font()
   return font
 
 
@@ -214,6 +220,7 @@ class GuiApplication(GuiApplicationExt):
     self._set_log_callback()
 
     self._fonts: dict[FontWeight, rl.Font] = {}
+    self._fallback_fonts: dict[str, rl.Font] = {}
     self._width = width if width is not None else GuiApplication._default_width()
     self._height = height if height is not None else GuiApplication._default_height()
 
@@ -571,6 +578,9 @@ class GuiApplication(GuiApplicationExt):
     for font in self._fonts.values():
       rl.unload_font(font)
     self._fonts = {}
+    for font in self._fallback_fonts.values():
+      rl.unload_font(font)
+    self._fallback_fonts = {}
 
     if self._render_texture is not None:
       rl.unload_render_texture(self._render_texture)
@@ -696,6 +706,24 @@ class GuiApplication(GuiApplicationExt):
   def font(self, font_weight: FontWeight = FontWeight.NORMAL) -> rl.Font:
     return self._fonts[font_weight]
 
+  def fallback_font(self) -> rl.Font:
+    language = multilang.language
+    if language not in self._fallback_fonts:
+      chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
+      chars.update(TRANSLATIONS_DIR.joinpath(f"app_{language}.po").read_text(encoding="utf-8"))
+      if language == "zh-CHT":
+        chars.update("".join(C4_ZH_CHT_TRANSLATIONS))
+        chars.update("".join(C4_ZH_CHT_TRANSLATIONS.values()))
+      codepoints = sorted(map(ord, chars))
+      codepoint_buffer = rl.ffi.new("int[]", codepoints)
+      with as_file(FONT_DIR) as fspath:
+        font = rl.load_font_ex((fspath / NOTO_FONTS[language]).as_posix(), 48,
+                               rl.ffi.cast("int *", codepoint_buffer), len(codepoints))
+      rl.gen_texture_mipmaps(font.texture)
+      rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_TRILINEAR)
+      self._fallback_fonts[language] = font
+    return self._fallback_fonts[language]
+
   @property
   def width(self):
     return self._width
@@ -705,14 +733,26 @@ class GuiApplication(GuiApplicationExt):
     return self._height
 
   def _load_fonts(self):
+    base_chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
+    unifont_chars = set(base_chars)
+    for language, code in multilang.languages.items():
+      unifont_chars.update(language)
+      if code not in FONT_FALLBACK_LANGUAGES:
+        base_chars.update(TRANSLATIONS_DIR.joinpath(f"app_{code}.po").read_text(encoding="utf-8"))
+
     for font_weight_file in FontWeight:
       with as_file(FONT_DIR) as fspath:
-        fnt_path = fspath / font_weight_file
-        font = rl.load_font(fnt_path.as_posix())
+        unifont = font_weight_file == FontWeight.UNIFONT
+        codepoints = sorted(map(ord, unifont_chars if unifont else base_chars))
+        codepoint_buffer = rl.ffi.new("int[]", codepoints)
+        font = rl.load_font_ex((fspath / font_weight_file).as_posix(), 16 if unifont else 200,
+                               rl.ffi.cast("int *", codepoint_buffer), len(codepoints))
         if font_weight_file != FontWeight.UNIFONT:
           rl.gen_texture_mipmaps(font.texture)
           rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_TRILINEAR)
         self._fonts[font_weight_file] = font
+    if multilang.requires_font_fallback():
+      self.fallback_font()
     rl.gui_set_font(self._fonts[FontWeight.NORMAL])
 
   def _set_styles(self):

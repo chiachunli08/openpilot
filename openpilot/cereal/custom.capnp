@@ -351,6 +351,7 @@ struct OnroadEventSP @0xda96579883444c35 {
     speedLimitChanged @21;
     speedLimitPending @22;
     e2eChime @23;
+    laneChangeRoadEdge @24;
   }
 }
 
@@ -457,6 +458,8 @@ struct LiveMapDataSP @0xf416ec09499d9d19 {
 
 struct ModelDataV2SP @0xa1680744031fdb2d {
   laneTurnDirection @0 :TurnDirection;
+  leftLaneChangeEdgeBlock @1 :Bool;
+  rightLaneChangeEdgeBlock @2 :Bool;
 
   enum TurnDirection {
     none @0;
@@ -531,7 +534,7 @@ struct CarParamsIC @0xc86a3d38d13eb3ef {
   }
 }
 
-struct LiveCurvatureParameters @0xa4f1eb3323f5f582 {
+struct LateralCurvatureParameters @0xa4f1eb3323f5f582 {
   liveValid @0 :Bool;
   version @1 :Int32;
   useParams @2 :Bool;

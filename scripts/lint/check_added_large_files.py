@@ -6,7 +6,7 @@ import subprocess
 
 
 ALLOWED_LARGE_FILES = {
-  # This font is intentionally vendored so CJK UI rendering works offline.
+  # Vendored so complete Traditional Chinese glyph coverage works offline.
   "openpilot/selfdrive/assets/fonts/SourceHanSansTC-Regular.otf",
 }
 

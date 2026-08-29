@@ -1,6 +1,5 @@
 import time
 from dataclasses import dataclass
-from typing import cast
 
 import numpy as np
 import pyray as rl
@@ -98,16 +97,16 @@ class DynamicSteeringLearnerGraph(Widget):
                          v_ego: float) -> tuple[np.ndarray, np.ndarray, float, float]:
     if lcp_frame != self._cached_lcp_frame:
       abs_curvatures = np.abs(self._plot_x).astype(np.float64)
-      # Recomputes only when liveCurvatureParameters changes (4Hz); cached across UI frames.
-      self._cached_fit_curve = cast(np.ndarray, CurvatureDLookup.interp_curve_value(
+      # Recomputes only when lateralCurvatureParameters changes (4Hz); cached across UI frames.
+      self._cached_fit_curve = CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, abs_curvatures
-      ))
+      )
       # Preview is only populated when ShowDynamicSteeringLearnerGraph is on.
       has_preview = preview_corrections.shape == fit_corrections.shape and np.any(preview_corrections)
       if has_preview:
-        self._cached_preview_curve = cast(np.ndarray, CurvatureDLookup.interp_curve_value(
+        self._cached_preview_curve = CurvatureDLookup.interp_curve_value(
           preview_corrections, preview_valid, v_ego, abs_curvatures
-        ))
+        )
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 
@@ -123,7 +122,7 @@ class DynamicSteeringLearnerGraph(Widget):
 
     # When curvatured is not running for this car, render a placeholder instead of
     # doing any interpolation work.
-    lcp = sm["liveCurvatureParameters"]
+    lcp = sm["lateralCurvatureParameters"]
     if not bool(getattr(lcp, "useParams", False)):
       graph_rect = self._build_graph_rect(rect)
       rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
@@ -133,14 +132,14 @@ class DynamicSteeringLearnerGraph(Widget):
     graph_rect = self._build_graph_rect(rect)
     rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
 
-    lcp_frame = sm.recv_frame["liveCurvatureParameters"]
+    lcp_frame = sm.recv_frame["lateralCurvatureParameters"]
     car_state = sm["carState"]
 
     fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
     preview_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     preview_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
-    transport_valid = bool(sm.valid["liveCurvatureParameters"])
+    transport_valid = bool(sm.valid["lateralCurvatureParameters"])
     payload_valid = bool(getattr(lcp, "liveValid", False))
 
     expected_size = CurvatureDLookup.total_size()
