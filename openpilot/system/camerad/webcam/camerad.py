@@ -9,6 +9,7 @@ from msgq.visionipc import VisionIpcServer
 from openpilot.cereal import messaging
 
 from openpilot.system.camerad.webcam.camera import Camera
+from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 
 NARROW_ROAD_CAM = os.getenv("NARROW_ROAD_CAM", os.getenv("ROAD_CAM", "0"))
@@ -22,7 +23,7 @@ CAMERAS = [
 ]
 if WIDE_CAM:
   CAMERAS.append(CameraType("wideRoadCameraState", VisionStreamType.VISION_STREAM_WIDE_ROAD, WIDE_CAM))
-if DRIVER_CAM:
+if DRIVER_CAM and not Params().get_bool("DisableDM"):
   CAMERAS.append(CameraType("cabinCameraState", VisionStreamType.VISION_STREAM_CABIN, DRIVER_CAM))
 
 class Camerad:

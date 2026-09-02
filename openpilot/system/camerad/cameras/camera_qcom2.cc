@@ -255,7 +255,11 @@ void camerad_thread() {
 
   // *** per-cam init ***
   std::vector<std::unique_ptr<CameraState>> cams;
-  for (const auto &config : ALL_CAMERA_CONFIGS) {
+  const bool disable_dm = Params().getBool("DisableDM");
+  for (auto config : ALL_CAMERA_CONFIGS) {
+    if (disable_dm && config.stream_type == VISION_STREAM_CABIN) {
+      config.enabled = false;
+    }
     auto cam = std::make_unique<CameraState>(&m, config);
     cam->init(&v);
     cams.emplace_back(std::move(cam));

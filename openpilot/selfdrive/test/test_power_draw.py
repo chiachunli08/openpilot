@@ -45,7 +45,9 @@ class TestPowerDraw(OpenpilotTestCase):
   COMMA_HARDWARE_TEST = True
 
   def setup_method(self):
-    Params().put("CarParams", get_demo_car_params().to_bytes(), block=True)
+    params = Params()
+    params.put("DisableDM", 0, block=True)
+    params.put("CarParams", get_demo_car_params().to_bytes(), block=True)
 
   def teardown_method(self):
     manager_cleanup()

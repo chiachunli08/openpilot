@@ -124,6 +124,8 @@ class TestOnroad(OpenpilotTestCase):
     # setup env
     params = Params()
     params.remove("CurrentRoute")
+    # This suite validates the full three-camera/DM pipeline. DisableDM behavior is covered separately.
+    params.put("DisableDM", 0, block=True)
     params.put_bool("RecordFront", True, block=True)
     set_params_enabled()
     os.environ['REPLAY'] = '1'

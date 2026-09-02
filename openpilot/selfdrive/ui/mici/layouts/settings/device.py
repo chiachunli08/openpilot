@@ -194,7 +194,7 @@ class DeviceLayoutMici(NavScroller):
 
     cabin_cam_btn = BigButton("driver\ncamera preview", "", gui_app.texture("icons_mici/settings/device/cameras.png", 64, 64))
     cabin_cam_btn.set_click_callback(lambda: gui_app.push_widget(CabinCameraDialog()))
-    cabin_cam_btn.set_enabled(lambda: ui_state.is_offroad())
+    cabin_cam_btn.set_enabled(lambda: ui_state.is_offroad() and not ui_state.params.get_bool("DisableDM"))
 
     review_training_guide_btn = BigButton("review\ntraining guide", "", gui_app.texture("icons_mici/settings/device/info.png", 64, 64))
     review_training_guide_btn.set_click_callback(lambda: gui_app.push_widget(ReviewTrainingGuide(completed_callback=lambda: gui_app.pop_widgets_to(self))))

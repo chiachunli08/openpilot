@@ -14,6 +14,7 @@ from opendbc.car.car_helpers import interfaces
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.selfdrive.controls.lib.curvatured import CurvatureDController
 from openpilot.selfdrive.controls.lib.drive_helpers import clip_curvature
+from openpilot.selfdrive.controls.lib.driver_monitoring import get_force_decel
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.latcontrol_pid import LatControlPID
 from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, STEER_ANGLE_SATURATION_THRESHOLD
@@ -53,9 +54,11 @@ class Controls(ControlsExt):
 
     ic_sm_services = ['lateralCurvatureParameters', 'longitudinalPlanIC']
     ic_pm_services = ['carControlIC', 'controlsStateIC']
+    self.disable_dm = self.params.get_bool("DisableDM")
+    dm_services = [] if self.disable_dm else ['driverMonitoringState']
     self.sm = messaging.SubMaster(['lateralDelay', 'vehicleParameters', 'lateralTorqueParameters', 'modelV2', 'selfdriveState',
                                    'extrinsicsCalibration', 'deviceMotion', 'longitudinalPlan', 'lateralManeuverPlan', 'carState', 'carOutput',
-                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance'] + ic_sm_services + self.sm_services_ext,
+                                   'onroadEvents', 'driverAssistance'] + dm_services + ic_sm_services + self.sm_services_ext,
                                   poll='selfdriveState')
     self.pm = messaging.PubMaster(['carControl', 'controlsState'] + ic_pm_services + self.pm_services_ext)
 
@@ -294,8 +297,8 @@ class Controls(ControlsExt):
     cs.upAccelCmd = float(self.LoC.pid.p)
     cs.uiAccelCmd = float(self.LoC.pid.i)
     cs.ufAccelCmd = float(self.LoC.pid.f)
-    cs.forceDecel = bool(self.sm['driverMonitoringState'].noResponseForceDecel or
-                         (self.sm['selfdriveState'].state == State.softDisabling))
+    dm_no_response = not self.disable_dm and self.sm['driverMonitoringState'].noResponseForceDecel
+    cs.forceDecel = get_force_decel(self.disable_dm, dm_no_response, self.sm['selfdriveState'].state == State.softDisabling)
 
     # trigger the car's stock driver monitoring escalation
     CC.driverMonitoringEscalation = cs.forceDecel
