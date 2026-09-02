@@ -102,16 +102,31 @@ class SelfdriveD(CruiseHelper):
     self.gps_location_service = get_gps_location_service(self.params)
     self.gps_packets = [self.gps_location_service]
     self.sensor_packets = ["accelerometer", "gyroscope"]
-    self.camera_packets = ["narrowRoadCameraState", "cabinCameraState", "wideRoadCameraState"]
+    # SP-FORK (king-vwsp-nodm): DM is gated by DisableDM. When disabled we drop
+    # cabinCameraState from camera_packets so a missing/never-published cabin
+    # frame can never block all_alive / all_freq_ok or fire a Camera
+    # Malfunction alert. Simulation keeps cabinCameraState in the list because
+    # the sim publishes it from synthetic sources regardless of DisableDM.
+    self.disable_dm = int(self.params.get("DisableDM") or 0) != 0
+    self.camera_packets = ["narrowRoadCameraState"]
+    if not self.disable_dm or SIMULATION:
+      self.camera_packets.append("cabinCameraState")
+    self.camera_packets.append("wideRoadCameraState")
 
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
 
-    ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan'] + ['modelDataV2SP', 'longitudinalPlanSP']
+# SP-FORK (king-vwsp-nodm): driverMonitoringState is never published when
+    # DisableDM != 0 (dmonitoringd/dmonitoringmodeld are not started), so always
+    # ignore it for comm_issue / alive / freq checks. cabinCameraState is
+    # ignored for the same reason whenever DisableDM != 0.
+    ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan', 'driverMonitoringState'] + ['modelDataV2SP', 'longitudinalPlanSP']
     if not Params().get_bool("EnableCurvatureD"):
       ignore += ['lateralCurvatureParameters']
+    if self.disable_dm and not SIMULATION:
+      ignore += ['cabinCameraState']
     if SIMULATION:
-      ignore += ['cabinCameraState', 'managerState']
+      ignore += ['managerState']
     if REPLAY:
       # no vipc in replay will make them ignored anyways
       ignore += ['narrowRoadCameraState', 'wideRoadCameraState']
@@ -262,7 +277,11 @@ class SelfdriveD(CruiseHelper):
       self.events.add(EventName.resumeBlocked)
 
     # Handle DM
-    if not self.CP.notCar:
+    # SP-FORK (king-vwsp-nodm): with DisableDM != 0 the dmonitoringd daemon
+    # is never spawned, so driverMonitoringState stays at its default
+    # zero-valued struct and all of the alert branches below would otherwise
+    # only produce spurious empty/zero comparisons. Skip the whole block.
+    if not self.CP.notCar and not self.disable_dm:
       # Block engaging until lockout times out or ignition reset
       if self.sm['driverMonitoringState'].lockout and not self.dm_lockout_set:
         self.params.put_bool("DriverTooDistracted", True)

@@ -44,8 +44,11 @@ def launcher(proc: str, name: str) -> None:
     raise
 
 
-def nativelauncher(pargs: list[str], cwd: str, name: str) -> None:
+def nativelauncher(pargs: list[str], cwd: str, name: str, env: dict[str, str] | None = None) -> None:
   os.environ['MANAGER_DAEMON'] = name
+  if env:
+    for k, v in env.items():
+      os.environ[k] = v
 
   # exec the process
   os.chdir(cwd)
@@ -132,13 +135,14 @@ class ManagerProcess(ABC):
 
 
 class NativeProcess(ManagerProcess):
-  def __init__(self, name, cwd, cmdline, should_run, enabled=True, sigkill=False):
+  def __init__(self, name, cwd, cmdline, should_run, enabled=True, sigkill=False, env=None):
     self.name = name
     self.cwd = cwd
     self.cmdline = cmdline
     self.should_run = should_run
     self.enabled = enabled
     self.sigkill = sigkill
+    self.env = env
     self.launcher = nativelauncher
 
   def start(self) -> None:
@@ -151,7 +155,11 @@ class NativeProcess(ManagerProcess):
 
     cwd = os.path.join(BASEDIR, self.cwd)
     cloudlog.info(f"starting process {self.name}")
-    self.proc = Process(name=self.name, target=self.launcher, args=(self.cmdline, cwd, self.name))
+    # env may be a static dict or a callable returning a dict, so the env is
+    # re-evaluated at every launch (manager may restart the process after the
+    # persistent param DisableDM changes).
+    env = self.env() if callable(self.env) else self.env
+    self.proc = Process(name=self.name, target=self.launcher, args=(self.cmdline, cwd, self.name, env))
     self.proc.start()
     self.shutting_down = False
 

@@ -19,6 +19,21 @@ WEBCAM = os.getenv("USE_WEBCAM") is not None
 def driverview(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started or params.get_bool("IsDriverViewEnabled")
 
+def dm_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
+  # SP-FORK (king-vwsp-nodm): persistent DisableDM gate
+  #   0 = driver monitoring fully enabled (default upstream behavior)
+  #   1 = driver monitoring fully disabled (default in this fork)
+  # Non-zero skips dmonitoringmodeld and dmonitoringd entirely.
+  return int(params.get("DisableDM") or 0) == 0
+
+def camerad_env(_started: bool, params: Params, _CP: car.CarParams) -> dict[str, str]:
+  # SP-FORK (king-vwsp-nodm): when DisableDM != 0, tell camerad not to bring
+  # up the driver-facing sensor at all. DISABLE_DRIVER is honored by
+  # system/camerad/cameras/hw.h::CABIN_CAMERA_CONFIG, which short-circuits
+  # the cabin ISP initialization so devices without that physical sensor
+  # can still boot camerad cleanly.
+  return {"DISABLE_DRIVER": "1"} if int(params.get("DisableDM") or 0) != 0 else {}
+
 def notcar(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and CP.notCar
 
@@ -117,15 +132,17 @@ procs = [
   NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
   PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
 
-  NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream), enabled=not WEBCAM),
+NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream),
+                enabled=not WEBCAM, env=camerad_env),
   PythonProcess("webcamerad", "openpilot.system.camerad.webcam.camerad", driverview, enabled=WEBCAM),
   PythonProcess("proclogd", "openpilot.system.proclogd", only_onroad, enabled=platform.system() != "Darwin"),
   PythonProcess("journald", "openpilot.system.journald", only_onroad, platform.system() != "Darwin"),
-  PythonProcess("micd", "openpilot.system.micd", iscar),
+  PythonProcess("micd", "openpilot.selfdrive.ui.soundd", iscar),
   PythonProcess("timed", "openpilot.system.timed", always_run, enabled=not PC),
 
   PythonProcess("modeld", "openpilot.selfdrive.modeld.modeld", and_(only_onroad, is_stock_model)),
-  PythonProcess("dmonitoringmodeld", "openpilot.selfdrive.modeld.dmonitoringmodeld", driverview, enabled=(WEBCAM or not PC)),
+  # SP-FORK (king-vwsp-nodm): driver monitoring model gated by DisableDM
+  PythonProcess("dmonitoringmodeld", "openpilot.selfdrive.modeld.dmonitoringmodeld", and_(driverview, dm_enabled), enabled=not WEBCAM),
 
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
   PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run),
@@ -140,7 +157,8 @@ procs = [
   PythonProcess("selfdrived", "openpilot.selfdrive.selfdrived.selfdrived", only_onroad),
   PythonProcess("card", "openpilot.selfdrive.car.card", only_onroad),
   PythonProcess("deleter", "openpilot.system.loggerd.deleter", always_run),
-  PythonProcess("dmonitoringd", "openpilot.selfdrive.monitoring.dmonitoringd", driverview, enabled=(WEBCAM or not PC)),
+  # SP-FORK (king-vwsp-nodm): driver monitoring policy daemon gated by DisableDM
+  PythonProcess("dmonitoringd", "openpilot.selfdrive.monitoring.dmonitoringd", and_(driverview, dm_enabled), enabled=not WEBCAM),
   PythonProcess("qcomgpsd", "openpilot.system.qcomgpsd.qcomgpsd", qcomgps, enabled=COMMA_HARDWARE),
   PythonProcess("pandad", "openpilot.selfdrive.pandad.pandad", always_run),
   PythonProcess("paramsd", "openpilot.selfdrive.locationd.paramsd", only_onroad),

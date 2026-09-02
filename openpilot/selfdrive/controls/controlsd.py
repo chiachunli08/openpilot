@@ -53,10 +53,18 @@ class Controls(ControlsExt):
 
     ic_sm_services = ['lateralCurvatureParameters', 'longitudinalPlanIC']
     ic_pm_services = ['carControlIC', 'controlsStateIC']
-    self.sm = messaging.SubMaster(['lateralDelay', 'vehicleParameters', 'lateralTorqueParameters', 'modelV2', 'selfdriveState',
-                                   'extrinsicsCalibration', 'deviceMotion', 'longitudinalPlan', 'lateralManeuverPlan', 'carState', 'carOutput',
-                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance'] + ic_sm_services + self.sm_services_ext,
-                                  poll='selfdriveState')
+    # SP-FORK (king-vwsp-nodm): only subscribe to driverMonitoringState when
+    # DM is actually running. With DisableDM != 0, dmonitoringd is never
+    # spawned and the topic would stay at its default zero-valued struct,
+    # which is fine for forceDecel (collapsed to literal False below) but
+    # would otherwise generate SubMaster comm_issue noise.
+    self.disable_dm = int(self.params.get("DisableDM") or 0) != 0
+    sm_services = ['lateralDelay', 'vehicleParameters', 'lateralTorqueParameters', 'modelV2', 'selfdriveState',
+                   'extrinsicsCalibration', 'deviceMotion', 'longitudinalPlan', 'lateralManeuverPlan', 'carState', 'carOutput']
+    if not self.disable_dm:
+      sm_services.append('driverMonitoringState')
+    sm_services += ['onroadEvents', 'driverAssistance'] + ic_sm_services + self.sm_services_ext
+    self.sm = messaging.SubMaster(sm_services, poll='selfdriveState')
     self.pm = messaging.PubMaster(['carControl', 'controlsState'] + ic_pm_services + self.pm_services_ext)
 
     self.steer_limited_by_safety = False
@@ -294,7 +302,13 @@ class Controls(ControlsExt):
     cs.upAccelCmd = float(self.LoC.pid.p)
     cs.uiAccelCmd = float(self.LoC.pid.i)
     cs.ufAccelCmd = float(self.LoC.pid.f)
-    cs.forceDecel = bool(self.sm['driverMonitoringState'].noResponseForceDecel or
+    cs.forceDecel = bool(
+                         # SP-FORK (king-vwsp-nodm): driverMonitoringState is only
+                         # in the subscription list when DM is enabled; with DM
+                         # disabled the noResponseForceDecel read collapses to a
+                         # literal False so cs.forceDecel can never receive a
+                         # stale default struct read.
+                         (self.sm['driverMonitoringState'].noResponseForceDecel if not self.disable_dm else False) or
                          (self.sm['selfdriveState'].state == State.softDisabling))
 
     # trigger the car's stock driver monitoring escalation

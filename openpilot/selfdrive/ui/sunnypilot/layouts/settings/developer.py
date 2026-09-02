@@ -50,9 +50,24 @@ class DeveloperLayoutSP(DeveloperLayout):
 
     self.prebuilt_toggle = toggle_item_sp(tr("Quickboot Mode"), "", param="QuickBootToggle", callback=self._on_prebuilt_toggled)
 
+    # SP-FORK (king-vwsp-nodm): persistent DisableDM toggle. Stored as an
+    # INT param internally (0=enabled, 1=disabled); the toggle visualizes
+    # a bool and writes back through _on_disable_dm_toggled. default = 1
+    # (DM disabled) for devices without a physical driver-facing sensor.
+    self.disable_dm_toggle = toggle_item_sp(
+      tr("Disable Driver Monitoring"),
+      tr("Fully disable driver monitoring. Stops dmonitoringmodeld and dmonitoringd, "
+         "skips driverDistracted / driverUnresponsive / tooDistracted alerts, "
+         "and tells camerad to skip the driver camera sensor. Reboot required "
+         "for changes to take effect. Personal-use only — will get you banned "
+         "from upstream sunnypilot servers."),
+      initial_state=int(ui_state.params.get("DisableDM") or 0) != 0,
+      callback=self._on_disable_dm_toggled,
+    )
+
     self.error_log_btn = button_item(tr("Error Log"), tr("VIEW"), tr("View the error log for sunnypilot crashes."), callback=self._on_error_log_clicked)
 
-    self.items: list = [self.show_advanced_controls, self.enable_github_runner_toggle, self.enable_copyparty_toggle, self.prebuilt_toggle, self.error_log_btn,]
+    self.items: list = [self.show_advanced_controls, self.enable_github_runner_toggle, self.enable_copyparty_toggle, self.prebuilt_toggle, self.disable_dm_toggle, self.error_log_btn,]
 
   @staticmethod
   def _on_prebuilt_toggled(state):
@@ -61,6 +76,13 @@ class DeveloperLayoutSP(DeveloperLayout):
     else:
       os.remove(PREBUILT_PATH)
     ui_state.params.put_bool("QuickBootToggle", state)
+
+  @staticmethod
+  def _on_disable_dm_toggled(state: bool) -> None:
+    # SP-FORK (king-vwsp-nodm): the toggle visualizes a bool, the persistent
+    # param is an INT (0 = enabled, 1 = disabled). A reboot is required for
+    # the manager / camerad / selfdrived to pick up the change.
+    ui_state.params.put("DisableDM", 1 if state else 0)
 
   def _on_delete_confirm(self, result):
     if result == DialogResult.CONFIRM:
@@ -103,4 +125,5 @@ class DeveloperLayoutSP(DeveloperLayout):
 
     self.enable_copyparty_toggle.set_visible(show_advanced)
     self.enable_github_runner_toggle.set_visible(show_advanced and not self._is_release_branch)
+    self.disable_dm_toggle.set_visible(show_advanced)
     self.error_log_btn.set_visible(not self._is_release_branch)
