@@ -1,0 +1,144 @@
+name: sync-staging-chestnut-nodm
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: sync with sunnypilot/staging-chestnut
+    runs-on: ubuntu-latest
+    if: github.repository == 'chiachunli08/openpilot'
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global --add safe.directory '*'
+
+      - name: Checkout staging-chestnut-nodm
+        uses: actions/checkout@v4
+        with:
+          ref: staging-chestnut-nodm
+          fetch-depth: 2
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch sunnypilot staging-chestnut
+        run: |
+          git remote remove sunnypilot 2>/dev/null || true
+          git remote add sunnypilot https://github.com/sunnypilot/sunnypilot.git
+          git fetch sunnypilot staging-chestnut
+
+      - name: Resolve SHAs
+        id: resolve
+        run: |
+          CURRENT_HEAD="$(git rev-parse HEAD)"
+          CURRENT_BASE="$(git rev-parse HEAD^)"
+          UPSTREAM_SHA="$(git rev-parse sunnypilot/staging-chestnut)"
+
+          echo "CURRENT_HEAD=$CURRENT_HEAD" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_BASE=$CURRENT_BASE" >> "$GITHUB_OUTPUT"
+          echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "CURRENT_HEAD=$CURRENT_HEAD"
+            echo "CURRENT_BASE=$CURRENT_BASE"
+            echo "UPSTREAM_SHA=$UPSTREAM_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify HEAD is the expected NoDM commit
+        run: |
+          EXPECTED_SUBJECT="m3: disable driver monitoring (staging-chestnut fork)"
+          ACTUAL_SUBJECT="$(git log -1 --format=%s HEAD)"
+
+          if [ "$ACTUAL_SUBJECT" != "$EXPECTED_SUBJECT" ]; then
+            echo "::error::Unexpected commit subject on staging-chestnut-nodm."
+            echo "::error::Expected: $EXPECTED_SUBJECT"
+            echo "::error::Actual:   $ACTUAL_SUBJECT"
+            echo "::error::Refusing to modify the branch because someone may have"
+            echo "::error::added commits other than the NoDM patch."
+            exit 1
+          fi
+
+          echo "OK: HEAD subject matches expected NoDM commit."
+
+      - name: Check if upstream has advanced
+        id: check
+        run: |
+          if [ "${{ steps.resolve.outputs.CURRENT_BASE }}" = "${{ steps.resolve.outputs.UPSTREAM_SHA }}" ]; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "Branch is already up to date with sunnypilot/staging-chestnut."
+            echo "No new commit will be created."
+          else
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Upstream advanced; will re-apply NoDM on top of the new snapshot."
+          fi
+
+      - name: Rebase NoDM onto new upstream snapshot
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+
+          NODM_COMMIT="${{ steps.resolve.outputs.CURRENT_HEAD }}"
+          UPSTREAM_SHA="${{ steps.resolve.outputs.UPSTREAM_SHA }}"
+
+          echo "Resetting branch to upstream snapshot $UPSTREAM_SHA..."
+          git reset --hard "$UPSTREAM_SHA"
+
+          echo "Cherry-picking NoDM commit $NODM_COMMIT..."
+          if ! git cherry-pick "$NODM_COMMIT"; then
+            echo "::error::Cherry-pick failed. Likely upstream modified code touched"
+            echo "::error::by the NoDM patch. Branch staging-chestnut-nodm is left"
+            echo "::error::untouched on the remote so a human can resolve manually."
+            git cherry-pick --abort || true
+            exit 1
+          fi
+
+          NEW_HEAD="$(git rev-parse HEAD)"
+          NEW_SUBJECT="$(git log -1 --format=%s HEAD)"
+
+          if [ "$NEW_SUBJECT" != "m3: disable driver monitoring (staging-chestnut fork)" ]; then
+            echo "::error::Cherry-pick produced a commit with unexpected subject:"
+            echo "::error::$NEW_SUBJECT"
+            exit 1
+          fi
+
+          {
+            echo "NEW_HEAD=$NEW_HEAD"
+            echo "NEW_SUBJECT=$NEW_SUBJECT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push to staging-chestnut-nodm
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+
+          OLD_HEAD="${{ steps.resolve.outputs.CURRENT_HEAD }}"
+          UPSTREAM_SHA="${{ steps.resolve.outputs.UPSTREAM_SHA }}"
+
+          echo "Pushing with --force-with-lease (lease=$OLD_HEAD)..."
+          git push \
+            --force-with-lease=refs/heads/staging-chestnut-nodm:$OLD_HEAD \
+            origin HEAD:staging-chestnut-nodm
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## sync-staging-chestnut-nodm"
+            echo ""
+            echo "- Upstream SHA: \`${{ steps.resolve.outputs.UPSTREAM_SHA }}\`"
+            echo "- Previous base: \`${{ steps.resolve.outputs.CURRENT_BASE }}\`"
+            echo "- Previous NoDM commit: \`${{ steps.resolve.outputs.CURRENT_HEAD }}\`"
+            if [ "${{ steps.check.outputs.needs_update }}" = "true" ]; then
+              echo "- New HEAD: \`$(git rev-parse HEAD)\`"
+              echo "- Action: rebased onto new upstream and re-applied NoDM."
+            else
+              echo "- Action: no-op (already up to date)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
