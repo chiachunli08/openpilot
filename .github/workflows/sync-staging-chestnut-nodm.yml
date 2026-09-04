@@ -2,11 +2,21 @@ name: sync-staging-chestnut-nodm
 
 on:
   workflow_dispatch:
+    inputs:
+      test_notify:
+        description: "Send a test notification (does not modify the branch)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   schedule:
     - cron: "17 */6 * * *"
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   sync:
@@ -80,6 +90,7 @@ jobs:
           fi
 
       - name: Rebase NoDM onto new upstream snapshot
+        id: rebase
         if: steps.check.outputs.needs_update == 'true'
         run: |
           set -euo pipefail
@@ -108,13 +119,15 @@ jobs:
             exit 1
           fi
 
+          echo "NEW_HEAD=$NEW_HEAD" >> "$GITHUB_OUTPUT"
+
           {
             echo "NEW_HEAD=$NEW_HEAD"
             echo "NEW_SUBJECT=$NEW_SUBJECT"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Push to staging-chestnut-nodm
-        if: steps.check.outputs.needs_update == 'true'
+        if: steps.check.outputs.needs_update == 'true' && success()
         run: |
           set -euo pipefail
 
@@ -125,6 +138,124 @@ jobs:
           git push \
             --force-with-lease=refs/heads/staging-chestnut-nodm:$OLD_HEAD \
             origin HEAD:staging-chestnut-nodm
+
+      - name: Notify on successful sync
+        if: steps.check.outputs.needs_update == 'true' && success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const oldBase = '${{ steps.resolve.outputs.CURRENT_BASE }}';
+            const newBase = '${{ steps.resolve.outputs.UPSTREAM_SHA }}';
+            const oldHead = '${{ steps.resolve.outputs.CURRENT_HEAD }}';
+            const newHead = '${{ steps.rebase.outputs.NEW_HEAD }}';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const trackerLabel = 'sync-staging-chestnut-nodm-log';
+
+            const short = (sha) => (sha && sha.length >= 7) ? sha.substring(0, 7) : sha;
+            const lines = [
+              '@chiachunli08 \u2705 `staging-chestnut-nodm` 成功同步到新的 sunnypilot snapshot。',
+              '',
+              '| 項目 | SHA |',
+              '| --- | --- |',
+              `| 舊 sunnypilot snapshot | \`${short(oldBase)}\` |`,
+              `| 新 sunnypilot snapshot | \`${short(newBase)}\` |`,
+              `| 舊 NoDM commit | \`${short(oldHead)}\` |`,
+              `| 新 NoDM commit (新 HEAD) | \`${short(newHead)}\` |`,
+              '',
+              '```text',
+              `sunnypilot/staging-chestnut  (old) ${short(oldBase)}`,
+              '         \\u2193 advanced',
+              `sunnypilot/staging-chestnut  (new) ${short(newBase)}`,
+              '         \\u2502',
+              `         \\u2514\\u2500\\u2500 NoDM (new HEAD)        ${short(newHead)}`,
+              '               \\u2191',
+              '         staging-chestnut-nodm',
+              '```',
+              '',
+              `Run: ${runUrl}`,
+              '',
+              '_由 sync-staging-chestnut-nodm workflow 自動產生。_',
+            ];
+            const body = lines.join('\n');
+
+            const list = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: trackerLabel,
+              state: 'open',
+              per_page: 1,
+            });
+            let issueNumber;
+            if (list.data.length > 0) {
+              issueNumber = list.data[0].number;
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'sync-staging-chestnut-nodm log',
+                body: [
+                  'Tracking issue for `staging-chestnut-nodm` syncs.',
+                  '',
+                  'Each successful sync against a new `sunnypilot/staging-chestnut` snapshot appends a comment that @mentions `@chiachunli08`.',
+                  'GitHub will deliver an email to that account based on your notification settings (Watch \u2192 Participating / @mentions).',
+                ].join('\n'),
+                labels: [trackerLabel],
+              });
+              issueNumber = created.data.number;
+              core.info(`Created tracking issue #${issueNumber}`);
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body,
+            });
+            core.setOutput('issue_number', issueNumber);
+            core.info(`Notification posted on issue #${issueNumber}`);
+
+      - name: Send test notification
+        if: github.event_name == 'workflow_dispatch' && inputs.test_notify == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const trackerLabel = 'sync-staging-chestnut-nodm-log';
+            const body = [
+              '@chiachunli08 \ud83d\ude9a _test notification_ from `sync-staging-chestnut-nodm`.',
+              '',
+              `Run: ${runUrl}`,
+              '',
+              '_If you received this email, GitHub \u2192 email delivery is wired up correctly. No branch state was modified._',
+            ].join('\n');
+
+            const list = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: trackerLabel,
+              state: 'open',
+              per_page: 1,
+            });
+            let issueNumber;
+            if (list.data.length > 0) {
+              issueNumber = list.data[0].number;
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'sync-staging-chestnut-nodm log',
+                body: 'Tracking issue. See `sync-staging-chestnut-nodm` workflow for details.',
+                labels: [trackerLabel],
+              });
+              issueNumber = created.data.number;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body,
+            });
+            core.info(`Test notification posted on issue #${issueNumber}`);
 
       - name: Summary
         if: always()
