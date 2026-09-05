@@ -3,6 +3,14 @@ name: sync-staging-chestnut-nodm
 on:
   workflow_dispatch:
     inputs:
+      force_cherrypick:
+        description: "Force re-apply (cherry-pick) NoDM commit even if upstream has not changed"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
       test_notify:
         description: "Send a test notification (does not modify the branch)"
         required: false
@@ -80,7 +88,11 @@ jobs:
       - name: Check if upstream has advanced
         id: check
         run: |
-          if [ "${{ steps.resolve.outputs.CURRENT_BASE }}" = "${{ steps.resolve.outputs.UPSTREAM_SHA }}" ]; then
+          FORCE="${{ inputs.force_cherrypick || 'false' }}"
+          if [ "$FORCE" = "true" ]; then
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Forced run requested: will re-apply NoDM on top of upstream snapshot."
+          elif [ "${{ steps.resolve.outputs.CURRENT_BASE }}" = "${{ steps.resolve.outputs.UPSTREAM_SHA }}" ]; then
             echo "needs_update=false" >> "$GITHUB_OUTPUT"
             echo "Branch is already up to date with sunnypilot/staging-chestnut."
             echo "No new commit will be created."
