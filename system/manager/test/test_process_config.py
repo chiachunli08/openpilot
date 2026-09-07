@@ -9,6 +9,7 @@ from openpilot.system.manager.process_config import (
   allow_uploads,
   bluetooth_enabled,
   camera_run,
+  driver_monitoring,
   managed_processes,
   sentry_mode,
   soundd_run,
@@ -174,3 +175,65 @@ def test_ublox_has_single_external_gps_publisher(monkeypatch, car_gps, expected)
 
   assert ublox(True, params, car.CarParams.new_message(), SimpleNamespace()) is expected
   assert params.get_bool("CarGpsAvailable") is car_gps
+
+
+class DriverMonitoringParams:
+  """Minimal Params stand-in for the driver_monitoring predicate.
+
+  Defaults DisableDriverMonitoring to False so the default behaviour matches
+  the un-modified fork.
+  """
+  def __init__(self, *, started: bool, driver_view: bool, disable_dm: bool = False):
+    self.values = {
+      "IsDriverViewEnabled": driver_view,
+      "DisableDriverMonitoring": disable_dm,
+    }
+
+  def get_bool(self, key: str) -> bool:
+    return self.values.get(key, False)
+
+
+@pytest.mark.parametrize(
+  "started,driver_view,disable_dm,expected",
+  [
+    # Normal mode (DisableDriverMonitoring == False): predicate == driverview.
+    (True, False, False, True),
+    (False, True, False, True),
+    (False, False, False, False),
+    # No-DM mode: process never runs even in driverview/started.
+    (True, False, True, False),
+    (False, True, True, False),
+    (False, False, True, False),
+  ],
+)
+def test_driver_monitoring_predicate(started, driver_view, disable_dm, expected):
+  params = DriverMonitoringParams(started=started, driver_view=driver_view, disable_dm=disable_dm)
+  assert driver_monitoring(started, params, car.CarParams.new_message(), SimpleNamespace()) is expected
+
+
+def test_driver_monitoring_default_false_preserves_original_behavior():
+  # When DisableDriverMonitoring is absent entirely (param not yet set),
+  # get_bool() returns False, which must reproduce the original driverview()
+  # behaviour exactly.
+  started = True
+  params = SimpleNamespace(get_bool=lambda key: key == "IsDriverViewEnabled")
+  assert driver_monitoring(started, params, car.CarParams.new_message(), SimpleNamespace()) is True
+
+  started = False
+  params = SimpleNamespace(get_bool=lambda key: False)
+  assert driver_monitoring(started, params, car.CarParams.new_message(), SimpleNamespace()) is False
+
+
+def test_dmonitoring_processes_use_driver_monitoring_predicate():
+  # Both DM processes must be gated by the new predicate so that
+  # processNotRunning does not fire when DisableDriverMonitoring is on.
+  assert managed_processes["dmonitoringmodeld"].enabled
+  assert managed_processes["dmonitoringd"].enabled
+  # The should_run predicate must be the same function instance used elsewhere.
+  assert managed_processes["dmonitoringmodeld"].should_run is driver_monitoring
+  assert managed_processes["dmonitoringd"].should_run is driver_monitoring
+  # And critically, the predicate is NOT the legacy driverview predicate —
+  # otherwise disabling DM would still try to spawn the DM processes onroad.
+  from openpilot.system.manager.process_config import driverview
+  assert managed_processes["dmonitoringmodeld"].should_run is not driverview
+  assert managed_processes["dmonitoringd"].should_run is not driverview

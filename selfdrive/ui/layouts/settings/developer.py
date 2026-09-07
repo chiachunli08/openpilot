@@ -25,6 +25,10 @@ DESCRIPTIONS = {
     "Enable this to switch to openpilot longitudinal control. Enabling Experimental mode is recommended when enabling openpilot longitudinal control alpha. " +
     "Changing this setting will restart openpilot if the car is powered on."
   ),
+  'disable_driver_monitoring': tr_noop(
+    "For development hardware without a driver-facing camera. Disables the driver camera stream and driver monitoring processes. " +
+    "Do not enable this on normal driving devices."
+  ),
 }
 
 
@@ -82,6 +86,16 @@ class DeveloperLayout(Widget):
     )
     self._on_enable_ui_debug(self._params.get_bool("ShowDebugInfo"))
 
+    # No-driver-camera / no-DM mode. Intended only for development hardware that
+    # has no driver-facing camera. Offroad-gated, confirm dialog on enable.
+    self._disable_dm_toggle = toggle_item(
+      lambda: tr("Disable Driver Monitoring"),
+      description=lambda: tr(DESCRIPTIONS["disable_driver_monitoring"]),
+      initial_state=self._params.get_bool("DisableDriverMonitoring"),
+      callback=self._on_disable_driver_monitoring,
+      enabled=ui_state.is_offroad,
+    )
+
     self._scroller = Scroller([
       self._adb_toggle,
       self._ssh_toggle,
@@ -90,6 +104,7 @@ class DeveloperLayout(Widget):
       self._long_maneuver_toggle,
       self._alpha_long_toggle,
       self._ui_debug_toggle,
+      self._disable_dm_toggle,
     ], line_separator=True, spacing=0)
 
     # Toggles should be not available to change in onroad state
@@ -132,6 +147,7 @@ class DeveloperLayout(Widget):
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
       ("ShowDebugInfo", self._ui_debug_toggle),
+      ("DisableDriverMonitoring", self._disable_dm_toggle),
     ):
       item.action_item.set_state(self._params.get_bool(key))
 
@@ -174,5 +190,31 @@ class DeveloperLayout(Widget):
 
     else:
       self._params.put_bool("AlphaLongitudinalEnabled", False)
+      self._params.put_bool("OnroadCycleRequested", True)
+      self._update_toggles()
+
+  def _on_disable_driver_monitoring(self, state: bool):
+    # Refuse if the user is currently onroad/engaged — this matches the existing
+    # offroad-only gate on the toggle widget itself and avoids changing DM
+    # behaviour mid-drive.
+    if not ui_state.is_offroad():
+      self._disable_dm_toggle.action_item.set_state(False)
+      return
+
+    if state:
+      def confirm_callback(result: int):
+        if result == DialogResult.CONFIRM:
+          self._params.put_bool("DisableDriverMonitoring", True)
+          self._params.put_bool("OnroadCycleRequested", True)
+          self._update_toggles()
+        else:
+          self._disable_dm_toggle.action_item.set_state(False)
+
+      content = (f"<h1>{self._disable_dm_toggle.title}</h1><br>" +
+                 f"<p>{self._disable_dm_toggle.description}</p>")
+
+      gui_app.push_widget(ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback))
+    else:
+      self._params.put_bool("DisableDriverMonitoring", False)
       self._params.put_bool("OnroadCycleRequested", True)
       self._update_toggles()

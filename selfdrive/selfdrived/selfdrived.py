@@ -201,12 +201,26 @@ class SelfdriveD:
     self.gps_location_service = get_gps_location_service(self.params)
     self.gps_packets = [self.gps_location_service]
     self.sensor_packets = ["accelerometer", "gyroscope"]
-    self.camera_packets = ["roadCameraState", "driverCameraState", "wideRoadCameraState"]
+
+    # Driver monitoring gate. When the user enables DisableDriverMonitoring on a
+    # development unit without a driver camera, we drop the driverCameraState
+    # subscription entirely so that cameraMalfunction / cameraFrameRate / commIssue
+    # do not fire because of missing DM hardware. driverMonitoringState is kept
+    # subscribed but is added to the ignore lists below so that DM-process absence
+    # does not raise commIssue / commIssueAvgFreq. All DM alerts are also gated.
+    self.disable_driver_monitoring = self.params.get_bool("DisableDriverMonitoring")
+    self.camera_packets = ["roadCameraState", "wideRoadCameraState"]
+    if not self.disable_driver_monitoring:
+      self.camera_packets.append("driverCameraState")
 
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
 
     ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan']
+    if self.disable_driver_monitoring:
+      # No driver camera hardware -> do not require DM service messages to be alive.
+      # The DM state is irrelevant for any alert in this mode.
+      ignore += ['driverMonitoringState']
     if SIMULATION:
       ignore += ['driverCameraState', 'managerState']
     if REPLAY:
@@ -453,7 +467,7 @@ class SelfdriveD:
     if not self.CP.pcmCruise and CS.vCruise > 250 and resume_pressed:
       self.events.add(EventName.resumeBlocked)
 
-    if not self.CP.notCar:
+    if not self.CP.notCar and not self.disable_driver_monitoring:
       # Block engaging until lockout times out or ignition reset
       if self.sm['driverMonitoringState'].lockout and not self.dm_lockout_set:
         self.params.put_bool("DriverTooDistracted", True)
