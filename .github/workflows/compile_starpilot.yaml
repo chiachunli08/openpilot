@@ -1,6 +1,13 @@
 name: Compile StarPilot
 
 on:
+  push:
+    branches:
+      - star-dom
+    paths:
+      - ".github/workflows/compile_starpilot.yaml"
+      - "common/params_keys.h"
+      - "system/camerad/cameras/hw.h"
   workflow_dispatch:
     inputs:
       target_ref:
@@ -24,7 +31,7 @@ permissions:
 env:
   GIT_EMAIL: "168790843+firestar5683@users.noreply.github.com"
   GIT_NAME: "StarPilot Build Bot"
-  TARGET_REF: ${{ inputs.target_ref }}
+  TARGET_REF: ${{ github.event_name == 'push' && github.ref_name || inputs.target_ref }}
 
 jobs:
   build_and_push:
@@ -89,7 +96,9 @@ jobs:
           export COMMA_HOST_VENV_DIR="/mnt/Apparition/My_App_Data/starpilot-runner/cache/venv-linux-arm64"
           export COMMA_SYSROOT_DIR="/runner/sysroots/default"
 
-          if [[ -n "${{ inputs.jobs }}" ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            ./build 12 common/params_pyx.so system/camerad/camerad
+          elif [[ -n "${{ inputs.jobs }}" ]]; then
             ./build "${{ inputs.jobs }}"
           else
             ./build

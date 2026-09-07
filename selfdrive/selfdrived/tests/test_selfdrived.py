@@ -282,8 +282,8 @@ def test_dm_event_block_is_gated_by_disable_driver_monitoring():
   # The selfdrived DM event block must be skipped wholesale when
   # DisableDriverMonitoring is True. We assert this by simulating the guard
   # expression used in update_events().
-  assert not (False and not True)   # CP.notCar == False, disable_dm == True -> block skipped
-  assert not (False and not False)  # CP.notCar == False, disable_dm == False -> block enters
+  assert not (not False and not True)  # CP.notCar == False, disable_dm == True -> block skipped
+  assert not False and not False       # CP.notCar == False, disable_dm == False -> block enters
 
 
 def test_comm_issue_eval_still_works_when_dm_ignored():
