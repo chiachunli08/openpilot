@@ -899,3 +899,23 @@ msgstr "動態藍條"
 #: openpilot/selfdrive/ui/sunnypilot/onroad/blue_path.py
 msgid "Model predicts stop"
 msgstr "模型預計停止"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
+msgid "Compatible HKG CAN-FD vehicle detected."
+msgstr "已辨識到相容的 HKG CAN-FD 車型。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
+msgid "HKG Low-Speed Steering Torque (Experimental)"
+msgstr "HKG 低速轉向扭力（實驗功能）"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
+msgid "Increase low-speed steering assistance. Default: off. Change only offroad; applies next drive. Requires vehicle validation."
+msgstr "提高低速轉向輔助。預設關閉，僅限非行車狀態調整，於下次行車時生效。仍須實車驗證。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
+msgid "Start the vehicle to check vehicle compatibility."
+msgstr "請啟動車輛以確認車型相容性。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
+msgid "Unavailable for this vehicle. Requires compatible HKG CAN-FD torque steering."
+msgstr "此車型無法使用。需要相容的 HKG CAN-FD 扭力轉向系統。"
