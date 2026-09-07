@@ -10,6 +10,7 @@ import openpilot.cereal.messaging as messaging
 from openpilot.cereal import log, custom
 
 from opendbc.car import structs
+from opendbc.car.hyundai.values import HyundaiFlags
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD
@@ -17,6 +18,7 @@ from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.selfdrive.controls.lib.blinker_pause_lateral import BlinkerPauseLateral
 from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_v0 import LatControlTorque as LatControlTorqueV0
+from openpilot.selfdrive.controls.lib.desire_helper import CREEP_LANE_CHANGE_SPEED_MAX, creep_lane_change_context_safe
 
 
 class ControlsExt(ModelStateBase):
@@ -31,7 +33,7 @@ class ControlsExt(ModelStateBase):
     self.CP_SP = messaging.log_from_bytes(params.get("CarParamsSP", block=True), custom.CarParamsSP)
     cloudlog.info("controlsd_ext got CarParamsSP")
 
-    self.sm_services_ext = ['radarState', 'selfdriveStateSP']
+    self.sm_services_ext = ['radarState', 'selfdriveStateSP', 'modelDataV2SP']
     self.pm_services_ext = ['carControlSP']
 
   def initialize_lateral_control(self, lac, CI, dt):
@@ -57,7 +59,9 @@ class ControlsExt(ModelStateBase):
       self._param_update_time = time.monotonic()
 
   def get_lat_active(self, sm: messaging.SubMaster) -> bool:
-    if self.blinker_pause_lateral.update(sm['carState']):
+    pause_for_blinker = self.blinker_pause_lateral.update(sm['carState'])
+    creep_candidate = self.creep_lane_change_candidate(self.CP, sm['carState'], sm['modelV2'], sm.valid['modelV2'])
+    if pause_for_blinker and not creep_candidate:
       return False
 
     ss_sp = sm['selfdriveStateSP']
@@ -85,8 +89,37 @@ class ControlsExt(ModelStateBase):
     _lead.radar = src.radar
     _lead.radarTrackId = src.radarTrackId
 
+  @staticmethod
+  def creep_lane_change_candidate(CP: structs.CarParams, CS, model_v2, model_valid: bool) -> bool:
+    if not (CP.flags & HyundaiFlags.CANFD_CREEP_LANE_CHANGE and model_valid and CS.canValid):
+      return False
+    if not 0. <= CS.vEgoRaw <= CREEP_LANE_CHANGE_SPEED_MAX:
+      return False
+
+    one_blinker = CS.leftBlinker != CS.rightBlinker
+    signaled_blindspot = (CS.leftBlinker and CS.leftBlindspot) or (CS.rightBlinker and CS.rightBlindspot)
+    if not one_blinker or signaled_blindspot:
+      return False
+
+    if len(model_v2.leadsV3) == 0:
+      return False
+    lead = model_v2.leadsV3[0]
+    lead_distance = float(lead.x[0]) if len(lead.x) else float("nan")
+    return creep_lane_change_context_safe(True, float(lead.prob), lead_distance)
+
+  @classmethod
+  def creep_lane_change_active(cls, CP: structs.CarParams, CS, model_v2, model_valid: bool,
+                               request_active: bool, request_valid: bool) -> bool:
+    if not (request_valid and request_active and not CS.brakePressed and
+            cls.creep_lane_change_candidate(CP, CS, model_v2, model_valid)):
+      return False
+    return model_v2.meta.laneChangeState == log.LaneChangeState.laneChangeStarting
+
   def state_control_ext(self, sm: messaging.SubMaster) -> custom.CarControlSP:
     CC_SP = custom.CarControlSP.new_message()
+    CC_SP.creepLaneChangeActive = self.creep_lane_change_active(
+      self.CP, sm['carState'], sm['modelV2'], sm.valid['modelV2'],
+      sm['modelDataV2SP'].creepLaneChangeActive, sm.valid['modelDataV2SP'])
 
     self.get_lead_data(CC_SP.leadOne, sm['radarState'].leadOne)
     self.get_lead_data(CC_SP.leadTwo, sm['radarState'].leadTwo)

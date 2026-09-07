@@ -58,12 +58,10 @@ class LaneChangeSettingsLayout(Widget):
       description=lambda: tr("Blocks the lane change if the model sees a road edge on your signaled side."),
     )
 
-    # Deliberately unbound: no Params key or callback can enable vehicle control.
-    self._hkg_creep_lane_change_preview = toggle_item_sp(
-      title=lambda: tr("HKG Creep Lane Change (UI Preview)"),
+    self._hkg_creep_lane_change = toggle_item_sp(
+      param="HkgCreepLaneChange",
+      title=lambda: tr("HKG Creep Lane Change (Experimental)"),
       description=self._hkg_creep_lane_change_description,
-      initial_state=False,
-      enabled=False,
     )
 
     items = [
@@ -73,18 +71,19 @@ class LaneChangeSettingsLayout(Widget):
       LineSeparatorSP(40),
       self._road_edge_block,
       LineSeparatorSP(40),
-      self._hkg_creep_lane_change_preview,
+      self._hkg_creep_lane_change,
     ]
 
     return items
 
   @staticmethod
   def _hkg_creep_lane_change_description():
-    description = tr("Interface preview only. This switch is unavailable and does not enable vehicle control. " +
-                     "Proposed scope: compatible HKG vehicles, 0-5 km/h, only during an automatic lane change. " +
-                     "The driver must check surroundings and clearance before signaling a single lane change. " +
-                     "Model perception and lead distance are proposed inputs; collision clearance has not been validated. " +
-                     "The proposed torque command cap of 400 is not active.")
+    description = tr("At 0-5 km/h, one blinker request starts one automatic lane change after 0.5 seconds. " +
+                     "The model must be valid; if a lead is detected, it must be at least 5 m away. " +
+                     "It waits while the brake is held; braking after steering starts, a vehicle in the signaled blind spot, " +
+                     "signal cancellation, or invalid perception cancels the maneuver. " +
+                     "Only the active maneuver may use the speed-dependent steering command cap of 400. " +
+                     "The driver remains responsible for checking the target lane and clearance. Takes effect next drive.")
     if ui_state.CP is None:
       status = tr("Start the vehicle to check vehicle compatibility.")
     elif not supports_low_speed_torque(ui_state.CP):
@@ -112,3 +111,4 @@ class LaneChangeSettingsLayout(Widget):
     if not enable_bsm and ui_state.params.get_bool("AutoLaneChangeBsmDelay"):
       ui_state.params.remove("AutoLaneChangeBsmDelay")
     self._bsm_delay.action_item.set_enabled(enable_bsm and ui_state.params.get("AutoLaneChangeTimer", return_default=True) > AutoLaneChangeMode.NUDGE)
+    self._hkg_creep_lane_change.action_item.set_enabled(ui_state.is_offroad() and supports_low_speed_torque(ui_state.CP))

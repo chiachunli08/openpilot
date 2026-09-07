@@ -921,9 +921,9 @@ msgid "Unavailable for this vehicle. Requires compatible HKG CAN-FD torque steer
 msgstr "此車型無法使用。需要相容的 HKG CAN-FD 扭力轉向系統。"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering_sub_layouts/lane_change_settings.py
-msgid "HKG Creep Lane Change (UI Preview)"
-msgstr "HKG 超低速變換車道（介面預覽）"
+msgid "HKG Creep Lane Change (Experimental)"
+msgstr "HKG 超低速自動變換車道（實驗功能）"
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering_sub_layouts/lane_change_settings.py
-msgid "Interface preview only. This switch is unavailable and does not enable vehicle control. Proposed scope: compatible HKG vehicles, 0-5 km/h, only during an automatic lane change. The driver must check surroundings and clearance before signaling a single lane change. Model perception and lead distance are proposed inputs; collision clearance has not been validated. The proposed torque command cap of 400 is not active."
-msgstr "僅供介面預覽。此開關尚不可操作，也不會啟用車輛控制。規劃範圍：相容 HKG 車型、時速 0–5 公里，且僅限自動變換車道期間。駕駛須先確認周遭車流與安全空間，再打方向燈提出一次變換車道請求。模型辨識與前車距離為預計使用的判斷資料，尚未驗證切出路徑的碰撞淨空。規劃中的轉向指令上限 400 尚未啟用。"
+msgid "At 0-5 km/h, one blinker request starts one automatic lane change after 0.5 seconds. The model must be valid; if a lead is detected, it must be at least 5 m away. It waits while the brake is held; braking after steering starts, a vehicle in the signaled blind spot, signal cancellation, or invalid perception cancels the maneuver. Only the active maneuver may use the speed-dependent steering command cap of 400. The driver remains responsible for checking the target lane and clearance. Takes effect next drive."
+msgstr "在時速 0–5 公里時，單次方向燈請求會在 0.5 秒後啟動一次自動變換車道。模型資料必須有效；若偵測到前車，距離必須至少 5 公尺。踩住煞車時會等待；開始轉向後踩煞車、方向燈側盲區有車、取消方向燈或感知資料無效，都會取消動作。只有實際執行此變換車道時，才能使用依車速調整且最高為 400 的轉向指令。駕駛仍須負責確認目標車道與車身淨空。設定於下次行車生效。"
