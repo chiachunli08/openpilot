@@ -16,6 +16,7 @@ from opendbc.car.hyundai.values import CAR as HYUNDAI_CAR
 from opendbc.car.nissan.values import CAR as NISSAN_CAR
 
 from openpilot.common.params import Params
+from openpilot.common.driver_monitoring import is_driver_monitoring_disabled
 from openpilot.common.realtime import config_realtime_process, Priority, Ratekeeper, DT_CTRL
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.gps import get_gps_location_service
@@ -208,7 +209,7 @@ class SelfdriveD:
     # do not fire because of missing DM hardware. driverMonitoringState is kept
     # subscribed but is added to the ignore lists below so that DM-process absence
     # does not raise commIssue / commIssueAvgFreq. All DM alerts are also gated.
-    self.disable_driver_monitoring = self.params.get_bool("DisableDriverMonitoring")
+    self.disable_driver_monitoring = is_driver_monitoring_disabled(self.params)
     self.camera_packets = ["roadCameraState", "wideRoadCameraState"]
     if not self.disable_driver_monitoring:
       self.camera_packets.append("driverCameraState")

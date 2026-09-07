@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from cereal import car
 from openpilot.common.params import Params
+from openpilot.common.driver_monitoring import is_driver_monitoring_disabled
 from opendbc.car.gps import car_gps_available
 from openpilot.system.hardware import HARDWARE, PC, TICI
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
@@ -19,7 +20,7 @@ def driverview(started: bool, params: Params, CP: car.CarParams, starpilot_toggl
   return started or params.get_bool("IsDriverViewEnabled")
 
 def driver_monitoring(started: bool, params: Params, CP: car.CarParams, starpilot_toggles: SimpleNamespace) -> bool:
-  return driverview(started, params, CP, starpilot_toggles) and not params.get_bool("DisableDriverMonitoring")
+  return driverview(started, params, CP, starpilot_toggles) and not is_driver_monitoring_disabled(params)
 
 def notcar(started: bool, params: Params, CP: car.CarParams, starpilot_toggles: SimpleNamespace) -> bool:
   return started and CP.notCar

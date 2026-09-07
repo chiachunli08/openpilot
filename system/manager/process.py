@@ -19,6 +19,7 @@ import cereal.messaging as messaging
 import openpilot.system.sentry as sentry
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
+from openpilot.common.driver_monitoring import is_driver_monitoring_disabled
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.watchdog import WATCHDOG_FN
 
@@ -447,6 +448,10 @@ def nativelauncher(pargs: list[str], cwd: str, name: str, nice: int | None = Non
     os.nice(nice)
 
   os.environ['MANAGER_DAEMON'] = name
+  if name == "camerad" and is_driver_monitoring_disabled():
+    # Compatibility with camerad prebuilts created before the persistent param
+    # was added. Those binaries already honor the legacy environment variable.
+    os.environ.setdefault("DISABLE_DRIVER", "1")
 
   # exec the process
   os.chdir(cwd)

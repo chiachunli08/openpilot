@@ -1,4 +1,5 @@
 from openpilot.common.params import Params
+from openpilot.common.driver_monitoring import is_driver_monitoring_disabled, set_driver_monitoring_disabled
 from openpilot.selfdrive.ui.widgets.ssh_key import ssh_key_item
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.widgets import Widget
@@ -91,7 +92,7 @@ class DeveloperLayout(Widget):
     self._disable_dm_toggle = toggle_item(
       lambda: tr("Disable Driver Monitoring"),
       description=lambda: tr(DESCRIPTIONS["disable_driver_monitoring"]),
-      initial_state=self._params.get_bool("DisableDriverMonitoring"),
+      initial_state=is_driver_monitoring_disabled(self._params),
       callback=self._on_disable_driver_monitoring,
       enabled=ui_state.is_offroad,
     )
@@ -147,9 +148,9 @@ class DeveloperLayout(Widget):
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
       ("ShowDebugInfo", self._ui_debug_toggle),
-      ("DisableDriverMonitoring", self._disable_dm_toggle),
     ):
       item.action_item.set_state(self._params.get_bool(key))
+    self._disable_dm_toggle.action_item.set_state(is_driver_monitoring_disabled(self._params))
 
   def _on_enable_ui_debug(self, state: bool):
     self._params.put_bool("ShowDebugInfo", state)
@@ -204,7 +205,7 @@ class DeveloperLayout(Widget):
     if state:
       def confirm_callback(result: int):
         if result == DialogResult.CONFIRM:
-          self._params.put_bool("DisableDriverMonitoring", True)
+          set_driver_monitoring_disabled(True, self._params)
           self._params.put_bool("OnroadCycleRequested", True)
           self._update_toggles()
         else:
@@ -215,6 +216,6 @@ class DeveloperLayout(Widget):
 
       gui_app.push_widget(ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback))
     else:
-      self._params.put_bool("DisableDriverMonitoring", False)
+      set_driver_monitoring_disabled(False, self._params)
       self._params.put_bool("OnroadCycleRequested", True)
       self._update_toggles()
