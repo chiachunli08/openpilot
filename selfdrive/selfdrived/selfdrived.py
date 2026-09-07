@@ -202,13 +202,10 @@ class SelfdriveD:
     self.gps_location_service = get_gps_location_service(self.params)
     self.gps_packets = [self.gps_location_service]
     self.sensor_packets = ["accelerometer", "gyroscope"]
-
-    # Driver monitoring gate. When the user enables DisableDriverMonitoring on a
-    # development unit without a driver camera, we drop the driverCameraState
-    # subscription entirely so that cameraMalfunction / cameraFrameRate / commIssue
-    # do not fire because of missing DM hardware. driverMonitoringState is kept
-    # subscribed but is added to the ignore lists below so that DM-process absence
-    # does not raise commIssue / commIssueAvgFreq. All DM alerts are also gated.
+    # Driver monitoring is hard-disabled on this fork (no driver camera hardware).
+    # All DM alerts, lockout, and uncertainty tracking are intentionally skipped.
+    # driverMonitoringState is kept subscribed but added to the ignore list below
+    # so commIssue / commIssueAvgFreq do not fire when DM processes are absent.
     self.disable_driver_monitoring = is_driver_monitoring_disabled(self.params)
     self.camera_packets = ["roadCameraState", "wideRoadCameraState"]
     if not self.disable_driver_monitoring:
@@ -468,7 +465,7 @@ class SelfdriveD:
     if not self.CP.pcmCruise and CS.vCruise > 250 and resume_pressed:
       self.events.add(EventName.resumeBlocked)
 
-    if not self.CP.notCar and not self.disable_driver_monitoring:
+    if not self.CP.notCar and not self.disable_driver_monitoring:  # noqa: hard-disabled on this fork
       # Block engaging until lockout times out or ignition reset
       if self.sm['driverMonitoringState'].lockout and not self.dm_lockout_set:
         self.params.put_bool("DriverTooDistracted", True)

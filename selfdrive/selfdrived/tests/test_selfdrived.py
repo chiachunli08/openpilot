@@ -238,52 +238,37 @@ def test_ecu_disable_fallback_does_not_change_other_cars():
   assert selfdrived.FPCP is initial_fpcp_reader
 
 
-# --- DisableDriverMonitoring coverage ---------------------------------------
+# --- Driver monitoring hard-disable coverage --------------------------------
 
-def _derive_camera_and_ignore(disable_dm: bool):
-  """Mirror the construction logic in SelfdriveD.__init__ for the relevant pieces."""
+def _derive_camera_and_ignore():
+  """Mirror the construction logic in SelfdriveD.__init__ for this fork."""
   camera_packets = ["roadCameraState", "wideRoadCameraState"]
-  if not disable_dm:
-    camera_packets.append("driverCameraState")
-
-  ignore = []
-  if disable_dm:
-    ignore.append("driverMonitoringState")
+  ignore = ["driverMonitoringState"]
   return camera_packets, ignore
 
 
-def test_default_false_includes_driver_camera_packet():
-  # DisableDriverMonitoring == False (default) must be byte-for-byte the original
-  # behaviour: driverCameraState in camera_packets, driverMonitoringState NOT
-  # in the ignore lists.
-  camera_packets, ignore = _derive_camera_and_ignore(disable_dm=False)
-  assert camera_packets == ["roadCameraState", "driverCameraState", "wideRoadCameraState"]
-  assert "driverMonitoringState" not in ignore
-
-
-def test_disable_driver_monitoring_drops_driver_camera_packet():
-  # When DisableDriverMonitoring == True, driverCameraState must not be
-  # subscribed so cameraMalfunction / cameraFrameRate do not fire due to
-  # missing DM hardware.
-  camera_packets, _ = _derive_camera_and_ignore(disable_dm=True)
+def test_camera_packets_drop_driver_camera():
+  # driverCameraState must not be subscribed so cameraMalfunction /
+  # cameraFrameRate do not fire on missing driver camera hardware.
+  camera_packets, _ = _derive_camera_and_ignore()
   assert "driverCameraState" not in camera_packets
   assert "roadCameraState" in camera_packets
   assert "wideRoadCameraState" in camera_packets
 
 
-def test_disable_driver_monitoring_ignores_driver_monitoring_state():
-  # driverMonitoringState must be added to all three ignore lists so commIssue
-  # does not fire when DM processes are intentionally not running.
-  _, ignore = _derive_camera_and_ignore(disable_dm=True)
+def test_driver_monitoring_state_is_ignored():
+  # driverMonitoringState must be in the ignore list so commIssue /
+  # commIssueAvgFreq do not fire when DM processes are intentionally absent.
+  _, ignore = _derive_camera_and_ignore()
   assert "driverMonitoringState" in ignore
 
 
-def test_dm_event_block_is_gated_by_disable_driver_monitoring():
-  # The selfdrived DM event block must be skipped wholesale when
-  # DisableDriverMonitoring is True. We assert this by simulating the guard
-  # expression used in update_events().
-  assert not (not False and not True)  # CP.notCar == False, disable_dm == True -> block skipped
-  assert not False and not False       # CP.notCar == False, disable_dm == False -> block enters
+def test_dm_event_block_guard_is_permanently_false():
+  # The DM event block guard is `not self.CP.notCar and not self.disable_driver_monitoring`.
+  # With hard-disable, disable_driver_monitoring is always True, so the block
+  # never enters regardless of notCar.
+  assert not (not False and not True)   # CP.notCar == False -> block skipped
+  assert not (not True and not True)    # CP.notCar == True  -> block skipped
 
 
 def test_comm_issue_eval_still_works_when_dm_ignored():

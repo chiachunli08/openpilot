@@ -35,18 +35,8 @@ inline bool camera_enabled_at_runtime(int camera_num) {
     case 1:
       return getenv("DISABLE_ROAD") == nullptr;
     case 2: {
-      // Driver camera can be disabled by either the legacy environment variable
-      // (DISABLE_DRIVER=1) or the new DisableDriverMonitoring persistent param.
-      // The env var remains for backwards compatibility.
-      //
-      // The param is read once and cached for the lifetime of the process.
-      // The UI only allows this toggle to change while offroad and the manager
-      // requests an onroad-cycle (which restarts camerad) on toggle, so a
-      // process-lifetime cache is correct: the next camerad instance will
-      // re-read the param.
-      static const bool disabled = getenv("DISABLE_DRIVER") != nullptr ||
-                                   Params().getBool("DisableDriverMonitoring");
-      return !disabled;
+      // Driver camera is hard-disabled on this fork (no driver camera hardware).
+      return false;
     }
     default:
       return true;
