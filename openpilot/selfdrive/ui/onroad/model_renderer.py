@@ -293,8 +293,14 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
     self._blend_filter.update(int(allow_throttle))
 
     if ui_state.rainbow_path and self._lateral_active:
-      self.rainbow_path.draw_rainbow_path(self._rect, self._path)
-      return
+      if ui_state.rainbow_mode_style == 1:
+        if self.blue_path.draw(self._rect, self._path, sm, ui_state.started_frame, self._map_to_screen, self._path_offset_z):
+          return
+      else:
+        self.blue_path.reset()
+        self.rainbow_path.draw_rainbow_path(self._rect, self._path)
+        return
+    self.blue_path.reset()
 
     if self._experimental_mode:
       # Draw with acceleration coloring

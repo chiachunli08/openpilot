@@ -869,3 +869,31 @@ msgstr ""
 msgid "camera starting"
 msgstr ""
 
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Enable Tesla Rainbow Mode"
+msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Choose the original rainbow path or dynamic blue acceleration and deceleration bars below. Display only."
+msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Tesla Rainbow Mode Style"
+msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Blue bars animate with actual vehicle acceleration and deceleration. A model-predicted stop is shown for any cause, including traffic lights or stop signs. The model does not identify light colors or sign types."
+msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Rainbow Road"
+msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Dynamic Blue Bars"
+msgstr ""
+
+#: openpilot/selfdrive/ui/sunnypilot/onroad/blue_path.py
+msgid "Model predicts stop"
+msgstr ""
