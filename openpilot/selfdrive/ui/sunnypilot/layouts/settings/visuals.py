@@ -4,13 +4,10 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
-import time
-
 from openpilot.common.params import Params
-from openpilot.selfdrive.ui.sunnypilot.onroad.spas_bench import SpasBenchSession
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr, tr_noop
-from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp, option_item_sp, button_item_sp, dual_button_item_sp
+from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets import Widget
 
@@ -26,8 +23,6 @@ class VisualsLayout(Widget):
     super().__init__()
 
     self._params = Params()
-    self._spas_bench = SpasBenchSession()
-    self._spas_error = False
     items = self._initialize_items()
     self._scroller = Scroller(items, line_separator=True, spacing=0)
 
@@ -141,45 +136,10 @@ class VisualsLayout(Widget):
       self._chevron_info,
       self._dev_ui_info,
     ]
-    self._spas_status = button_item_sp(
-      title=self._spas_status_text,
-      button_text=lambda: tr("Stop"),
-      description=lambda: tr("Offline function test only. No vehicle lights are operated. "
-                             "SPAS transmission is not supported by the current Panda safety configuration."),
-      callback=self._spas_bench.stop,
-    )
-    self._spas_status.show_description(True)
-    items += [
-      option_item_sp(title=lambda: tr("SPAS Offline Test Duration"), param="SpasBenchDuration",
-                     min_value=3, max_value=8, label_callback=lambda v: f"{v} s",
-                     description=lambda: tr("3 to 8 seconds, default 7. Applies only to the offline test.")),
-      dual_button_item_sp(left_text=lambda: tr("Test Left (Offline)"), right_text=lambda: tr("Test Right (Offline)"),
-                          left_callback=lambda: self._start_spas_bench('left'), right_callback=lambda: self._start_spas_bench('right')),
-      self._spas_status,
-    ]
     return items
-
-  def _start_spas_bench(self, direction):
-    try:
-      self._spas_bench.start(direction, self._params.get("SpasBenchDuration", return_default=True), time.monotonic())
-      self._spas_error = False
-    except Exception:
-      self._spas_bench = SpasBenchSession()
-      self._spas_error = True
-
-  def _spas_status_text(self):
-    if self._spas_error:
-      return tr("Offline SPAS test unavailable")
-    return f'{tr("Offline only — no CAN output")} | SPAS2={self._spas_bench.control_value} | {self._spas_bench.remaining(time.monotonic())} s'
-
-  def hide_event(self):
-    self._spas_bench.stop()
-    self._scroller.hide_event()
-    super().hide_event()
 
   def _update_state(self):
     super()._update_state()
-    self._spas_bench.update(time.monotonic())
 
     for param in self._toggle_defs:
       self._toggles[param].action_item.set_state(self._params.get_bool(param))
