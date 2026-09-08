@@ -1,0 +1,62 @@
+name: Sync tony-sp with TonyBinheWu/sunnypilot@hkg-enhanced
+
+on:
+  schedule:
+    # 06:00 UTC and 18:00 UTC every day (Taiwan 14:00 / 02:00)
+    - cron: "0 6 * * *"
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Pull upstream hkg-enhanced and re-apply tony-sp patches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tony-sp
+        uses: actions/checkout@v4
+        with:
+          ref: tony-sp
+          fetch-depth: 50
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/TonyBinheWu/sunnypilot.git
+          git fetch --depth 50 upstream hkg-enhanced
+
+      - name: Detect and re-apply tony-sp-only commits
+        run: |
+          set -euo pipefail
+
+          # Local-only commits = everything on HEAD that is not in upstream/hkg-enhanced.
+          # Order matters (oldest first) so we re-apply them sequentially.
+          mapfile -t LOCAL_COMMITS < <(git rev-list --reverse upstream/hkg-enhanced..HEAD)
+          if [ ${#LOCAL_COMMITS[@]} -eq 0 ]; then
+            echo "No tony-sp-only commits to preserve. Just fast-forwarding."
+            git reset --hard upstream/hkg-enhanced
+            git push origin HEAD:tony-sp --force-with-lease
+            exit 0
+          fi
+          echo "Found ${#LOCAL_COMMITS[@]} local commit(s) to preserve:"
+          for c in "${LOCAL_COMMITS[@]}"; do
+            echo "  $c  $(git log -1 --pretty=%s $c)"
+          done
+
+          git reset --hard upstream/hkg-enhanced
+
+          for c in "${LOCAL_COMMITS[@]}"; do
+            echo "Re-applying $c ..."
+            if ! git cherry-pick "$c"; then
+              echo "::error::Cherry-pick conflict on $c. Manual intervention required."
+              git cherry-pick --abort || true
+              exit 1
+            fi
+          done
+
+          git push origin HEAD:tony-sp --force-with-lease
+          echo "Sync complete."
