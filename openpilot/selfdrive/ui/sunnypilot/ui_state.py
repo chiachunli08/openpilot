@@ -9,6 +9,7 @@ from enum import Enum
 from openpilot.cereal import messaging, log, custom
 from opendbc.car.structs import car
 from openpilot.common.params import Params
+from openpilot.selfdrive.ui.sunnypilot.onroad.developer_diagnostics import DeveloperDiagnostics
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.display import OnroadBrightness
 from openpilot.sunnypilot.models.helpers import ACTIVE_BUNDLE_KEYS, get_active_source
 from openpilot.sunnypilot.sunnylink.sunnylink_state import SunnylinkState
@@ -49,6 +50,7 @@ class UIStateSP:
     self.chevron_metrics = None
     self.custom_interactive_timeout: int = 0
     self.developer_ui = None
+    self.developer_diagnostics = DeveloperDiagnostics()
     self.hide_v_ego_ui: bool = False
     self.onroad_brightness: int = 0
     self.onroad_brightness_timer: int = 0
@@ -67,6 +69,8 @@ class UIStateSP:
     self._sp_initialized: bool = False
 
   def update(self) -> None:
+    # Runs even while the on-road renderer is hidden behind settings.
+    self.developer_diagnostics.update(self.sm, self.started and self.developer_ui in (1, 2, 3), self.started_frame)
     if self.sunnylink_enabled:
       self.sunnylink_state.start()
     else:

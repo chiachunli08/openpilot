@@ -78,6 +78,24 @@ class DeveloperUiRenderer(Widget):
       self._draw_bottom_dev_ui(rect)
 
     self._draw_torque_debug(rect)
+    self._draw_vehicle_diagnostics(rect)
+
+  def _draw_vehicle_diagnostics(self, rect: rl.Rectangle) -> None:
+    if rect.width <= 0 or rect.height <= 0:
+      return
+    scale = min(1.0, rect.width / 1920, rect.height / 1080)
+    # Keep the lower-left driver-monitoring indicator unobstructed.
+    x, y = rect.x + 270 * scale, rect.y + 650 * scale
+    width = 700 * scale
+    lines = ui_state.developer_diagnostics.lines()
+    rl.draw_rectangle_rounded(rl.Rectangle(x, y, width, (16 + 27 * len(lines)) * scale),
+                               0.1, 8, rl.Color(0, 0, 0, 170))
+    for i, line in enumerate(lines):
+      font_size = 23 * scale
+      measured = measure_text_cached(self._font_semi_bold, line, font_size, 0).x
+      font_size *= min(1.0, (width - 24 * scale) / max(1.0, measured))
+      color = rl.ORANGE if line.startswith('*') else rl.WHITE
+      rl.draw_text_ex(self._font_semi_bold, line, rl.Vector2(x + 12 * scale, y + (8 + i * 27) * scale), font_size, 0, color)
 
   def _draw_torque_debug(self, rect: rl.Rectangle) -> None:
     # Left of the road, below the speed-limit ahead sign. Alerts render above HUD.
