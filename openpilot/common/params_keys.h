@@ -254,6 +254,14 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"PlanplusControl", {PERSISTENT | BACKUP, FLOAT, "1.0"}},
 
     // mapd
+    {"MapboxPublicKey", {PERSISTENT | DONT_LOG, STRING}},
+    {"MapboxSecretKey", {PERSISTENT | DONT_LOG, STRING}},
+    {"NavDestination", {PERSISTENT | DONT_LOG, JSON}},
+    {"NavigationEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"NavigationIntentEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"NavigationRouteCache", {PERSISTENT | DONT_LOG, JSON}},
+    {"NavigationRouteDestination", {PERSISTENT | DONT_LOG, JSON}},
+    {"NavigationManeuverId", {CLEAR_ON_ONROAD_TRANSITION, STRING}},
     {"MapAdvisorySpeedLimit", {CLEAR_ON_ONROAD_TRANSITION, FLOAT}},
     {"Mapd_ClearCache", {CLEAR_ON_MANAGER_START, BOOL}},
     {"MapdVersion", {PERSISTENT, STRING}},

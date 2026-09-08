@@ -27,6 +27,8 @@ from openpilot.system.ui.sunnypilot.lib.utils import NoElideButtonAction
 from openpilot.system.ui.sunnypilot.widgets.list_view import ListItemSP
 from openpilot.system.ui.sunnypilot.widgets.tree_dialog import TreeFolder, TreeNode, TreeOptionDialog
 from openpilot.system.ui.sunnypilot.widgets.progress_bar import progress_item
+from openpilot.system.ui.sunnypilot.widgets.input_dialog import InputDialogSP
+from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, toggle_item_sp
 
 MAP_PATH = Path(Paths.mapd_root()) / "offline"
 
@@ -45,6 +47,22 @@ class OSMLayout(Widget):
     self._scroller = Scroller(self.items, line_separator=True, spacing=0)
 
   def _initialize_items(self):
+    self._navigation_toggle = toggle_item_sp(
+      tr("Navigation"),
+      tr("Use Mapbox routing and show the next maneuver. A network connection is required to load or recalculate a route; an already loaded route remains available if the connection drops."),
+      initial_state=ui_state.params.get_bool("NavigationEnabled"), param="NavigationEnabled")
+    self._navigation_intent_toggle = toggle_item_sp(
+      tr("Navigation Intent for Driving Model"),
+      tr("Convert an approaching left or right navigation maneuver into the model's existing turn desire. This does not operate the vehicle turn signals; the driver remains responsible for signaling and supervising the maneuver."),
+      initial_state=ui_state.params.get_bool("NavigationIntentEnabled"), param="NavigationIntentEnabled")
+    self._mapbox_public_key = button_item_sp(
+      tr("Mapbox Public Token"), lambda: tr("EDIT"),
+      description=tr("Public access token used for Directions requests."),
+      callback=lambda: self._edit_mapbox_key("MapboxPublicKey", tr("Mapbox Public Token"), False))
+    self._mapbox_secret_key = button_item_sp(
+      tr("Mapbox Secret Token"), lambda: tr("EDIT"),
+      description=tr("Optional secret token. It is stored locally and excluded from logs."),
+      callback=lambda: self._edit_mapbox_key("MapboxSecretKey", tr("Mapbox Secret Token"), True))
     self._mapd_version = text_item(tr("Mapd Version"), lambda: ui_state.params.get("MapdVersion") or "Loading...")
     self._delete_maps_btn = ListItemSP(tr("Downloaded Maps"), action_item=NoElideButtonAction(tr("DELETE"), enabled=True), callback=self._delete_maps)
     self._progress = progress_item(tr("Downloading Map"))
@@ -52,7 +70,15 @@ class OSMLayout(Widget):
     self._country_btn = ListItemSP(tr("Country"), action_item=NoElideButtonAction(tr("SELECT"), enabled=True), callback=lambda: self._select_region("Country"))
     self._state_btn = ListItemSP(tr("State"), action_item=NoElideButtonAction(tr("SELECT"), enabled=True), callback=lambda: self._select_region("State"))
 
-    self.items = [self._mapd_version, self._delete_maps_btn, self._progress, self._update_btn, self._country_btn, self._state_btn]
+    self.items = [self._navigation_toggle, self._navigation_intent_toggle,
+                  self._mapbox_public_key, self._mapbox_secret_key,
+                  self._mapd_version, self._delete_maps_btn, self._progress,
+                  self._update_btn, self._country_btn, self._state_btn]
+
+  @staticmethod
+  def _edit_mapbox_key(param: str, title: str, password_mode: bool) -> None:
+    InputDialogSP(title, current_text=ui_state.params.get(param) or "", param=param,
+                  min_text_size=0, password_mode=password_mode).show()
 
   def _show_confirm(self, msg, confirm_text, func):
     gui_app.push_widget(ConfirmDialog(msg, confirm_text, callback=lambda res: func() if res == DialogResult.CONFIRM else None))
