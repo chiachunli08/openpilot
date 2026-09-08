@@ -13,13 +13,14 @@ from pathlib import Path
 from time import monotonic
 
 from openpilot.common.params import Params
+from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_public_token
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.selfdrive.ui.layouts.settings.software import time_ago
 from openpilot.common.hardware.hw import Paths
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets import DialogResult, Widget
-from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
+from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog, alert_dialog
 from openpilot.system.ui.widgets.list_view import text_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 
@@ -77,8 +78,18 @@ class OSMLayout(Widget):
 
   @staticmethod
   def _edit_mapbox_key(param: str, title: str, password_mode: bool) -> None:
-    InputDialogSP(title, current_text=ui_state.params.get(param) or "", param=param,
-                  min_text_size=0, password_mode=password_mode).show()
+    def save_key(result: DialogResult, text: str) -> None:
+      if result != DialogResult.CONFIRM:
+        return
+      try:
+        value = decode_mapbox_public_token(text) if param == "MapboxPublicKey" else text.strip()
+        ui_state.params.put(param, value)
+      except ValueError:
+        gui_app.push_widget(alert_dialog(tr("Enter a Mapbox public token beginning with pk. or a valid M0/M1 compact code.")))
+
+    subtitle = tr("Accepts pk. tokens and reversible M0/M1 compact codes.") if param == "MapboxPublicKey" else None
+    InputDialogSP(title, sub_title=subtitle, current_text=ui_state.params.get(param) or "",
+                  callback=save_key, min_text_size=0, password_mode=password_mode).show()
 
   def _show_confirm(self, msg, confirm_text, func):
     gui_app.push_widget(ConfirmDialog(msg, confirm_text, callback=lambda res: func() if res == DialogResult.CONFIRM else None))
