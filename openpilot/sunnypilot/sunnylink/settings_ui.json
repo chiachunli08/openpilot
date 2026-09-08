@@ -1396,6 +1396,22 @@
           "description": "Overlays shown on the driving screen",
           "items": [
             {
+              "key": "AdjacentLaneObjectMarkers",
+              "widget": "toggle",
+              "title": "Adjacent Lane Object Markers",
+              "description": "Show yellow markers for high-confidence model lead candidates outside the current driving path. The driving model does not provide a complete object list, so some nearby vehicles may not appear.",
+              "visibility": [
+                {
+                  "type": "not",
+                  "condition": {
+                    "type": "capability",
+                    "field": "device_type",
+                    "equals": "mici"
+                  }
+                }
+              ]
+            },
+            {
               "key": "BlindSpot",
               "widget": "toggle",
               "title": "Show Blind Spot Warnings",

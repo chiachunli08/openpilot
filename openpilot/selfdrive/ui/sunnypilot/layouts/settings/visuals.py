@@ -28,6 +28,12 @@ class VisualsLayout(Widget):
 
   def _initialize_items(self):
     self._toggle_defs = {
+      "AdjacentLaneObjectMarkers": (
+        lambda: tr("Adjacent Lane Object Markers"),
+        tr("Show yellow markers for high-confidence model lead candidates outside the current driving path. " +
+           "The driving model does not provide a complete object list, so some nearby vehicles may not appear."),
+        None,
+      ),
       "BlindSpot": (
         lambda: tr("Show Blind Spot Warnings"),
         tr("Enabling this will display warnings when a vehicle is detected in your " +
