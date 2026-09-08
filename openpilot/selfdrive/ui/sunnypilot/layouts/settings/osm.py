@@ -32,6 +32,7 @@ from openpilot.system.ui.sunnypilot.widgets.tree_dialog import TreeFolder, TreeN
 from openpilot.system.ui.sunnypilot.widgets.progress_bar import progress_item
 from openpilot.system.ui.sunnypilot.widgets.input_dialog import InputDialogSP
 from openpilot.system.ui.sunnypilot.widgets.list_view import button_item_sp, toggle_item_sp
+from openpilot.selfdrive.ui.sunnypilot.widgets.mapbox_qr_scanner import MapboxQrScannerDialog
 
 MAP_PATH = Path(Paths.mapd_root()) / "offline"
 
@@ -52,11 +53,13 @@ class OSMLayout(Widget):
   def _initialize_items(self):
     self._navigation_toggle = toggle_item_sp(
       tr("Navigation"),
-      tr("Use Mapbox routing and show the next maneuver. A network connection is required to load or recalculate a route; an already loaded route remains available if the connection drops."),
+      tr("Use Mapbox routing and show the next maneuver. A network connection is required to load or recalculate a route; " +
+         "an already loaded route remains available if the connection drops."),
       initial_state=ui_state.params.get_bool("NavigationEnabled"), param="NavigationEnabled")
     self._navigation_intent_toggle = toggle_item_sp(
       tr("Navigation Intent for Driving Model"),
-      tr("Convert an approaching left or right navigation maneuver into the model's existing turn desire. This does not operate the vehicle turn signals; the driver remains responsible for signaling and supervising the maneuver."),
+      tr("Convert an approaching left or right navigation maneuver into the model's existing turn desire. This does not operate the vehicle turn signals; " +
+         "the driver remains responsible for signaling and supervising the maneuver."),
       initial_state=ui_state.params.get_bool("NavigationIntentEnabled"), param="NavigationIntentEnabled")
     self._mapbox_public_key = button_item_sp(
       tr("Mapbox Public Token"), lambda: tr("EDIT"),
@@ -66,6 +69,10 @@ class OSMLayout(Widget):
       tr("Mapbox Secret Token"), lambda: tr("EDIT"),
       description=tr("Optional secret token. It is stored locally and excluded from logs."),
       callback=lambda: self._edit_mapbox_key("MapboxSecretKey", tr("Mapbox Secret Token"), True))
+    self._mapbox_qr_scanner = button_item_sp(
+      tr("Scan Mapbox Token QR"), lambda: tr("SCAN"),
+      description=tr("Scan a QR code from the token webpage with the driver monitoring camera. Available only while parked."),
+      callback=self._show_mapbox_qr_scanner)
     self._navigation_destination = button_item_sp(
       tr("Navigation Destination"), lambda: tr("SET"),
       description=tr("Enter latitude, longitude or an English address. Use sunnylink for Chinese address input."),
@@ -82,7 +89,7 @@ class OSMLayout(Widget):
     self._state_btn = ListItemSP(tr("State"), action_item=NoElideButtonAction(tr("SELECT"), enabled=True), callback=lambda: self._select_region("State"))
 
     self.items = [self._navigation_toggle, self._navigation_intent_toggle,
-                  self._mapbox_public_key, self._mapbox_secret_key,
+                  self._mapbox_public_key, self._mapbox_secret_key, self._mapbox_qr_scanner,
                   self._navigation_destination, self._cancel_navigation,
                   self._mapd_version, self._delete_maps_btn, self._progress,
                   self._update_btn, self._country_btn, self._state_btn]
@@ -103,6 +110,13 @@ class OSMLayout(Widget):
                 else tr("Accepts sk. tokens and reversible S0/S1 compact codes."))
     InputDialogSP(title, sub_title=subtitle, current_text=ui_state.params.get(param) or "",
                   callback=save_key, min_text_size=0, password_mode=password_mode).show()
+
+  @staticmethod
+  def _show_mapbox_qr_scanner() -> None:
+    if ui_state.is_onroad():
+      gui_app.push_widget(alert_dialog(tr("QR scanning is available only while parked.")))
+      return
+    gui_app.push_widget(MapboxQrScannerDialog())
 
   def _show_confirm(self, msg, confirm_text, func):
     gui_app.push_widget(ConfirmDialog(msg, confirm_text, callback=lambda res: func() if res == DialogResult.CONFIRM else None))

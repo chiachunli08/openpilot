@@ -2,7 +2,8 @@ import base64
 import gzip
 import unittest
 
-from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_public_token, decode_mapbox_secret_token, decode_mapbox_token
+from openpilot.sunnypilot.navd.mapbox_token_codec import MAPBOX_QR_PREFIX, decode_mapbox_public_token, decode_mapbox_qr_payload
+from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_secret_token, decode_mapbox_token
 
 
 class TestMapboxTokenCodec(unittest.TestCase):
@@ -32,6 +33,22 @@ class TestMapboxTokenCodec(unittest.TestCase):
   def test_rejects_secret_token(self):
     with self.assertRaises(ValueError):
       decode_mapbox_public_token("sk.secret")
+
+  def test_public_qr_payload(self):
+    self.assertEqual(decode_mapbox_qr_payload(f"{MAPBOX_QR_PREFIX}M0public"),
+                     ("MapboxPublicKey", "pk.public"))
+
+  def test_secret_qr_payload(self):
+    self.assertEqual(decode_mapbox_qr_payload(f"{MAPBOX_QR_PREFIX}S0secret"),
+                     ("MapboxSecretKey", "sk.secret"))
+
+  def test_rejects_unscoped_qr_payload(self):
+    with self.assertRaises(ValueError):
+      decode_mapbox_qr_payload("M0public")
+
+  def test_rejects_raw_token_in_qr_payload(self):
+    with self.assertRaises(ValueError):
+      decode_mapbox_qr_payload(f"{MAPBOX_QR_PREFIX}pk.public")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ PUBLIC_RAW_PREFIX = "M0"
 PUBLIC_GZIP_PREFIX = "M1"
 SECRET_RAW_PREFIX = "S0"
 SECRET_GZIP_PREFIX = "S1"
+MAPBOX_QR_PREFIX = "sunnypilot-mapbox:v1:"
 
 
 def decode_mapbox_token(value: str, expected_prefix: str | None = None) -> str:
@@ -39,3 +40,19 @@ def decode_mapbox_public_token(value: str) -> str:
 
 def decode_mapbox_secret_token(value: str) -> str:
   return decode_mapbox_token(value, "sk.")
+
+
+def decode_mapbox_qr_payload(value: str) -> tuple[str, str]:
+  """Return the destination Params key and decoded token from a scanner payload."""
+  payload = value.strip()
+  if not payload.startswith(MAPBOX_QR_PREFIX):
+    raise ValueError("Not a sunnypilot Mapbox QR code")
+
+  compact_token = payload.removeprefix(MAPBOX_QR_PREFIX)
+  if not compact_token.startswith((PUBLIC_RAW_PREFIX, PUBLIC_GZIP_PREFIX,
+                                   SECRET_RAW_PREFIX, SECRET_GZIP_PREFIX)):
+    raise ValueError("Mapbox QR code must contain a compact token")
+
+  token = decode_mapbox_token(compact_token)
+  param = "MapboxPublicKey" if token.startswith("pk.") else "MapboxSecretKey"
+  return param, token
