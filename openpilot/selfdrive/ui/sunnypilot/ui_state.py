@@ -46,6 +46,7 @@ class UIStateSP:
     self.screensaver_enabled: bool = False
 
     self.active_bundle = None
+    self.adjacent_lane_object_markers: bool = False
     self.model_runner_tinygrad: bool = False
     self.blindspot: bool = False
     self.chevron_metrics = None
@@ -161,6 +162,7 @@ class UIStateSP:
     source = get_active_source(chestnut=self.chestnut_present, chestnut_active=self.chestnut_active,
                                chestnut_loading=self.chestnut_loading, offroad=self.is_offroad())
     self.active_bundle = self.params.get(ACTIVE_BUNDLE_KEYS[source])
+    self.adjacent_lane_object_markers = self.params.get_bool("AdjacentLaneObjectMarkers")
     self.model_runner_tinygrad = self.active_bundle is not None and self.active_bundle.get("runner") == "tinygrad"
     # stock only counts the default big model's compiled pkl. a downloaded big bundle runs on the
     # chestnut just the same, so ChestnutState has to see it as available too.
