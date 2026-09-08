@@ -10,53 +10,62 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: sync-tony-sp-hkg-enhanced
+  cancel-in-progress: false
+
 jobs:
   sync:
-    name: Pull upstream hkg-enhanced and re-apply tony-sp patches
+    if: github.repository == 'chiachunli08/openpilot'
+    name: Merge upstream hkg-enhanced into tony-sp
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Checkout tony-sp
+      - name: Check out tony-sp with full history
         uses: actions/checkout@v4
         with:
           ref: tony-sp
-          fetch-depth: 50
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          submodules: false
+          lfs: false
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/TonyBinheWu/sunnypilot.git
-          git fetch --depth 50 upstream hkg-enhanced
-
-      - name: Detect and re-apply tony-sp-only commits
+      - name: Merge upstream hkg-enhanced and preserve existing commits
+        shell: bash
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/TonyBinheWu/sunnypilot.git
+          git fetch --no-tags upstream refs/heads/hkg-enhanced:refs/remotes/upstream/hkg-enhanced
 
-          # Local-only commits = everything on HEAD that is not in upstream/hkg-enhanced.
-          # Order matters (oldest first) so we re-apply them sequentially.
-          mapfile -t LOCAL_COMMITS < <(git rev-list --reverse upstream/hkg-enhanced..HEAD)
-          if [ ${#LOCAL_COMMITS[@]} -eq 0 ]; then
-            echo "No tony-sp-only commits to preserve. Just fast-forwarding."
-            git reset --hard upstream/hkg-enhanced
-            git push origin HEAD:tony-sp --force-with-lease
+          old_head="$(git rev-parse HEAD)"
+          upstream_head="$(git rev-parse refs/remotes/upstream/hkg-enhanced)"
+          {
+            echo "## tony-sp sync"
+            echo "Previous tony-sp: $old_head"
+            echo "Upstream hkg-enhanced: $upstream_head"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if git merge-base --is-ancestor "$upstream_head" HEAD; then
+            echo "Already up to date. All tony-sp commits were preserved." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "Found ${#LOCAL_COMMITS[@]} local commit(s) to preserve:"
-          for c in "${LOCAL_COMMITS[@]}"; do
-            echo "  $c  $(git log -1 --pretty=%s $c)"
-          done
 
-          git reset --hard upstream/hkg-enhanced
+          if ! git merge --no-edit "$upstream_head"; then
+            {
+              echo "Merge failed. Remote tony-sp was not modified; manual resolution is required."
+              echo "Conflicted paths:"
+              git diff --name-only --diff-filter=U
+            } >> "$GITHUB_STEP_SUMMARY"
+            git merge --abort || true
+            echo "::error::Upstream merge failed. Resolve manually; no commits were overwritten."
+            exit 1
+          fi
 
-          for c in "${LOCAL_COMMITS[@]}"; do
-            echo "Re-applying $c ..."
-            if ! git cherry-pick "$c"; then
-              echo "::error::Cherry-pick conflict on $c. Manual intervention required."
-              git cherry-pick --abort || true
-              exit 1
-            fi
-          done
+          # Verify that neither side was lost before publishing the merge.
+          git merge-base --is-ancestor "$old_head" HEAD
+          git merge-base --is-ancestor "$upstream_head" HEAD
 
-          git push origin HEAD:tony-sp --force-with-lease
-          echo "Sync complete."
+          # A concurrent push is rejected safely; never rewrite tony-sp history.
+          git push origin HEAD:refs/heads/tony-sp
+          echo "Synced successfully: $(git rev-parse HEAD). Existing commit SHAs were preserved." >> "$GITHUB_STEP_SUMMARY"
