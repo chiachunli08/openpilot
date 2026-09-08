@@ -5015,6 +5015,7 @@ def setup(app):
       "/assets/components/settings.js",
       "/assets/components/home/home.js",
       "/assets/components/home/home.css",
+      "/assets/mobile/js/params.js",
       "/assets/components/tools/device_settings.js",
       "/assets/components/tools/device_settings.css",
       "/assets/components/tools/device_settings_layout.json",
@@ -5181,6 +5182,7 @@ def setup(app):
     status["slots"] = slots
     status["controller_slots"] = controller_slots
     status["controller_options"] = controller_options
+    status["disconnect_controllers_offroad"] = params.get_bool("BluetoothDisconnectControllersOffroad")
     is_metric = params.get_bool("IsMetric")
     speed_minimum, speed_maximum = controller_speed_bounds(is_metric)
     status["speed_unit"] = "km/h" if is_metric else "mph"
@@ -5190,13 +5192,16 @@ def setup(app):
 
   @app.route("/api/wheel-controls/<operation>", methods=["POST"])
   def wheel_controls_operation(operation):
-    if operation not in {"action", "learn", "cancel", "delete", "clear", "test", "test-stop", "joystick"}:
+    if operation not in {"action", "learn", "cancel", "delete", "clear", "test", "test-stop", "joystick", "offroad-disconnect"}:
       return jsonify({"error": "Unknown wheel control operation."}), 404
     if not params.get_bool("IsOffroad"):
       return jsonify({"error": "Wheel controls can only be configured offroad."}), 409
 
     data = request.get_json(silent=True) or {}
     try:
+      if operation == "offroad-disconnect":
+        params.put_bool("BluetoothDisconnectControllersOffroad", bool(data.get("enabled", False)))
+        return jsonify({"message": "Offroad controller disconnect updated."}), 200
       if operation == "action":
         slot_index = int(data.get("slot", -1))
         key = str(data.get("key") or "").strip()
@@ -5295,6 +5300,27 @@ def setup(app):
     if not SETTINGS_CATALOG_PATH.is_file():
       return "Settings catalog not found", 404
     return send_file(str(SETTINGS_CATALOG_PATH), mimetype="application/json")
+
+  @app.route("/assets/mobile/manifest.json", methods=["GET"])
+  def mobile_manifest():
+    manifest_path = Path(app.static_folder) / "mobile" / "manifest.json"
+    if not manifest_path.is_file():
+      return jsonify({"error": "Big Dipper manifest not found"}), 404
+
+    try:
+      manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+      return jsonify({"error": "Big Dipper manifest is invalid"}), 500
+
+    slug = _read_galaxy_text(_get_galaxy_dir() / "glxyslug")
+    if re.fullmatch(r"[A-Za-z0-9]{16}", slug):
+      manifest_data["start_url"] = f"https://galaxy.firestar.link/{slug}"
+    else:
+      manifest_data["start_url"] = "/mobile/"
+
+    response = jsonify(manifest_data)
+    response.mimetype = "application/manifest+json"
+    return _no_store_response(response)
 
   @app.route("/manifest.json", methods=["GET"])
   @app.route("/assets/manifest.json", methods=["GET"])
