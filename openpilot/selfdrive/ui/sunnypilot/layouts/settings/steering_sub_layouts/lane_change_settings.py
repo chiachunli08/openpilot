@@ -82,7 +82,8 @@ class LaneChangeSettingsLayout(Widget):
                      "The model must be valid; if a lead is detected, it must be at least 5 m away. " +
                      "It waits while the brake is held; braking after steering starts, a vehicle in the signaled blind spot, " +
                      "signal cancellation, or invalid perception cancels the maneuver. " +
-                     "Only the active maneuver may use the speed-dependent steering command cap of 400. " +
+                     "Only an already active maneuver may use a steering command cap of 400 up to 21 km/h, " +
+                     "tapering to the normal limit between 21 and 30 km/h. " +
                      "The driver remains responsible for checking the target lane and clearance. Takes effect next drive.")
     if ui_state.CP is None:
       status = tr("Start the vehicle to check vehicle compatibility.")
