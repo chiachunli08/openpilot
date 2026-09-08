@@ -5,6 +5,7 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 import datetime
+import json
 import os
 import platform
 import requests
@@ -13,7 +14,8 @@ from pathlib import Path
 from time import monotonic
 
 from openpilot.common.params import Params
-from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_public_token
+from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_public_token, decode_mapbox_secret_token
+from openpilot.sunnypilot.navd.destination_input import parse_coordinate_destination
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.selfdrive.ui.layouts.settings.software import time_ago
 from openpilot.common.hardware.hw import Paths
@@ -64,6 +66,14 @@ class OSMLayout(Widget):
       tr("Mapbox Secret Token"), lambda: tr("EDIT"),
       description=tr("Optional secret token. It is stored locally and excluded from logs."),
       callback=lambda: self._edit_mapbox_key("MapboxSecretKey", tr("Mapbox Secret Token"), True))
+    self._navigation_destination = button_item_sp(
+      tr("Navigation Destination"), lambda: tr("SET"),
+      description=tr("Enter latitude, longitude or an English address. Use sunnylink for Chinese address input."),
+      callback=self._edit_navigation_destination)
+    self._cancel_navigation = button_item_sp(
+      tr("Cancel Navigation"), lambda: tr("CANCEL"),
+      description=tr("Clear the active destination and route."),
+      callback=self._cancel_active_navigation)
     self._mapd_version = text_item(tr("Mapd Version"), lambda: ui_state.params.get("MapdVersion") or "Loading...")
     self._delete_maps_btn = ListItemSP(tr("Downloaded Maps"), action_item=NoElideButtonAction(tr("DELETE"), enabled=True), callback=self._delete_maps)
     self._progress = progress_item(tr("Downloading Map"))
@@ -73,6 +83,7 @@ class OSMLayout(Widget):
 
     self.items = [self._navigation_toggle, self._navigation_intent_toggle,
                   self._mapbox_public_key, self._mapbox_secret_key,
+                  self._navigation_destination, self._cancel_navigation,
                   self._mapd_version, self._delete_maps_btn, self._progress,
                   self._update_btn, self._country_btn, self._state_btn]
 
@@ -82,17 +93,70 @@ class OSMLayout(Widget):
       if result != DialogResult.CONFIRM:
         return
       try:
-        value = decode_mapbox_public_token(text) if param == "MapboxPublicKey" else text.strip()
+        value = decode_mapbox_public_token(text) if param == "MapboxPublicKey" else decode_mapbox_secret_token(text)
         ui_state.params.put(param, value)
       except ValueError:
-        gui_app.push_widget(alert_dialog(tr("Enter a Mapbox public token beginning with pk. or a valid M0/M1 compact code.")))
+        expected = tr("pk. or M0/M1") if param == "MapboxPublicKey" else tr("sk. or S0/S1")
+        gui_app.push_widget(alert_dialog(tr("Enter a valid Mapbox token or compact code: %s") % expected))
 
-    subtitle = tr("Accepts pk. tokens and reversible M0/M1 compact codes.") if param == "MapboxPublicKey" else None
+    subtitle = (tr("Accepts pk. tokens and reversible M0/M1 compact codes.") if param == "MapboxPublicKey"
+                else tr("Accepts sk. tokens and reversible S0/S1 compact codes."))
     InputDialogSP(title, sub_title=subtitle, current_text=ui_state.params.get(param) or "",
                   callback=save_key, min_text_size=0, password_mode=password_mode).show()
 
   def _show_confirm(self, msg, confirm_text, func):
     gui_app.push_widget(ConfirmDialog(msg, confirm_text, callback=lambda res: func() if res == DialogResult.CONFIRM else None))
+
+  def _edit_navigation_destination(self) -> None:
+    def resolve(result: DialogResult, text: str) -> None:
+      if result != DialogResult.CONFIRM or not text.strip():
+        return
+      self._navigation_destination.action_item.set_enabled(False)
+      self._navigation_destination.action_item.set_text(tr("SEARCHING..."))
+      threading.Thread(target=self._resolve_navigation_destination, args=(text.strip(),), daemon=True).start()
+
+    InputDialogSP(tr("Navigation Destination"),
+                  sub_title=tr("Latitude, longitude or English address"),
+                  callback=resolve, min_text_size=1).show()
+
+  def _resolve_navigation_destination(self, query: str) -> None:
+    try:
+      coordinates = parse_coordinate_destination(query)
+      if coordinates is not None:
+        latitude, longitude = coordinates
+        name, details = tr("Coordinate destination"), f"{latitude}, {longitude}"
+      else:
+        raw_token = ui_state.params.get("MapboxPublicKey") or ui_state.params.get("MapboxSecretKey") or ""
+        token = (decode_mapbox_public_token(raw_token) if raw_token.startswith(("pk.", "M"))
+                 else decode_mapbox_secret_token(raw_token))
+        response = requests.get("https://api.mapbox.com/search/geocode/v6/forward",
+                                params={"q": query, "access_token": token, "limit": 1,
+                                        "language": ui_state.params.get("LanguageSetting") or "en"}, timeout=10)
+        response.raise_for_status()
+        features = response.json().get("features", [])
+        if not features:
+          raise ValueError("Destination not found")
+        feature = features[0]
+        longitude, latitude = feature["geometry"]["coordinates"][:2]
+        properties = feature.get("properties", {})
+        name = properties.get("name") or properties.get("full_address") or query
+        details = properties.get("full_address") or properties.get("place_formatted") or query
+
+      destination = {"latitude": float(latitude), "longitude": float(longitude),
+                     "place_name": name, "place_details": details}
+      message = tr("Start navigation to %s?\n\n%s") % (name, details)
+      gui_app.push_widget(ConfirmDialog(message, tr("Navigate"), callback=lambda result:
+                          ui_state.params.put("NavDestination", json.dumps(destination))
+                          if result == DialogResult.CONFIRM else None))
+    except (KeyError, TypeError, ValueError, requests.RequestException):
+      gui_app.push_widget(alert_dialog(tr("Unable to resolve the destination. Check the token, network, address, or coordinates.")))
+    finally:
+      self._navigation_destination.action_item.set_enabled(True)
+      self._navigation_destination.action_item.set_text(tr("SET"))
+
+  @staticmethod
+  def _cancel_active_navigation() -> None:
+    ui_state.params.remove("NavDestination")
 
   def calculate_size(self):
     total_size = 0

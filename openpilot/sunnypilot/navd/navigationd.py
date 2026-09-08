@@ -12,7 +12,7 @@ import requests
 
 from openpilot.cereal import log, messaging
 from openpilot.common.params import Params
-from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_public_token
+from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_token
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.navd.helpers import Coordinate, distance_along_geometry, minimum_distance, parse_banner_instructions
@@ -73,10 +73,10 @@ class NavigationEngine:
 
   def _token(self) -> str:
     token = self.params.get("MapboxPublicKey") or self.params.get("MapboxSecretKey") or ""
-    if not token or token.startswith("sk."):
+    if not token:
       return token
     try:
-      return decode_mapbox_public_token(token)
+      return decode_mapbox_token(token)
     except ValueError:
       return ""
 
