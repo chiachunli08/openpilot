@@ -506,14 +506,14 @@
         {
           "id": "hkg_low_speed_torque",
           "title": "HKG Low-Speed Steering Torque",
-          "description": "Experimental low-speed steering assistance for compatible Hyundai, Kia and Genesis CAN-FD vehicles",
+          "description": "2022 low-speed steering profile and creep lane-change behavior for compatible Hyundai, Kia and Genesis CAN-FD vehicles",
           "items": [
             {
               "key": "HkgLowSpeedTorque",
               "widget": "toggle",
               "title": "HKG Low-Speed Steering Torque (Experimental)",
-              "description": "Defaults to off. Change only while offroad; takes effect on the next drive. Requires compatible HKG CAN-FD torque steering.",
-              "details": "Experimental feature requiring vehicle validation. Traditional CAN, angle steering and vehicles with alternate torque limits are unsupported.",
+              "description": "Enables the 2022 low-speed torque and steering-rate profile together with the 0-5 km/h automatic lane-change behavior. Defaults to off and takes effect on the next drive.",
+              "details": "Torque is 384 with 10/10 rates through 39.6 km/h, blends to 350 and 2/3 by 46.8 km/h, then tapers to 270 by 61.2 km/h and remains 270 at higher speeds. Experimental feature requiring vehicle validation. Traditional CAN, angle steering and vehicles with alternate torque limits are unsupported.",
               "enablement": [
                 {
                   "type": "offroad_only"
@@ -566,23 +566,6 @@
                 {
                   "value": 5,
                   "label": "3 seconds"
-                }
-              ]
-            },
-            {
-              "key": "HkgCreepLaneChange",
-              "widget": "toggle",
-              "title": "HKG Creep Lane Change (Experimental)",
-              "description": "At 0-5 km/h, one blinker request starts one automatic lane change after 0.5 seconds. If the model detects a lead, it must be at least 5 m away.",
-              "details": "Only the active maneuver may use the speed-dependent steering command cap of 400. It waits while the brake is held; braking after steering starts, a signaled blind spot, signal cancellation, or invalid perception cancels the maneuver. The driver remains responsible for target-lane clearance. Takes effect next drive.",
-              "enablement": [
-                {
-                  "type": "offroad_only"
-                },
-                {
-                  "type": "capability",
-                  "field": "hkg_low_speed_torque_available",
-                  "equals": true
                 }
               ]
             },
@@ -1835,6 +1818,42 @@
                 {
                   "type": "param",
                   "key": "ShowAdvancedControls",
+                  "equals": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "osm",
+      "label": "OSM & Navigation",
+      "icon": "map",
+      "order": 8,
+      "remote_configurable": true,
+      "description": "Offline maps and Mapbox route guidance",
+      "sections": [
+        {
+          "id": "navigation",
+          "title": "Navigation",
+          "description": "Mapbox routing requires Wi-Fi or cellular data to load or recalculate a route. An already loaded route remains available through a temporary connection loss.",
+          "items": [
+            {
+              "key": "NavigationEnabled",
+              "widget": "toggle",
+              "title": "Enable Navigation",
+              "description": "Load routes and show the next maneuver on the driving screen."
+            },
+            {
+              "key": "NavigationIntentEnabled",
+              "widget": "toggle",
+              "title": "Navigation Intent for Driving Model",
+              "description": "Convert approaching left and right maneuvers into existing model turn desires. This does not control the vehicle turn signals.",
+              "enablement": [
+                {
+                  "type": "param",
+                  "key": "NavigationEnabled",
                   "equals": true
                 }
               ]

@@ -321,7 +321,8 @@ def main(demo=False):
   # messaging
   pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"] + (["chestnutState"] if CHESTNUT else [])
   pm = PubMaster(pub_socks)
-  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay"])
+  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay",
+                  "navInstruction"])
 
   publish_state = PublishState()
   params = Params()
@@ -353,6 +354,7 @@ def main(demo=False):
 
   DH = DesireHelper(bool(CP.brand == "hyundai" and CP.flags & HyundaiFlags.CANFD_CREEP_LANE_CHANGE))
   RELC = RoadEdgeLaneChangeController()
+  last_navigation_maneuver_id = ""
 
   while True:
     # Keep receiving frames until we are at least 1 frame ahead of previous extra frame
@@ -389,6 +391,17 @@ def main(demo=False):
 
     sm.update(0)
     desire = DH.desire
+    if desire == log.Desire.none and params.get_bool("NavigationIntentEnabled") and sm.valid["navInstruction"]:
+      nav = sm["navInstruction"]
+      modifier = nav.maneuverModifier.lower()
+      maneuver_id = params.get("NavigationManeuverId") or ""
+      if 8.0 <= nav.maneuverDistance <= 180.0 and maneuver_id and maneuver_id != last_navigation_maneuver_id:
+        if "left" in modifier:
+          desire = log.Desire.turnLeft
+          last_navigation_maneuver_id = maneuver_id
+        elif "right" in modifier:
+          desire = log.Desire.turnRight
+          last_navigation_maneuver_id = maneuver_id
     is_rhd = sm["driverMonitoringState"].isRHD
     frame_id = sm["narrowRoadCameraState"].frameId
     v_ego = max(sm["carState"].vEgo, 0.)
