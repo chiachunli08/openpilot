@@ -5,7 +5,6 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 import datetime
-import json
 import os
 import platform
 import requests
@@ -45,6 +44,7 @@ class OSMLayout(Widget):
     self._current_percent = 0
     self._last_map_size_update = 0
     self._decoder_job = None
+    self._destination_job = None
     self._decoder_status = (tr("Installed: %s") % VERSION if (Path(Paths.qr_decoder_root()) / "current").exists()
                             else tr("Not downloaded"))
     self._mem_params = Params("/dev/shm/params") if platform.system() != "Darwin" else ui_state.params
@@ -150,17 +150,25 @@ class OSMLayout(Widget):
 
   def _edit_navigation_destination(self) -> None:
     def resolve(result: DialogResult, text: str) -> None:
-      if result != DialogResult.CONFIRM or not text.strip():
+      if result != DialogResult.CONFIRM or not text.strip() or self._destination_job is not None:
         return
       self._navigation_destination.action_item.set_enabled(False)
       self._navigation_destination.action_item.set_text(tr("SEARCHING..."))
-      threading.Thread(target=self._resolve_navigation_destination, args=(text.strip(),), daemon=True).start()
+      self._destination_job = job = Future()
+
+      def search():
+        try:
+          job.set_result(self._resolve_navigation_destination(text.strip()))
+        except Exception as error:
+          job.set_exception(error)
+
+      threading.Thread(target=search, daemon=True).start()
 
     InputDialogSP(tr("Navigation Destination"),
                   sub_title=tr("Latitude, longitude or English address"),
                   callback=resolve, min_text_size=1).show()
 
-  def _resolve_navigation_destination(self, query: str) -> None:
+  def _resolve_navigation_destination(self, query: str) -> dict:
     try:
       coordinates = parse_coordinate_destination(query)
       if coordinates is not None:
@@ -185,15 +193,36 @@ class OSMLayout(Widget):
 
       destination = {"latitude": float(latitude), "longitude": float(longitude),
                      "place_name": name, "place_details": details}
-      message = tr("Start navigation to %s?\n\n%s") % (name, details)
-      gui_app.push_widget(ConfirmDialog(message, tr("Navigate"), callback=lambda result:
-                          ui_state.params.put("NavDestination", json.dumps(destination))
-                          if result == DialogResult.CONFIRM else None))
-    except (KeyError, TypeError, ValueError, requests.RequestException):
-      gui_app.push_widget(alert_dialog(tr("Unable to resolve the destination. Check the token, network, address, or coordinates.")))
+      return destination
+    except (KeyError, IndexError, TypeError, ValueError, requests.RequestException) as error:
+      raise ValueError("Unable to resolve destination") from error
+
+  def _finish_navigation_destination(self):
+    if self._destination_job is None or not self._destination_job.done():
+      return
+    job, self._destination_job = self._destination_job, None
+    try:
+      destination = job.result()
+      if not ui_state.is_onroad():
+        message = tr("Start navigation to %s?\n\n%s") % (destination["place_name"], destination["place_details"])
+        gui_app.push_widget(ConfirmDialog(message, tr("Navigate"), callback=lambda result:
+                            self._save_navigation_destination(result, destination)))
+    except Exception:
+      if not ui_state.is_onroad():
+        gui_app.push_widget(alert_dialog(tr("Unable to resolve the destination. Check the token, network, address, or coordinates.")))
     finally:
       self._navigation_destination.action_item.set_enabled(True)
       self._navigation_destination.action_item.set_text(tr("SET"))
+
+  @staticmethod
+  def _save_navigation_destination(result, destination):
+    if result != DialogResult.CONFIRM:
+      return
+    try:
+      # Params serializes JSON keys itself; passing a JSON string raises TypeError.
+      ui_state.params.put("NavDestination", destination, block=True)
+    except (OSError, RuntimeError, TypeError, ValueError):
+      gui_app.push_widget(alert_dialog(tr("Unable to save the destination. Please try again.")))
 
   @staticmethod
   def _cancel_active_navigation() -> None:
@@ -354,6 +383,7 @@ class OSMLayout(Widget):
     self._scroller.show_event()
 
   def _update_state(self):
+    self._finish_navigation_destination()
     if self._decoder_job is not None and self._decoder_job.done():
       try:
         self._decoder_status = tr("Installed: %s") % self._decoder_job.result()

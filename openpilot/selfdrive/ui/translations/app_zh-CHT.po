@@ -1260,6 +1260,9 @@ msgstr "掃描期間暫停紅外線補光，點一下畫面即可取消。"
 msgid "Tap anywhere to cancel."
 msgstr "點一下畫面即可取消。"
 
+msgid "Unable to save the destination. Please try again."
+msgstr "無法儲存目的地，請再試一次。"
+
 msgid "QR Decoder"
 msgstr "QR 解碼器"
 
