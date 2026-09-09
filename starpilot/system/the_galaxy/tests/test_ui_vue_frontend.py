@@ -538,6 +538,110 @@ def test_ui_mobile_polish_regressions():
   assert 'tr("Longitudinal Maneuver Mode")' not in c4_developer
 
 
+@pytest.mark.parametrize("native_scrollend", [False, True])
+def test_scroll_coordinator_gesture_lifecycle(native_scrollend):
+  node = _node_exe()
+  if node is None:
+    pytest.skip("no node.js runtime available")
+  script = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const native = process.argv[2] === 'true';
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const handlers = { document: {}, window: {} };
+const classes = new Set();
+const timers = new Map();
+let nextTimer = 0;
+const window = {
+  scrollY: 0,
+  addEventListener: (name, fn) => { handlers.window[name] = fn; },
+};
+class Element {
+  constructor(modal = false) { this.modal = modal; }
+  closest() { return this.modal ? this : null; }
+}
+const document = {
+  body: { classList: {
+    contains: k => classes.has(k), add: k => classes.add(k), remove: k => classes.delete(k),
+  } },
+  addEventListener: (name, fn) => { handlers.document[name] = fn; },
+};
+if (native) document.onscrollend = null;
+vm.runInNewContext(source.slice(source.indexOf('// Disable card blur'), source.indexOf('// Layer 2')), {
+  document, Element,
+  window,
+  setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; },
+  clearTimeout: id => timers.delete(id),
+});
+const fire = (scope, name, ids = [], modal = false) => handlers[scope][name]?.({
+  target: new Element(modal), changedTouches: ids.map(identifier => ({ identifier })),
+});
+const tick = () => { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); };
+const active = () => classes.has('is-scrolling');
+// Inertial movement can continue between delivered scroll events after release.
+fire('window', 'touchstart', [10]);
+fire('document', 'scroll');
+fire('window', 'touchend', [10]);
+if (native) fire('document', 'scrollend');
+window.scrollY = 100;
+tick();
+assert.equal(active(), true, 'finger release must not end momentum scrolling');
+window.scrollY = 160;
+tick();
+assert.equal(active(), true, 'continued movement must keep blur disabled');
+tick();
+assert.equal(active(), false, 'restore after completion and a stable position');
+fire('document', 'scrollend');
+fire('window', 'wheel');
+assert.equal(active(), false, 'wheel without document movement');
+fire('window', 'touchstart', [1, 2]);
+fire('document', 'scroll');
+fire('window', 'touchend', [1]);
+fire('window', 'touchstart', [3], true);
+fire('window', 'touchend', [3], true);
+tick();
+assert.equal(active(), true, 'remaining page finger holds blur disabled');
+fire('window', 'touchcancel', [2]);
+tick();
+assert.equal(active(), native, 'native completion must be authoritative');
+fire('document', 'scrollend');
+tick();
+assert.equal(active(), false);
+// More scroll events after a completion signal invalidate its pending restore.
+fire('document', 'scroll');
+fire('document', 'scrollend');
+fire('document', 'scroll');
+tick();
+assert.equal(active(), native, 'new scrolling cancels the previous native completion');
+fire('document', 'scrollend');
+tick();
+assert.equal(active(), false);
+fire('window', 'touchstart', [4]);
+fire('document', 'scroll');
+fire('document', 'scrollend');
+assert.equal(active(), true, 'hold survives completion');
+fire('window', 'touchend', [4]);
+tick();
+assert.equal(active(), false, 'release after completion cannot leave state stuck');
+fire('document', 'scroll');
+fire('window', 'hashchange');
+tick();
+assert.equal(active(), false, 'navigation clears pending gesture');
+fire('document', 'scroll');
+tick();
+assert.equal(active(), native, 'fallback only on unsupported browsers');
+fire('document', 'scrollend');
+tick();
+assert.equal(active(), false);
+"""
+  result = subprocess.run(
+    [node, "-e", script, str(UI_ROOT / "js/app.js"), str(native_scrollend).lower()],
+    capture_output=True, text=True,
+  )
+  assert result.returncode == 0, result.stdout + result.stderr
+
+
 def _node_exe():
   candidates = [
     shutil.which("node"),
