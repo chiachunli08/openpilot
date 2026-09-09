@@ -3,7 +3,7 @@
 This work keeps the comma/sunnypilot on-device UI separate from the Kia stock
 instrument cluster. It adds a Visuals master permission, explicit per-feature
 data and compatibility gates, a passive audit tool, and an optional **parked,
-one-shot active research test** for `0x161` and `0x162`. Normal driving does not
+one-shot active research test** for `0x161` only. Normal driving does not
 use these unverified messages.
 
 ## Pinned implementation state
@@ -11,7 +11,7 @@ use these unverified messages.
 | Component | Revision checked | Result |
 |---|---|---|
 | `TonyBinheWu/sunnypilot` | `hkg-enhanced` implementation base `ef0f8fd2697d8efb9e76474da7653a30c8b993ec` | Branch inspected and modified in place |
-| `TonyBinheWu/opendbc` | `hkg-cluster-display-test` `741c1839fbca6d270bc10a388640e96d2e96feb3` (base `fa4874935666a796fb4dcb0f4afa4056c105216f`) | Actual Hyundai controller, DBC and safety source used by this branch |
+| `TonyBinheWu/opendbc` | `hkg-cluster-display-test` `03f4ba63901497df0fe4d6aa01cfd3504fe7aa69` (base `fa4874935666a796fb4dcb0f4afa4056c105216f`) | Actual Hyundai controller, DBC and safety source used by this branch |
 | [commaai/opendbc PR #1269](https://github.com/commaai/opendbc/pull/1269) | merged as `ba82d74efab890db6bd2e58c50227c1bc7009e62` | `CCNC_0x161/0x162` common-DBC work originated from 2023-24 Palisade/Telluride HDA2 research, not an EV6 support claim |
 
 The vehicle is fingerprinted as a candidate only when all of these are true:
@@ -25,6 +25,11 @@ The vehicle is fingerprinted as a candidate only when all of these are true:
 Candidate status is not verified compatibility. The verified EV6 profile
 registry is intentionally empty until the evidence below is collected.
 
+The owner reports that only the arrows, lane colors and navigation icons appeared
+on their cluster. This revision retains those eight display states and removes
+all object test output. This report does not validate dynamic driving behavior
+or establish compatibility for other EV6 firmware versions.
+
 ## Feature matrix
 
 | Stock-cluster display | Candidate CAN/field | Proposed source and condition | Current evidence | Current state |
@@ -33,12 +38,12 @@ registry is intentionally empty until the evidence below is collected.
 | Left/right lane-change arrow | `0x161` `LCA_LEFT_ARROW`, `LCA_RIGHT_ARROW` | Later dynamic source: real executing lane-change state, never direction signal alone | DBC field only; EV6 rendering unconfirmed | Left and right synthetic test pages implemented; dynamic output disabled |
 | Lane lines and lane area | `0x161` `LANELINE_LEFT/RIGHT`, `LANE_HIGHLIGHT` | Later dynamic source: fresh lane probabilities, assist state and real warnings | DBC color meanings and EV6 rendering unconfirmed | White, green and orange synthetic test pages implemented; dynamic output disabled |
 | Navigation icon | `0x161` `NAV_ICON` | Later dynamic source: fresh navigation state; it is only a generic icon/color | DBC field only; EV6 rendering unconfirmed | Gray, green and white synthetic test pages implemented; dynamic output disabled |
-| Generic target box | `0x162` lead slots | Later dynamic source: fresh generic lead/track after range checks | Slot coordinates, lateral origin and EV6 rendering unconfirmed | Synthetic box page implemented; dynamic output disabled |
-| Vehicle shape | `0x162` lead enum | Reliable vehicle class required for later dynamic use | Current model/radar data is not a proven class source | Synthetic white-car page implemented; dynamic output disabled |
-| Pedestrian shape | `0x162` lead enum | Reliable pedestrian class required for later dynamic use | No current model/radar output supplies it | Synthetic white-person page implemented; dynamic output disabled |
-| Bicycle shape | `0x162` lead enum | Reliable bicycle class required for later dynamic use | No current model/radar output supplies it | Synthetic white-bicycle page implemented; dynamic output disabled |
-| Motorcycle shape | `0x162` lead enum | Reliable motorcycle class required for later dynamic use | No current model/radar output supplies it | Synthetic white-motorcycle page implemented; dynamic output disabled |
-| Traffic-cone shape | `0x162` lead enum | Reliable cone class required for later dynamic use | No current model/radar output supplies it | Synthetic orange-cone page implemented; dynamic output disabled |
+| Generic target box | `0x162` lead slots | Later dynamic source: fresh generic lead/track after range checks | Slot coordinates, lateral origin and EV6 rendering unconfirmed | Removed from the requested scope; no test transmission |
+| Vehicle shape | `0x162` lead enum | Reliable vehicle class required for later dynamic use | Current model/radar data is not a proven class source | Removed from the requested scope; no test transmission |
+| Pedestrian shape | `0x162` lead enum | Reliable pedestrian class required for later dynamic use | No current model/radar output supplies it | Removed from the requested scope; no test transmission |
+| Bicycle shape | `0x162` lead enum | Reliable bicycle class required for later dynamic use | No current model/radar output supplies it | Removed from the requested scope; no test transmission |
+| Motorcycle shape | `0x162` lead enum | Reliable motorcycle class required for later dynamic use | No current model/radar output supplies it | Removed from the requested scope; no test transmission |
+| Traffic-cone shape | `0x162` lead enum | Reliable cone class required for later dynamic use | No current model/radar output supplies it | Removed from the requested scope; no test transmission |
 
 The DBC enum listing a shape proves only that a researched message has an enum;
 it does not prove that this EV6 cluster accepts that value or that sunnypilot has
@@ -72,16 +77,17 @@ normal driving output.
 
 ## Guarded active-test behavior
 
-The test sends a restricted `CCNC_0x161`/`CCNC_0x162` pair on HDA2 E-CAN (logical
+The test sends a restricted `CCNC_0x161` message on HDA2 E-CAN (logical
 bus 1) at 20 Hz. The DBC packer generates the 32-byte payload, rolling counter and
 HKG CAN-FD CRC. There is a two-second passive observation window before the first
 transmit. Any received `0x161` or `0x162`, including an unexpected payload
 length, on a real source bus aborts the test instead of competing with a factory
 sender.
 
-The 12 three-second pages are: clear; left arrow; right arrow; white lane view;
+The 10 three-second pages are: clear; left arrow; right arrow; white lane view;
 green lane view; orange lane view; gray navigation; green navigation; white
-navigation; car/person/bicycle/cone; motorcycle/truck/generic boxes; clear.
+navigation; clear. No `0x162` object messages are sent, including blank clear frames.
+Panda rejects `0x162` even when this test is armed.
 
 Application and Panda safety independently require all of the following:
 
@@ -91,9 +97,8 @@ Application and Panda safety independently require all of the following:
 - accelerator not pressed and lateral/longitudinal control disengaged;
 - no received factory `0x161`/`0x162` conflict;
 - valid 32-byte length and HKG checksum;
-- payload limited to the reviewed arrow, lane, assist-icon and four front/side
-  object slots;
-- a hard Panda budget of 1,600 accepted frames, above one normal 1,440-frame run
+- payload limited to the reviewed arrow, lane and assist-icon fields;
+- a hard Panda budget of 700 accepted frames, above one normal 600-frame run
   but finite if the application runs away.
 
 Panda rejects collision/AEB/BCA, warnings, sounds, set speed, speed limits,
@@ -108,10 +113,10 @@ longitudinal, `0x1E0`, forwarding and normal HDA/LFA/LKA logic is changed.
 1. Park in a safe open location, keep the selector in P, and do not engage
    sunnypilot or cruise control.
 2. In **Settings → Visuals**, enable the stock-cluster master permission, then
-   enable **Send All EV6 Cluster Test Pages (Park Only)**.
+   enable **Test EV6 Arrows, Lanes and Navigation (Park Only)**.
 3. Restart sunnypilot/the device while remaining in P. Start a continuous video
    showing the complete factory cluster before the restart finishes.
-4. Do not press the accelerator, shift, or move for about 40 seconds. The test
+4. Do not press the accelerator, shift, or move for about 35 seconds. The test
    observes for two seconds and then advances automatically every three seconds.
 5. Read the right-side status in Visuals afterward. `complete` means only that
    the planned frames passed local safety; it does not prove the cluster rendered

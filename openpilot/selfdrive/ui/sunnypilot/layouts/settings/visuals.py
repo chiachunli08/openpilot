@@ -57,12 +57,12 @@ class VisualsLayout(Widget):
       HKG_CLUSTER_PERMISSION_PARAM: (
         lambda: tr("Kia EV6 Stock Cluster Extensions (Research)"),
         tr("Master permission for verified stock-cluster extensions. Each icon also requires an exact compatible vehicle " +
-           "profile and fresh valid data. A separate local, parked-only test can send restricted 0x161/0x162 pages."),
+           "profile and fresh valid data. A separate local, parked-only test can send restricted 0x161 pages."),
         self._on_hkg_cluster_permission,
       ),
       HKG_CLUSTER_TEST_PARAM: (
-        lambda: tr("Send All EV6 Cluster Test Pages (Park Only)"),
-        tr("One-shot research test for lane-change arrows, lane colors, navigation icons, and object shapes. " +
+        lambda: tr("Test EV6 Arrows, Lanes and Navigation (Park Only)"),
+        tr("One-shot research test for lane-change arrows, lane colors, navigation icons. " +
            "Requires this master permission, exact EV6 HDA2 detection, Park, standstill, no accelerator, and disengaged control. " +
            "The test stops on any interlock or original 0x161/0x162 conflict, turns itself off, and requires a restart to arm."),
         self._on_hkg_cluster_test,

@@ -65,17 +65,16 @@ class TestHkgClusterActiveTest(unittest.TestCase):
     self.params = FakeParams({HKG_CLUSTER_PERMISSION_PARAM: True, HKG_CLUSTER_TEST_PARAM: True})
     self.controller = HkgClusterDisplayTestController(make_test_cp(), self.params)
 
-  def test_two_second_observation_then_20_hz_pair(self):
+  def test_two_second_observation_then_20_hz_status(self):
     self.assertEqual(self.controller.update(safe_state(), disabled_control(), [], 0), [])
     self.assertEqual(self.controller.update(safe_state(), disabled_control(), [], 1_999_999_999), [])
 
     messages = self.controller.update(safe_state(), disabled_control(), [], 2_000_000_000)
     self.assertEqual([(address, len(dat), bus) for address, dat, bus in messages], [
       (CCNC_STATUS_ADDRESS, 32, 1),
-      (CCNC_OBJECTS_ADDRESS, 32, 1),
     ])
     self.assertEqual(self.controller.update(safe_state(), disabled_control(), [], 2_049_999_999), [])
-    self.assertEqual(len(self.controller.update(safe_state(), disabled_control(), [], 2_050_000_000)), 2)
+    self.assertEqual(len(self.controller.update(safe_state(), disabled_control(), [], 2_050_000_000)), 1)
 
   def test_original_message_collision_aborts_without_sending(self):
     packet = [(123, [CanData(CCNC_STATUS_ADDRESS, bytes(32), 1)])]
@@ -91,7 +90,7 @@ class TestHkgClusterActiveTest(unittest.TestCase):
 
   def test_vehicle_interlock_change_aborts_after_start(self):
     self.controller.update(safe_state(), disabled_control(), [], 0)
-    self.assertEqual(len(self.controller.update(safe_state(), disabled_control(), [], 2_000_000_000)), 2)
+    self.assertEqual(len(self.controller.update(safe_state(), disabled_control(), [], 2_000_000_000)), 1)
 
     self.assertEqual(self.controller.update(safe_state(gearShifter=structs.CarState.GearShifter.drive),
                                             disabled_control(), [], 2_050_000_000), [])
@@ -136,19 +135,15 @@ class TestHkgClusterActiveTest(unittest.TestCase):
     self.assertEqual(self.params.get(HKG_CLUSTER_TEST_STATUS_PARAM), "cancelled_setting_disabled")
 
   def test_test_pages_cover_requested_fields_but_not_warning_fields(self):
+    self.assertEqual(len(HKG_CLUSTER_TEST_PAGES), 10)
     status_keys = set()
-    object_values = []
     for page in HKG_CLUSTER_TEST_PAGES:
-      status, objects = cluster_test_page_values(page)
+      status = cluster_test_page_values(page)
       status_keys.update(key for key, value in status.items() if value)
-      object_values.extend(value for key, value in objects.items() if key in ("LEAD", "LEAD_ALT", "LEAD_LEFT", "LEAD_RIGHT") and value)
       self.assertNotIn("ALERTS_1", status)
       self.assertNotIn("SOUNDS_1", status)
-      self.assertNotIn("VIBRATE", objects)
-      self.assertNotIn("FAULT_HDA", objects)
 
     self.assertTrue({"LCA_LEFT_ARROW", "LCA_RIGHT_ARROW", "LANELINE_LEFT", "LANELINE_RIGHT", "NAV_ICON"} <= status_keys)
-    self.assertTrue({2, 4, 6, 8, 10, 12} <= set(object_values))
 
 
 if __name__ == "__main__":

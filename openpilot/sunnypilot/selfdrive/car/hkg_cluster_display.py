@@ -315,7 +315,6 @@ class ClusterTestPage:
   name: str
   duration_s: float
   status_values: tuple[tuple[str, float], ...] = ()
-  object_values: tuple[tuple[str, float], ...] = ()
 
 
 NEUTRAL_STATUS_VALUES: dict[str, float] = {
@@ -341,25 +340,9 @@ NEUTRAL_STATUS_VALUES: dict[str, float] = {
   "LCA_RIGHT_ICON": 0,
 }
 
-NEUTRAL_OBJECT_VALUES: dict[str, float] = {
-  "LEAD": 0,
-  "LEAD_DISTANCE": 0,
-  "LEAD_LATERAL": 0,
-  "LEAD_ALT": 0,
-  "LEAD_ALT_DISTANCE": 0,
-  "LEAD_ALT_LATERAL": 0,
-  "LEAD_LEFT": 0,
-  "LEAD_LEFT_DISTANCE": 0,
-  "LEAD_LEFT_LATERAL": 0,
-  "LEAD_RIGHT": 0,
-  "LEAD_RIGHT_DISTANCE": 0,
-  "LEAD_RIGHT_LATERAL": 0,
-}
-
-
 def _test_page(name: str, *, status: dict[str, float] | None = None,
-               objects: dict[str, float] | None = None, duration_s: float = 3.0) -> ClusterTestPage:
-  return ClusterTestPage(name, duration_s, tuple((status or {}).items()), tuple((objects or {}).items()))
+               duration_s: float = 3.0) -> ClusterTestPage:
+  return ClusterTestPage(name, duration_s, tuple((status or {}).items()))
 
 
 # Each page intentionally leaves collision/AEB, fault, alert, sound, speed-limit,
@@ -389,28 +372,14 @@ HKG_CLUSTER_TEST_PAGES: tuple[ClusterTestPage, ...] = (
   _test_page("navigation_gray", status={"NAV_ICON": 1, "HDA_ICON": 1, "LFA_ICON": 1}),
   _test_page("navigation_green", status={"NAV_ICON": 2, "HDA_ICON": 2, "LFA_ICON": 2}),
   _test_page("navigation_white", status={"NAV_ICON": 4, "HDA_ICON": 3, "LFA_ICON": 3}),
-  _test_page("objects_car_person_bicycle_cone", objects={
-    "LEAD": 4, "LEAD_DISTANCE": 30, "LEAD_LATERAL": 0,
-    "LEAD_ALT": 4, "LEAD_ALT_DISTANCE": 40, "LEAD_ALT_LATERAL": 0,
-    "LEAD_LEFT": 8, "LEAD_LEFT_DISTANCE": 20, "LEAD_LEFT_LATERAL": 2,
-    "LEAD_RIGHT": 10, "LEAD_RIGHT_DISTANCE": 25, "LEAD_RIGHT_LATERAL": 2,
-  }),
-  _test_page("objects_motorcycle_truck_boxes", objects={
-    "LEAD": 12, "LEAD_DISTANCE": 30, "LEAD_LATERAL": 0,
-    "LEAD_ALT": 2, "LEAD_ALT_DISTANCE": 40, "LEAD_ALT_LATERAL": 0,
-    "LEAD_LEFT": 6, "LEAD_LEFT_DISTANCE": 20, "LEAD_LEFT_LATERAL": 2,
-    "LEAD_RIGHT": 2, "LEAD_RIGHT_DISTANCE": 25, "LEAD_RIGHT_LATERAL": 2,
-  }),
   _test_page("clear_end"),
 )
 
 
-def cluster_test_page_values(page: ClusterTestPage) -> tuple[dict[str, float], dict[str, float]]:
+def cluster_test_page_values(page: ClusterTestPage) -> dict[str, float]:
   status = dict(NEUTRAL_STATUS_VALUES)
-  objects = dict(NEUTRAL_OBJECT_VALUES)
   status.update(page.status_values)
-  objects.update(page.object_values)
-  return status, objects
+  return status
 
 
 class HkgClusterDisplayTestController:
@@ -540,9 +509,8 @@ class HkgClusterDisplayTestController:
       return []
     self.last_send_nanos = now_nanos
 
-    status_values, object_values = cluster_test_page_values(page)
+    status_values = cluster_test_page_values(page)
     assert self.CAN is not None and self.packer is not None
     return [
       self.packer.make_can_msg("CCNC_0x161", self.CAN.ECAN, status_values),
-      self.packer.make_can_msg("CCNC_0x162", self.CAN.ECAN, object_values),
     ]

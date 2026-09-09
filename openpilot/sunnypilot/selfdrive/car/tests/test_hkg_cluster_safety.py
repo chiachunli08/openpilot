@@ -51,10 +51,9 @@ class TestParkOnlyHkgClusterSafetyGate(unittest.TestCase):
     self.safety.safety_rx_hook(wheels)
 
   def _page_messages(self, page_index=0, bus=1):
-    status, objects = cluster_test_page_values(HKG_CLUSTER_TEST_PAGES[page_index])
+    status = cluster_test_page_values(HKG_CLUSTER_TEST_PAGES[page_index])
     return (
       self.packer.make_can_msg_safety("CCNC_0x161", bus, status),
-      self.packer.make_can_msg_safety("CCNC_0x162", bus, objects),
     )
 
   def test_every_restricted_page_is_allowed_only_when_parked_and_disengaged(self):
@@ -96,7 +95,7 @@ class TestParkOnlyHkgClusterSafetyGate(unittest.TestCase):
 
   def test_checksum_and_forbidden_warning_fields_are_rejected(self):
     self._rx_vehicle_state()
-    status, _ = self._page_messages()
+    status, = self._page_messages()
     corrupt = bytearray(status.data)
     corrupt[0] ^= 0x1
     self.assertFalse(self.safety.safety_tx_hook(make_msg(1, 0x161, 32, bytes(corrupt))))
@@ -119,7 +118,7 @@ class TestParkOnlyHkgClusterSafetyGate(unittest.TestCase):
   def test_hard_transmit_budget_stops_a_runaway_sender(self):
     self._rx_vehicle_state()
     message = self._page_messages()[0]
-    for count in range(1600):
+    for count in range(700):
       self.assertTrue(self.safety.safety_tx_hook(message), count)
     self.assertFalse(self.safety.safety_tx_hook(message))
 
