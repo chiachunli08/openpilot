@@ -1431,6 +1431,19 @@
               ]
             },
             {
+              "key": "HkgStockClusterDisplay",
+              "widget": "toggle",
+              "title": "Kia EV6 Stock Cluster Extensions (Research)",
+              "description": "Master permission for verified stock-cluster extensions. Each icon also requires an exact compatible vehicle profile and fresh valid data. Saving this permission cannot force unverified 0x161/0x162 messages to be sent. The current build has no verified EV6 profile, so it transmits no new stock-cluster messages.",
+              "visibility": [
+                {
+                  "type": "capability",
+                  "field": "hkg_stock_cluster_display_candidate",
+                  "equals": true
+                }
+              ]
+            },
+            {
               "key": "TorqueBar",
               "widget": "toggle",
               "title": "Steering Arc",

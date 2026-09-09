@@ -6,6 +6,7 @@ See the LICENSE.md file in the root directory for more details.
 """
 from openpilot.common.params import Params
 from opendbc.car.hyundai.values import HyundaiFlags
+from openpilot.sunnypilot.selfdrive.car.hkg_cluster_display import is_ev6_hda2_cluster_candidate, verified_features_for_car
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp
@@ -45,6 +46,12 @@ class VisualsLayout(Widget):
         lambda: tr("HKG Corner Radar Detection (Experimental)"),
         tr("Passively display candidate 64-byte corner-radar targets. Source bus, mounting, status, and speed fields " +
            "require vehicle validation. Display and logging only; no control decisions."),
+        None,
+      ),
+      "HkgStockClusterDisplay": (
+        lambda: tr("Kia EV6 Stock Cluster Extensions (Research)"),
+        tr("Master permission for verified stock-cluster extensions. Each icon also requires an exact compatible vehicle " +
+           "profile and fresh valid data. This switch cannot force unverified 0x161/0x162 messages to be sent."),
         None,
       ),
       "TorqueBar": (
@@ -160,6 +167,22 @@ class VisualsLayout(Widget):
     hkg_canfd = (ui_state.CP is not None and ui_state.CP.brand == "hyundai" and
                  bool(ui_state.CP.flags & HyundaiFlags.CANFD))
     self._toggles["HkgCornerRadarDetection"].set_visible(hkg_canfd)
+
+    hkg_cluster_candidate = is_ev6_hda2_cluster_candidate(ui_state.CP)
+    hkg_cluster_toggle = self._toggles["HkgStockClusterDisplay"]
+    hkg_cluster_toggle.set_visible(hkg_cluster_candidate)
+    verified_count = len(verified_features_for_car(ui_state.CP))
+    if hkg_cluster_candidate:
+      hkg_cluster_toggle.set_right_value(tr("{} verified").format(verified_count))
+      if verified_count:
+        hkg_cluster_toggle.set_description(tr(
+          "Master permission for verified stock-cluster extensions. Every icon is cleared independently when its source data is invalid or stale."
+        ))
+      else:
+        hkg_cluster_toggle.set_description(tr(
+          "Compatibility is unconfirmed; the permission may be saved, but no new cluster CAN message is transmitted. " +
+          "EV6 cluster/head-unit compatibility and the 0x161/0x162 bus must be verified first."
+        ))
 
     self._rainbow_style.action_item.set_selected_button(1 if self._params.get("RainbowModeStyle", return_default=True) == 1 else 0)
     self._rainbow_style.action_item.set_enabled(self._params.get_bool("RainbowMode"))
