@@ -50,8 +50,8 @@ class VisualsLayout(Widget):
       ),
       "HkgCornerRadarDetection": (
         lambda: tr("HKG Corner Radar Detection (Experimental)"),
-        tr("Passively display candidate 64-byte corner-radar targets. Source bus, mounting, status, and speed fields " +
-           "require vehicle validation. Display and logging only; no control decisions."),
+        tr("Show yellow radar candidates beside the speedometer, separately from blind-spot icons. RADAR* means experimental: " +
+           "sensor mounting and validity still need vehicle validation. Display only; no control decisions."),
         None,
       ),
       HKG_CLUSTER_PERMISSION_PARAM: (

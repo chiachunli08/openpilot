@@ -33,9 +33,15 @@ distance_m = (256 * b[3] + b[4]) / 256
 encoded_angle_deg = (256 * b[5] + b[6]) / 256
 ```
 
-The old research subtracts the encoded angle from 165° for groups `0x3xx` and `0x4xx`, and from 175° for groups `0x5xx` and `0x6xx`. It assigns groups 0/2 to the left, groups 1/3 to the right, groups 0/1 to the front, and groups 2/3 to the rear. The HUD therefore labels candidates as `G0` through `G3`; physical mounting, coordinate origin, and these offsets remain unvalidated.
+The old research subtracts the encoded angle from 165° for groups `0x3xx` and `0x4xx`, and from 175° for groups `0x5xx` and `0x6xx`. It assigns groups 0/2 to the left, groups 1/3 to the right, groups 0/1 to the front, and groups 2/3 to the rear. The HUD uses this experimental grouping; physical mounting, coordinate origin, and these offsets remain unvalidated.
 
-To keep the driving view readable, the HUD shows only the nearest fresh candidate in each group. A label such as `B2 G0` means received Panda bus 2 and experimental group 0. Every accepted record remains available in the logged message and offline JSONL output.
+The Visuals `HkgCornerRadarDetection` switch enables independent panels on both sides of the sunnypilot speedometer. These are device-screen graphics, not factory-cluster CAN output. Existing blind-spot icons remain separate. The panels reserve space for both standard central blind-spot widgets and mici edge icons; a viewport too narrow to fit them hides the panels.
+
+Each group contributes up to three nearest fresh candidates (at most six per side). Yellow dots represent unclassified returns, not confirmed vehicles. Front-group dots are above the speed center and rear-group dots below it, using the unvalidated mapping above. Radial distance controls vertical displacement and marker size. Horizontal columns only separate dots; they do not indicate measured lateral position. Ordering can change when candidates enter or leave and is not a claim of stable physical identity.
+
+`RADAR*` identifies experimental data, and `~12.3 m` shows the nearest candidate range on that side. Unknown speed and object class are not displayed. Bus, group, raw frames and every accepted record remain available in logs and JSONL. Target age plus elapsed message-receipt time must not exceed 350 ms, so stopped publishers cannot leave frozen dots. Invalid, absent, inactive and stale data produce no marker. Turning this option off removes only the radar panels.
+
+This change builds on main commit `5699249f015a4415ebe88897c1bfc5b7b325c9cc`, with opendbc `03f4ba63901497df0fe4d6aa01cfd3504fe7aa69`. It changes no radar decoding, CAN transmission, safety policy or driving decisions. Offline tests cover multiple targets, invalid data, stale publishers, layout clearance and range-based motion. Actual Hyundai P reception and physical mounting remain to be verified from passive vehicle logs.
 
 The old `record[0:2] != 0x8080` activity heuristic is retained as `candidateActive`, with `statusValidated=false`. It must not be interpreted as a decoded Kia validity bit.
 
