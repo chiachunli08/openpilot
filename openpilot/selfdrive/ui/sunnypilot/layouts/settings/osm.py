@@ -10,12 +10,14 @@ import os
 import platform
 import requests
 import threading
+from concurrent.futures import Future
 from pathlib import Path
 from time import monotonic
 
 from openpilot.common.params import Params
 from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_public_token, decode_mapbox_secret_token
 from openpilot.sunnypilot.navd.destination_input import parse_coordinate_destination
+from openpilot.sunnypilot.navd.qr_decoder import install_decoder, VERSION
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.selfdrive.ui.layouts.settings.software import time_ago
 from openpilot.common.hardware.hw import Paths
@@ -42,6 +44,9 @@ class OSMLayout(Widget):
     super().__init__()
     self._current_percent = 0
     self._last_map_size_update = 0
+    self._decoder_job = None
+    self._decoder_status = (tr("Installed: %s") % VERSION if (Path(Paths.qr_decoder_root()) / "current").exists()
+                            else tr("Not downloaded"))
     self._mem_params = Params("/dev/shm/params") if platform.system() != "Darwin" else ui_state.params
     self._initialize_items()
     self._update_map_size()
@@ -73,6 +78,12 @@ class OSMLayout(Widget):
       tr("Scan Mapbox Token QR"), lambda: tr("SCAN"),
       description=tr("Scan a QR code from the token webpage with the driver monitoring camera. Available only while parked."),
       callback=self._show_mapbox_qr_scanner)
+    self._decoder_download = button_item_sp(
+      tr("QR Decoder"), lambda: tr("DOWNLOAD / REPAIR"),
+      description=tr("Download open-source ZXing-C++ over Wi-Fi or cellular. Stored independently of software updates. " +
+                     "QR images and tokens stay on this device."),
+      callback=self._download_decoder)
+    self._decoder_info = text_item(tr("QR Decoder Status"), lambda: self._decoder_status)
     self._navigation_destination = button_item_sp(
       tr("Navigation Destination"), lambda: tr("SET"),
       description=tr("Enter latitude, longitude or an English address. Use sunnylink for Chinese address input."),
@@ -89,7 +100,7 @@ class OSMLayout(Widget):
     self._state_btn = ListItemSP(tr("State"), action_item=NoElideButtonAction(tr("SELECT"), enabled=True), callback=lambda: self._select_region("State"))
 
     self.items = [self._navigation_toggle, self._navigation_intent_toggle,
-                  self._mapbox_public_key, self._mapbox_secret_key, self._mapbox_qr_scanner,
+                  self._mapbox_public_key, self._mapbox_secret_key, self._decoder_download, self._decoder_info, self._mapbox_qr_scanner,
                   self._navigation_destination, self._cancel_navigation,
                   self._mapd_version, self._delete_maps_btn, self._progress,
                   self._update_btn, self._country_btn, self._state_btn]
@@ -117,6 +128,22 @@ class OSMLayout(Widget):
       gui_app.push_widget(alert_dialog(tr("QR scanning is available only while parked.")))
       return
     gui_app.push_widget(MapboxQrScannerDialog())
+
+  def _download_decoder(self):
+    if ui_state.is_onroad() or self._decoder_job is not None:
+      return
+    self._decoder_job = job = Future()
+    self._decoder_status = tr("Downloading and verifying...")
+    self._decoder_download.action_item.set_enabled(False)
+    self._mapbox_qr_scanner.action_item.set_enabled(False)
+
+    def download():
+      try:
+        job.set_result(install_decoder(Paths.qr_decoder_root(), cancelled=ui_state.is_onroad))
+      except Exception as error:
+        job.set_exception(error)
+
+    threading.Thread(target=download, daemon=True).start()
 
   def _show_confirm(self, msg, confirm_text, func):
     gui_app.push_widget(ConfirmDialog(msg, confirm_text, callback=lambda res: func() if res == DialogResult.CONFIRM else None))
@@ -327,6 +354,17 @@ class OSMLayout(Widget):
     self._scroller.show_event()
 
   def _update_state(self):
+    if self._decoder_job is not None and self._decoder_job.done():
+      try:
+        self._decoder_status = tr("Installed: %s") % self._decoder_job.result()
+      except Exception:
+        self._decoder_status = tr("Installation failed or cancelled. Check network and retry while parked.")
+      self._decoder_job = None
+    busy = self._decoder_job is not None
+    self._decoder_download.action_item.set_enabled(not busy and not ui_state.is_onroad())
+    self._mapbox_qr_scanner.action_item.set_enabled(not busy and not ui_state.is_onroad())
+    if busy:
+      device._reset_interactive_timeout()
     now = monotonic()
     if now - self._last_map_size_update >= 1.0:
       self._last_map_size_update = now

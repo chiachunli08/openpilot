@@ -5,9 +5,11 @@ import pyray as rl
 
 from openpilot.cereal.visionipc import VisionStreamType
 from openpilot.common.params import Params
+from openpilot.common.hardware.hw import Paths
 from openpilot.selfdrive.ui.onroad.cameraview import CameraView
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.sunnypilot.navd.mapbox_qr_scan import MapboxQrScanSession
+from openpilot.sunnypilot.navd.qr_decoder import load_decoder
 from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_qr_payload
 from openpilot.system.ui.lib.application import FontWeight, TextAlignment, gui_app
 from openpilot.system.ui.lib.multilang import tr
@@ -27,11 +29,10 @@ class MapboxQrScannerDialog(CameraView):
     self._last_scan = 0.0
     self._status = tr("Hold the QR code inside the frame")
     try:
-      import zxingcpp
-      self._decoder = zxingcpp
+      self._decoder = load_decoder(Paths.qr_decoder_root())
     except (ImportError, OSError):
       self._decoder = None
-      self._status = tr("QR decoder missing. Complete the device update and restart.")
+      self._status = tr("QR decoder missing. Download or repair it in the OSM menu.")
 
     self._session = MapboxQrScanSession(ui_state.params, Params("/dev/shm/params"))
     device.add_interactive_timeout_callback(self._cancel)

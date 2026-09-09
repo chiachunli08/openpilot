@@ -1259,3 +1259,30 @@ msgstr "掃描期間暫停紅外線補光，點一下畫面即可取消。"
 #: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
 msgid "Tap anywhere to cancel."
 msgstr "點一下畫面即可取消。"
+
+msgid "QR Decoder"
+msgstr "QR 解碼器"
+
+msgid "DOWNLOAD / REPAIR"
+msgstr "下載／修復"
+
+msgid "Download open-source ZXing-C++ over Wi-Fi or cellular. Stored independently of software updates. QR images and tokens stay on this device."
+msgstr "透過 Wi-Fi 或行動網路下載開源 ZXing-C++，獨立保存，不隨軟體更新移除。QR 影像及密鑰只在本機處理。"
+
+msgid "QR Decoder Status"
+msgstr "QR 解碼器狀態"
+
+msgid "Installed: %s"
+msgstr "已安裝：%s"
+
+msgid "Not downloaded"
+msgstr "尚未下載"
+
+msgid "Downloading and verifying..."
+msgstr "下載及驗證中…"
+
+msgid "Installation failed or cancelled. Check network and retry while parked."
+msgstr "安裝失敗或已取消。請檢查網路，停車後重試。"
+
+msgid "QR decoder missing. Download or repair it in the OSM menu."
+msgstr "未找到 QR 解碼器。請至 OSM 選單下載或修復。"

@@ -95,3 +95,9 @@ class Paths:
       return str(Path(Paths.comma_home()) / "media" / "0" / "osm")
     else:
       return "/data/media/0/osm"
+
+  @staticmethod
+  def qr_decoder_root() -> str:
+    if PC:
+      return str(Path(Paths.comma_home()) / "media" / "0" / "qr_decoder")
+    return "/data/media/0/qr_decoder"

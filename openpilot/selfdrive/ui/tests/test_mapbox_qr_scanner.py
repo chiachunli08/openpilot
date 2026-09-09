@@ -44,6 +44,7 @@ class TestMapboxQrScanner(unittest.TestCase):
       "pyray": NS(Rectangle=NS),
       "openpilot.cereal.visionipc": NS(VisionStreamType=NS(VISION_STREAM_CABIN=1)),
       "openpilot.common.params": NS(Params=lambda path: self.memory),
+      "openpilot.common.hardware.hw": NS(Paths=NS(qr_decoder_root=lambda: "/nonexistent/test-qr-decoder")),
       "openpilot.selfdrive.ui.onroad.cameraview": NS(CameraView=FakeCameraView),
       "openpilot.selfdrive.ui.ui_state": NS(ui_state=self.state, device=self.device),
       "openpilot.system.ui.lib.application": NS(gui_app=self.gui, FontWeight=NS(), TextAlignment=NS()),
