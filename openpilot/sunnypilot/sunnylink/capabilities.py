@@ -16,6 +16,7 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware import HARDWARE
 from openpilot.sunnypilot.selfdrive.car.hkg_cluster_display import (
+  ClusterFeature,
   is_ev6_hda2_cluster_candidate,
   resolve_verified_profile,
 )
@@ -37,6 +38,7 @@ CAPABILITY_FIELDS = (
   "hkg_corner_radar_available",
   "hkg_stock_cluster_display_candidate",
   "hkg_stock_cluster_display_available",
+  "hkg_lane_change_icons_available",
   "brand",
   "pcm_cruise",
   "alpha_long_available",
@@ -63,6 +65,7 @@ CAPABILITY_LABELS: dict[str, str] = {
   "hkg_corner_radar_available": "HKG CAN-FD corner-radar research display",
   "hkg_stock_cluster_display_candidate": "Kia EV6 HDA2 stock-cluster extension candidate",
   "hkg_stock_cluster_display_available": "verified Kia EV6 stock-cluster extensions",
+  "hkg_lane_change_icons_available": "verified Kia EV6 lane-change-assist cluster icons",
   "brand": "Vehicle brand",
   "pcm_cruise": "PCM cruise",
   "alpha_long_available": "Alpha Longitudinal available",
@@ -173,6 +176,8 @@ def generate_capabilities(params: Params | None = None) -> dict:
       caps["hkg_corner_radar_available"] = bool(CP.brand == "hyundai" and CP.flags & HyundaiFlags.CANFD)
       caps["hkg_stock_cluster_display_candidate"] = is_ev6_hda2_cluster_candidate(CP)
       caps["hkg_stock_cluster_display_available"] = resolve_verified_profile(CP) is not None
+      profile = resolve_verified_profile(CP)
+      caps["hkg_lane_change_icons_available"] = bool(profile is not None and ClusterFeature.LANE_CHANGE_ICONS in profile.features)
       if not caps["brand"] and CP.brand:
         caps["brand"] = str(CP.brand)
       caps["pcm_cruise"] = bool(CP.pcmCruise)

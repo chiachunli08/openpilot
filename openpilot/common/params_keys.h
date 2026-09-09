@@ -248,6 +248,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"HkgStockClusterDisplay", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"HkgStockClusterDisplayTest", {PERSISTENT, BOOL, "0"}},
     {"HkgStockClusterDisplayTestStatus", {PERSISTENT, STRING, "idle"}},
+    {"HkgLaneChangeAssistIcons", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"HkgLaneChangeAssistIconsStatus", {PERSISTENT, STRING, "unavailable_unverified_vehicle_profile"}},
 
     // sunnypilot model params
     {"CameraOffset", {PERSISTENT | BACKUP, FLOAT, "0.0"}},

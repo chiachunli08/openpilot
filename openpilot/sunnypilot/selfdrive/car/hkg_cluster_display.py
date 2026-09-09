@@ -15,6 +15,7 @@ from opendbc.can import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.hyundai.hyundaicanfd import CanBus
 from opendbc.car.hyundai.values import CAR, DBC, HyundaiFlags
+from openpilot.cereal import log
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
@@ -31,6 +32,8 @@ EXPECTED_PAYLOAD_BYTES = {
 HKG_CLUSTER_PERMISSION_PARAM = "HkgStockClusterDisplay"
 HKG_CLUSTER_TEST_PARAM = "HkgStockClusterDisplayTest"
 HKG_CLUSTER_TEST_STATUS_PARAM = "HkgStockClusterDisplayTestStatus"
+HKG_LCA_ICONS_PARAM = "HkgLaneChangeAssistIcons"
+HKG_LCA_ICONS_STATUS_PARAM = "HkgLaneChangeAssistIconsStatus"
 
 # The CCNC_0x161/0x162 definitions entered the common DBC through research on
 # 2023-24 Palisade/Telluride HDA2 vehicles. This is not an EV6 support claim.
@@ -38,6 +41,7 @@ DBC_RESEARCH_SOURCE = "https://github.com/commaai/opendbc/pull/1269"
 
 
 class ClusterFeature(StrEnum):
+  LANE_CHANGE_ICONS = "lane_change_icons"
   LANE_CHANGE_ARROWS = "lane_change_arrows"
   LANE_LINES = "lane_lines"
   NAVIGATION_ICON = "navigation_icon"
@@ -72,6 +76,25 @@ class Direction(StrEnum):
   NONE = "none"
   LEFT = "left"
   RIGHT = "right"
+
+
+class AssistDisplayStatus(StrEnum):
+  """Vehicle-independent lane-change-assist display semantics."""
+
+  HIDDEN = "hidden"
+  STANDBY = "standby"
+  READY = "ready"
+  ACTIVE = "active"
+
+
+# Verified CCNC_0x161 enum values. READY and ACTIVE intentionally use the same
+# steady green icon: no public evidence establishes a separate flashing value.
+CCNC_LCA_ICON_VALUE = {
+  AssistDisplayStatus.HIDDEN: 0,
+  AssistDisplayStatus.STANDBY: 1,
+  AssistDisplayStatus.READY: 2,
+  AssistDisplayStatus.ACTIVE: 2,
+}
 
 
 class LaneColor(StrEnum):
@@ -127,15 +150,23 @@ class VerifiedClusterProfile:
   features: frozenset[ClusterFeature]
   required_firmware: tuple[FirmwareEvidence, ...]
   evidence: tuple[str, ...]
+  status_frequency_hz: float = 0.0
+  status_template: tuple[tuple[str, float], ...] = ()
+  status_template_complete: bool = False
 
   def matches(self, CP: Any) -> bool:
     car_fw = tuple(CP.carFw)
     firmware_matches = bool(self.required_firmware) and all(
       any(requirement.matches(fw) for fw in car_fw) for requirement in self.required_firmware
     )
+    status_features = {ClusterFeature.LANE_CHANGE_ICONS, ClusterFeature.LANE_CHANGE_ARROWS,
+                       ClusterFeature.LANE_LINES, ClusterFeature.NAVIGATION_ICON}
+    status_frame_verified = not bool(self.features & status_features) or (
+      self.status_frequency_hz > 0.0 and bool(self.status_template) and self.status_template_complete
+    )
     return (CP.carFingerprint == self.car_fingerprint and
             int(CP.flags) & self.required_flags == self.required_flags and
-            firmware_matches and bool(self.evidence))
+            firmware_matches and bool(self.evidence) and status_frame_verified)
 
 
 # No EV6 0x161/0x162 profile has been verified. Keep this empty until an exact
@@ -175,6 +206,9 @@ class ClusterInputs:
   left_lane_probability: float = 0.0
   right_lane_probability: float = 0.0
   lateral_active: bool = False
+  lane_change_ready: bool | None = None
+  left_lane_change_blocked: bool = False
+  right_lane_change_blocked: bool = False
   left_lane_warning: bool = False
   right_lane_warning: bool = False
   navigation_valid: bool = False
@@ -184,6 +218,8 @@ class ClusterInputs:
 
 @dataclass(frozen=True)
 class ClusterDisplayState:
+  left_lca_icon: AssistDisplayStatus = AssistDisplayStatus.HIDDEN
+  right_lca_icon: AssistDisplayStatus = AssistDisplayStatus.HIDDEN
   left_arrow: bool = False
   right_arrow: bool = False
   left_lane: LaneColor = LaneColor.HIDDEN
@@ -216,6 +252,7 @@ def feature_gates(CP: Any | None) -> dict[ClusterFeature, FeatureGate]:
   compatibility = Compatibility.UNCONFIRMED if candidate else Compatibility.NOT_APPLICABLE
 
   data_status = {
+    ClusterFeature.LANE_CHANGE_ICONS: DataAvailability.AVAILABLE,
     ClusterFeature.LANE_CHANGE_ARROWS: DataAvailability.AVAILABLE,
     ClusterFeature.LANE_LINES: DataAvailability.CONDITIONAL,
     ClusterFeature.NAVIGATION_ICON: DataAvailability.CONDITIONAL,
@@ -260,8 +297,25 @@ def build_display_state(user_enabled: bool, verified_features: frozenset[Cluster
     return ClusterDisplayState()
 
   active_features: set[ClusterFeature] = set()
+  model_fresh = data.model_valid and 0.0 <= data.model_age_s <= model_timeout_s
+
+  left_lca_icon = right_lca_icon = AssistDisplayStatus.HIDDEN
+  if ClusterFeature.LANE_CHANGE_ICONS in verified_features and model_fresh and data.lateral_active:
+    left_lca_icon = right_lca_icon = AssistDisplayStatus.STANDBY
+    direction_blocked = ((data.lane_change_direction == Direction.LEFT and data.left_lane_change_blocked) or
+                         (data.lane_change_direction == Direction.RIGHT and data.right_lane_change_blocked))
+    executing = data.lane_change_phase in (LaneChangePhase.STARTING, LaneChangePhase.FINISHING)
+    explicitly_ready = data.lane_change_phase == LaneChangePhase.PREPARING and data.lane_change_ready is True
+    if executing or (explicitly_ready and not direction_blocked):
+      status = AssistDisplayStatus.ACTIVE if executing else AssistDisplayStatus.READY
+      if data.lane_change_direction == Direction.LEFT:
+        left_lca_icon = status
+      elif data.lane_change_direction == Direction.RIGHT:
+        right_lca_icon = status
+    active_features.add(ClusterFeature.LANE_CHANGE_ICONS)
+
   left_arrow = right_arrow = False
-  if ClusterFeature.LANE_CHANGE_ARROWS in verified_features:
+  if ClusterFeature.LANE_CHANGE_ARROWS in verified_features and model_fresh and data.lateral_active:
     executing = data.lane_change_phase in (LaneChangePhase.STARTING, LaneChangePhase.FINISHING)
     left_arrow = executing and data.lane_change_direction == Direction.LEFT
     right_arrow = executing and data.lane_change_direction == Direction.RIGHT
@@ -269,7 +323,6 @@ def build_display_state(user_enabled: bool, verified_features: frozenset[Cluster
       active_features.add(ClusterFeature.LANE_CHANGE_ARROWS)
 
   left_lane = right_lane = LaneColor.HIDDEN
-  model_fresh = data.model_valid and 0.0 <= data.model_age_s <= model_timeout_s
   if ClusterFeature.LANE_LINES in verified_features and model_fresh:
     left_detected = data.left_lane_probability >= lane_probability_threshold
     right_detected = data.right_lane_probability >= lane_probability_threshold
@@ -298,6 +351,8 @@ def build_display_state(user_enabled: bool, verified_features: frozenset[Cluster
       break
 
   return ClusterDisplayState(
+    left_lca_icon=left_lca_icon,
+    right_lca_icon=right_lca_icon,
     left_arrow=left_arrow,
     right_arrow=right_arrow,
     left_lane=left_lane,
@@ -305,6 +360,53 @@ def build_display_state(user_enabled: bool, verified_features: frozenset[Cluster
     navigation_icon=navigation_icon,
     targets=tuple(selected_targets),
     active_features=frozenset(active_features),
+  )
+
+
+def ccnc_lca_icon_values(state: ClusterDisplayState) -> dict[str, int]:
+  """Map semantic state to only the two verified CCNC icon fields.
+
+  This helper does not create a complete 0x161 payload. Callers must not pack or
+  transmit these values without an exact verified profile, a captured full-frame
+  template, collision handling, and an independent Panda safety authorization.
+  """
+  return {
+    "LCA_LEFT_ICON": CCNC_LCA_ICON_VALUE[state.left_lca_icon],
+    "LCA_RIGHT_ICON": CCNC_LCA_ICON_VALUE[state.right_lca_icon],
+  }
+
+
+def lane_change_inputs_from_model(model_v2: Any, *, lateral_active: bool, model_valid: bool,
+                                  model_age_s: float, left_blocked: bool = False,
+                                  right_blocked: bool = False,
+                                  lane_change_ready: bool | None = None) -> ClusterInputs:
+  """Normalize the shared stock/modeld_v2 modelV2 metadata into display input.
+
+  Both model execution paths publish these cereal enums. `lane_change_ready`
+  deliberately defaults to unknown because neither path currently publishes the
+  AutoLaneChangeController's internal readiness decision.
+  """
+  phase_map = {
+    log.LaneChangeState.off: LaneChangePhase.OFF,
+    log.LaneChangeState.preLaneChange: LaneChangePhase.PREPARING,
+    log.LaneChangeState.laneChangeStarting: LaneChangePhase.STARTING,
+    log.LaneChangeState.laneChangeFinishing: LaneChangePhase.FINISHING,
+  }
+  direction_map = {
+    log.LaneChangeDirection.none: Direction.NONE,
+    log.LaneChangeDirection.left: Direction.LEFT,
+    log.LaneChangeDirection.right: Direction.RIGHT,
+  }
+  meta = model_v2.meta
+  return ClusterInputs(
+    lane_change_phase=phase_map.get(meta.laneChangeState, LaneChangePhase.OFF),
+    lane_change_direction=direction_map.get(meta.laneChangeDirection, Direction.NONE),
+    model_valid=model_valid,
+    model_age_s=model_age_s,
+    lateral_active=lateral_active,
+    lane_change_ready=lane_change_ready,
+    left_lane_change_blocked=left_blocked,
+    right_lane_change_blocked=right_blocked,
   )
 
 

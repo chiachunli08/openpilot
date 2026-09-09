@@ -1444,6 +1444,19 @@
               ]
             },
             {
+              "key": "HkgLaneChangeAssistIcons",
+              "widget": "toggle",
+              "title": "\u63db\u9053\u8f14\u52a9\u5716\u793a\u8ddf\u96a8 LFA",
+              "description": "Link the stock cluster's left/right lane-change-assist status icons to actual lateral control and modelV2 lane-change state. This display-only feature never starts a lane change. The device rejects the setting until the exact EV6 cluster firmware, 0x161 bus, complete frame behavior and Panda authorization have been verified.",
+              "visibility": [
+                {
+                  "type": "capability",
+                  "field": "hkg_stock_cluster_display_candidate",
+                  "equals": true
+                }
+              ]
+            },
+            {
               "key": "TorqueBar",
               "widget": "toggle",
               "title": "Steering Arc",

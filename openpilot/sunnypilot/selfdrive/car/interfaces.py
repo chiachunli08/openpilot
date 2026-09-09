@@ -120,6 +120,7 @@ def initialize_params(params) -> list[dict[str, Any]]:
     "HkgLowSpeedTorque",
     "HkgStockClusterDisplay",
     "HkgStockClusterDisplayTest",
+    "HkgLaneChangeAssistIcons",
     "HyundaiLongitudinalTuning",
   ])
 

@@ -2,7 +2,10 @@ from types import SimpleNamespace
 import unittest
 
 from opendbc.car.hyundai.values import CAR, HyundaiFlags
+from openpilot.cereal import log
 from openpilot.sunnypilot.selfdrive.car.hkg_cluster_display import (
+  AssistDisplayStatus,
+  CCNC_LCA_ICON_VALUE,
   ClusterFeature,
   ClusterInputs,
   Compatibility,
@@ -15,8 +18,10 @@ from openpilot.sunnypilot.selfdrive.car.hkg_cluster_display import (
   TargetObservation,
   VerifiedClusterProfile,
   build_display_state,
+  ccnc_lca_icon_values,
   feature_gates,
   is_ev6_hda2_cluster_candidate,
+  lane_change_inputs_from_model,
   resolve_verified_profile,
   verified_features_for_car,
 )
@@ -55,6 +60,9 @@ class TestHkgClusterCompatibility(unittest.TestCase):
       features=frozenset({ClusterFeature.LANE_CHANGE_ARROWS}),
       required_firmware=(FirmwareEvidence(0x7C6, b"EV6-CLUSTER-A", 1),),
       evidence=("passive-capture", "synchronized-cluster-video"),
+      status_frequency_hz=20.0,
+      status_template=(("LKA_ICON", 0),),
+      status_template_complete=True,
     )
     self.assertTrue(profile.matches(car_params(car_fw=(firmware,))))
     self.assertFalse(profile.matches(car_params(car_fw=(SimpleNamespace(address=0x7C6, fwVersion=b"OTHER", bus=1),))))
@@ -70,6 +78,18 @@ class TestHkgClusterCompatibility(unittest.TestCase):
       evidence=("not-enough",),
     )
     self.assertFalse(no_firmware_rule.matches(car_params(car_fw=(firmware,))))
+
+    no_complete_frame = VerifiedClusterProfile(
+      profile_id="unsafe-missing-frame-template",
+      car_fingerprint=CAR.KIA_EV6,
+      required_flags=int(HyundaiFlags.CANFD | HyundaiFlags.CANFD_LKA_STEER_MSG),
+      status_bus=1,
+      object_bus=1,
+      features=frozenset({ClusterFeature.LANE_CHANGE_ICONS}),
+      required_firmware=(FirmwareEvidence(0x7C6, b"EV6-CLUSTER-A", 1),),
+      evidence=("passive-capture",),
+    )
+    self.assertFalse(no_complete_frame.matches(car_params(car_fw=(firmware,))))
 
   def test_unclassified_model_and_radar_data_cannot_claim_object_type(self):
     gates = feature_gates(car_params())
@@ -106,6 +126,9 @@ class TestHkgClusterSemanticState(unittest.TestCase):
       state = build_display_state(True, frozenset({ClusterFeature.LANE_CHANGE_ARROWS}), ClusterInputs(
         lane_change_phase=phase,
         lane_change_direction=Direction.LEFT,
+        model_valid=True,
+        model_age_s=0.0,
+        lateral_active=True,
       ))
       self.assertFalse(state.left_arrow)
 
@@ -113,9 +136,87 @@ class TestHkgClusterSemanticState(unittest.TestCase):
       state = build_display_state(True, frozenset({ClusterFeature.LANE_CHANGE_ARROWS}), ClusterInputs(
         lane_change_phase=phase,
         lane_change_direction=Direction.RIGHT,
+        model_valid=True,
+        model_age_s=0.0,
+        lateral_active=True,
       ))
       self.assertFalse(state.left_arrow)
       self.assertTrue(state.right_arrow)
+
+  def test_lca_icons_follow_lateral_and_actual_lane_change_state(self):
+    features = frozenset({ClusterFeature.LANE_CHANGE_ICONS})
+
+    inactive = build_display_state(True, features, ClusterInputs(model_valid=True, model_age_s=0.0))
+    self.assertEqual(inactive.left_lca_icon, AssistDisplayStatus.HIDDEN)
+    self.assertEqual(inactive.right_lca_icon, AssistDisplayStatus.HIDDEN)
+
+    standby = build_display_state(True, features, ClusterInputs(
+      model_valid=True, model_age_s=0.0, lateral_active=True,
+      lane_change_phase=LaneChangePhase.PREPARING, lane_change_direction=Direction.LEFT,
+    ))
+    self.assertEqual(standby.left_lca_icon, AssistDisplayStatus.STANDBY)
+    self.assertEqual(standby.right_lca_icon, AssistDisplayStatus.STANDBY)
+
+    active = build_display_state(True, features, ClusterInputs(
+      model_valid=True, model_age_s=0.0, lateral_active=True,
+      lane_change_phase=LaneChangePhase.STARTING, lane_change_direction=Direction.RIGHT,
+    ))
+    self.assertEqual(active.left_lca_icon, AssistDisplayStatus.STANDBY)
+    self.assertEqual(active.right_lca_icon, AssistDisplayStatus.ACTIVE)
+    self.assertEqual(ccnc_lca_icon_values(active), {"LCA_LEFT_ICON": 1, "LCA_RIGHT_ICON": 2})
+
+  def test_lca_ready_requires_explicit_signal_and_no_blocker(self):
+    features = frozenset({ClusterFeature.LANE_CHANGE_ICONS})
+    ready = build_display_state(True, features, ClusterInputs(
+      model_valid=True, model_age_s=0.0, lateral_active=True, lane_change_ready=True,
+      lane_change_phase=LaneChangePhase.PREPARING, lane_change_direction=Direction.LEFT,
+    ))
+    self.assertEqual(ready.left_lca_icon, AssistDisplayStatus.READY)
+
+    blocked = build_display_state(True, features, ClusterInputs(
+      model_valid=True, model_age_s=0.0, lateral_active=True, lane_change_ready=True,
+      lane_change_phase=LaneChangePhase.PREPARING, lane_change_direction=Direction.LEFT,
+      left_lane_change_blocked=True,
+    ))
+    self.assertEqual(blocked.left_lca_icon, AssistDisplayStatus.STANDBY)
+
+  def test_lca_icons_clear_on_stale_cancel_complete_or_pause(self):
+    features = frozenset({ClusterFeature.LANE_CHANGE_ICONS})
+    base = dict(model_valid=True, model_age_s=0.0, lateral_active=True,
+                lane_change_phase=LaneChangePhase.STARTING, lane_change_direction=Direction.LEFT)
+    self.assertEqual(build_display_state(True, features, ClusterInputs(**base)).left_lca_icon,
+                     AssistDisplayStatus.ACTIVE)
+    self.assertEqual(build_display_state(True, features, ClusterInputs(**(base | {"model_age_s": 0.6}))).left_lca_icon,
+                     AssistDisplayStatus.HIDDEN)
+    self.assertEqual(build_display_state(True, features, ClusterInputs(**(base | {"lateral_active": False}))).left_lca_icon,
+                     AssistDisplayStatus.HIDDEN)
+    for phase in (LaneChangePhase.OFF, LaneChangePhase.PREPARING):
+      state = build_display_state(True, features, ClusterInputs(**(base | {"lane_change_phase": phase})))
+      self.assertEqual(state.left_lca_icon, AssistDisplayStatus.STANDBY)
+
+  def test_ccnc_icon_enum_mapping_does_not_invent_flashing_value(self):
+    self.assertEqual(CCNC_LCA_ICON_VALUE[AssistDisplayStatus.HIDDEN], 0)
+    self.assertEqual(CCNC_LCA_ICON_VALUE[AssistDisplayStatus.STANDBY], 1)
+    self.assertEqual(CCNC_LCA_ICON_VALUE[AssistDisplayStatus.READY], 2)
+    self.assertEqual(CCNC_LCA_ICON_VALUE[AssistDisplayStatus.ACTIVE], 2)
+    self.assertNotIn(3, CCNC_LCA_ICON_VALUE.values())
+    self.assertNotIn(4, CCNC_LCA_ICON_VALUE.values())
+
+  def test_shared_modelv2_adapter_preserves_phase_direction_and_blocking(self):
+    # stock modeld and modeld_v2 both publish this same modelV2.meta contract.
+    model = SimpleNamespace(meta=SimpleNamespace(
+      laneChangeState=log.LaneChangeState.preLaneChange,
+      laneChangeDirection=log.LaneChangeDirection.right,
+    ))
+    data = lane_change_inputs_from_model(
+      model, lateral_active=True, model_valid=True, model_age_s=0.1,
+      right_blocked=True,
+    )
+    self.assertEqual(data.lane_change_phase, LaneChangePhase.PREPARING)
+    self.assertEqual(data.lane_change_direction, Direction.RIGHT)
+    self.assertTrue(data.lateral_active)
+    self.assertTrue(data.right_lane_change_blocked)
+    self.assertIsNone(data.lane_change_ready)
 
   def test_lane_color_uses_detection_assist_and_real_warning(self):
     features = frozenset({ClusterFeature.LANE_LINES})
