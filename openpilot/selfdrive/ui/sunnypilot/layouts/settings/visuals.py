@@ -6,7 +6,13 @@ See the LICENSE.md file in the root directory for more details.
 """
 from openpilot.common.params import Params
 from opendbc.car.hyundai.values import HyundaiFlags
-from openpilot.sunnypilot.selfdrive.car.hkg_cluster_display import is_ev6_hda2_cluster_candidate, verified_features_for_car
+from openpilot.sunnypilot.selfdrive.car.hkg_cluster_display import (
+  HKG_CLUSTER_TEST_PARAM,
+  HKG_CLUSTER_TEST_STATUS_PARAM,
+  HKG_CLUSTER_PERMISSION_PARAM,
+  is_ev6_hda2_cluster_candidate,
+  verified_features_for_car,
+)
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp
@@ -48,11 +54,18 @@ class VisualsLayout(Widget):
            "require vehicle validation. Display and logging only; no control decisions."),
         None,
       ),
-      "HkgStockClusterDisplay": (
+      HKG_CLUSTER_PERMISSION_PARAM: (
         lambda: tr("Kia EV6 Stock Cluster Extensions (Research)"),
         tr("Master permission for verified stock-cluster extensions. Each icon also requires an exact compatible vehicle " +
-           "profile and fresh valid data. This switch cannot force unverified 0x161/0x162 messages to be sent."),
-        None,
+           "profile and fresh valid data. A separate local, parked-only test can send restricted 0x161/0x162 pages."),
+        self._on_hkg_cluster_permission,
+      ),
+      HKG_CLUSTER_TEST_PARAM: (
+        lambda: tr("Send All EV6 Cluster Test Pages (Park Only)"),
+        tr("One-shot research test for lane-change arrows, lane colors, navigation icons, and object shapes. " +
+           "Requires this master permission, exact EV6 HDA2 detection, Park, standstill, no accelerator, and disengaged control. " +
+           "The test stops on any interlock or original 0x161/0x162 conflict, turns itself off, and requires a restart to arm."),
+        self._on_hkg_cluster_test,
       ),
       "TorqueBar": (
         lambda: tr("Steering Arc"),
@@ -158,6 +171,14 @@ class VisualsLayout(Widget):
     ]
     return items
 
+  def _on_hkg_cluster_permission(self, state: bool):
+    if not state:
+      self._params.put_bool(HKG_CLUSTER_TEST_PARAM, False)
+      self._params.put(HKG_CLUSTER_TEST_STATUS_PARAM, "permission_disabled")
+
+  def _on_hkg_cluster_test(self, state: bool):
+    self._params.put(HKG_CLUSTER_TEST_STATUS_PARAM, "armed_restart_required" if state else "cancelled_by_user")
+
   def _update_state(self):
     super()._update_state()
 
@@ -169,8 +190,14 @@ class VisualsLayout(Widget):
     self._toggles["HkgCornerRadarDetection"].set_visible(hkg_canfd)
 
     hkg_cluster_candidate = is_ev6_hda2_cluster_candidate(ui_state.CP)
-    hkg_cluster_toggle = self._toggles["HkgStockClusterDisplay"]
+    hkg_cluster_toggle = self._toggles[HKG_CLUSTER_PERMISSION_PARAM]
     hkg_cluster_toggle.set_visible(hkg_cluster_candidate)
+    hkg_test_toggle = self._toggles[HKG_CLUSTER_TEST_PARAM]
+    hkg_test_toggle.set_visible(hkg_cluster_candidate)
+    master_enabled = self._params.get_bool(HKG_CLUSTER_PERMISSION_PARAM)
+    hkg_test_toggle.action_item.set_enabled(master_enabled)
+    test_status = self._params.get(HKG_CLUSTER_TEST_STATUS_PARAM) or "idle"
+    hkg_test_toggle.set_right_value(tr(str(test_status).replace("_", " ")))
     verified_count = len(verified_features_for_car(ui_state.CP))
     if hkg_cluster_candidate:
       hkg_cluster_toggle.set_right_value(tr("{} verified").format(verified_count))
@@ -180,8 +207,8 @@ class VisualsLayout(Widget):
         ))
       else:
         hkg_cluster_toggle.set_description(tr(
-          "Compatibility is unconfirmed; the permission may be saved, but no new cluster CAN message is transmitted. " +
-          "EV6 cluster/head-unit compatibility and the 0x161/0x162 bus must be verified first."
+          "Compatibility is unconfirmed, so normal dynamic cluster output remains disabled. " +
+          "The separate local test sends only restricted pages while parked so each display can be filmed and verified."
         ))
 
     self._rainbow_style.action_item.set_selected_button(1 if self._params.get("RainbowModeStyle", return_default=True) == 1 else 0)

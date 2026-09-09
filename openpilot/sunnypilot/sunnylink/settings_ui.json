@@ -1434,7 +1434,7 @@
               "key": "HkgStockClusterDisplay",
               "widget": "toggle",
               "title": "Kia EV6 Stock Cluster Extensions (Research)",
-              "description": "Master permission for verified stock-cluster extensions. Each icon also requires an exact compatible vehicle profile and fresh valid data. Saving this permission cannot force unverified 0x161/0x162 messages to be sent. The current build has no verified EV6 profile, so it transmits no new stock-cluster messages.",
+              "description": "Master permission for verified stock-cluster extensions. Each icon also requires an exact compatible vehicle profile and fresh valid data during normal operation. The on-device Visuals menu also contains a separate local-only, parked one-shot test for restricted 0x161/0x162 display pages; sunnylink cannot arm that active test.",
               "visibility": [
                 {
                   "type": "capability",

@@ -1,7 +1,8 @@
 """Safety gates for optional Hyundai/Kia stock-cluster extensions.
 
-This module deliberately separates semantic display intent from CAN packing.
-No CCNC message may be sent unless an exact, vehicle-verified profile resolves.
+This module deliberately separates normal semantic display intent from a narrow
+parked research sender. Normal CCNC output still requires an exact verified
+profile; the one-shot test has independent application and Panda interlocks.
 The common DBC alone is not compatibility evidence.
 """
 from __future__ import annotations
@@ -10,7 +11,12 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from opendbc.car.hyundai.values import CAR, HyundaiFlags
+from opendbc.can import CANPacker
+from opendbc.car import Bus, structs
+from opendbc.car.hyundai.hyundaicanfd import CanBus
+from opendbc.car.hyundai.values import CAR, DBC, HyundaiFlags
+from openpilot.common.params import Params
+from openpilot.common.swaglog import cloudlog
 
 
 CCNC_STATUS_ADDRESS = 0x161
@@ -21,6 +27,10 @@ EXPECTED_PAYLOAD_BYTES = {
   CCNC_OBJECTS_ADDRESS: 32,
   LFAHDA_CLUSTER_ADDRESS: 16,
 }
+
+HKG_CLUSTER_PERMISSION_PARAM = "HkgStockClusterDisplay"
+HKG_CLUSTER_TEST_PARAM = "HkgStockClusterDisplayTest"
+HKG_CLUSTER_TEST_STATUS_PARAM = "HkgStockClusterDisplayTestStatus"
 
 # The CCNC_0x161/0x162 definitions entered the common DBC through research on
 # 2023-24 Palisade/Telluride HDA2 vehicles. This is not an EV6 support claim.
@@ -296,3 +306,243 @@ def build_display_state(user_enabled: bool, verified_features: frozenset[Cluster
     targets=tuple(selected_targets),
     active_features=frozenset(active_features),
   )
+
+
+@dataclass(frozen=True)
+class ClusterTestPage:
+  """One synthetic, display-only page in the guarded stationary test."""
+
+  name: str
+  duration_s: float
+  status_values: tuple[tuple[str, float], ...] = ()
+  object_values: tuple[tuple[str, float], ...] = ()
+
+
+NEUTRAL_STATUS_VALUES: dict[str, float] = {
+  "LCA_LEFT_ARROW": 0,
+  "LCA_RIGHT_ARROW": 0,
+  "CENTERLINE": 0,
+  "TARGET": 0,
+  "TARGET_DISTANCE": 0,
+  "LANELINE_LEFT": 1,
+  "LANELINE_LEFT_POSITION": 15,
+  "LANELINE_RIGHT": 1,
+  "LANELINE_RIGHT_POSITION": 15,
+  "LANELINE_CURVATURE": 15,
+  "LANE_HIGHLIGHT": 0,
+  "LANE_HIGHLIGHT_DISTANCE": 0,
+  "LANE_LEFT": 0,
+  "LANE_RIGHT": 0,
+  "LANE_ZOOM": 1,
+  "HDA_ICON": 0,
+  "NAV_ICON": 0,
+  "LFA_ICON": 0,
+  "LCA_LEFT_ICON": 0,
+  "LCA_RIGHT_ICON": 0,
+}
+
+NEUTRAL_OBJECT_VALUES: dict[str, float] = {
+  "LEAD": 0,
+  "LEAD_DISTANCE": 0,
+  "LEAD_LATERAL": 0,
+  "LEAD_ALT": 0,
+  "LEAD_ALT_DISTANCE": 0,
+  "LEAD_ALT_LATERAL": 0,
+  "LEAD_LEFT": 0,
+  "LEAD_LEFT_DISTANCE": 0,
+  "LEAD_LEFT_LATERAL": 0,
+  "LEAD_RIGHT": 0,
+  "LEAD_RIGHT_DISTANCE": 0,
+  "LEAD_RIGHT_LATERAL": 0,
+}
+
+
+def _test_page(name: str, *, status: dict[str, float] | None = None,
+               objects: dict[str, float] | None = None, duration_s: float = 3.0) -> ClusterTestPage:
+  return ClusterTestPage(name, duration_s, tuple((status or {}).items()), tuple((objects or {}).items()))
+
+
+# Each page intentionally leaves collision/AEB, fault, alert, sound, speed-limit,
+# DAW, vibration, and unknown fields at zero. Panda independently enforces this
+# restricted subset and rejects payloads that escape it.
+HKG_CLUSTER_TEST_PAGES: tuple[ClusterTestPage, ...] = (
+  _test_page("clear_start"),
+  _test_page("left_lane_change", status={
+    "LCA_LEFT_ARROW": 1, "LCA_LEFT_ICON": 2, "LANELINE_LEFT": 6, "LANELINE_RIGHT": 2,
+  }),
+  _test_page("right_lane_change", status={
+    "LCA_RIGHT_ARROW": 1, "LCA_RIGHT_ICON": 2, "LANELINE_LEFT": 2, "LANELINE_RIGHT": 6,
+  }),
+  _test_page("lane_lines_white", status={
+    "CENTERLINE": 1, "LANELINE_LEFT": 2, "LANELINE_RIGHT": 2, "LANE_HIGHLIGHT": 2,
+    "LANE_HIGHLIGHT_DISTANCE": 50, "LANE_LEFT": 1, "LANE_RIGHT": 1, "LANE_ZOOM": 0,
+  }),
+  _test_page("lane_lines_green", status={
+    "CENTERLINE": 1, "LANELINE_LEFT": 6, "LANELINE_RIGHT": 6, "LANE_HIGHLIGHT": 1,
+    "LANE_HIGHLIGHT_DISTANCE": 50, "LANE_LEFT": 1, "LANE_RIGHT": 1, "LANE_ZOOM": 0,
+    "HDA_ICON": 2, "LFA_ICON": 2,
+  }),
+  _test_page("lane_lines_orange", status={
+    "CENTERLINE": 1, "LANELINE_LEFT": 4, "LANELINE_RIGHT": 4, "LANE_HIGHLIGHT": 4,
+    "LANE_HIGHLIGHT_DISTANCE": 50, "LANE_LEFT": 1, "LANE_RIGHT": 1, "LANE_ZOOM": 0,
+  }),
+  _test_page("navigation_gray", status={"NAV_ICON": 1, "HDA_ICON": 1, "LFA_ICON": 1}),
+  _test_page("navigation_green", status={"NAV_ICON": 2, "HDA_ICON": 2, "LFA_ICON": 2}),
+  _test_page("navigation_white", status={"NAV_ICON": 4, "HDA_ICON": 3, "LFA_ICON": 3}),
+  _test_page("objects_car_person_bicycle_cone", objects={
+    "LEAD": 4, "LEAD_DISTANCE": 30, "LEAD_LATERAL": 0,
+    "LEAD_ALT": 4, "LEAD_ALT_DISTANCE": 40, "LEAD_ALT_LATERAL": 0,
+    "LEAD_LEFT": 8, "LEAD_LEFT_DISTANCE": 20, "LEAD_LEFT_LATERAL": 2,
+    "LEAD_RIGHT": 10, "LEAD_RIGHT_DISTANCE": 25, "LEAD_RIGHT_LATERAL": 2,
+  }),
+  _test_page("objects_motorcycle_truck_boxes", objects={
+    "LEAD": 12, "LEAD_DISTANCE": 30, "LEAD_LATERAL": 0,
+    "LEAD_ALT": 2, "LEAD_ALT_DISTANCE": 40, "LEAD_ALT_LATERAL": 0,
+    "LEAD_LEFT": 6, "LEAD_LEFT_DISTANCE": 20, "LEAD_LEFT_LATERAL": 2,
+    "LEAD_RIGHT": 2, "LEAD_RIGHT_DISTANCE": 25, "LEAD_RIGHT_LATERAL": 2,
+  }),
+  _test_page("clear_end"),
+)
+
+
+def cluster_test_page_values(page: ClusterTestPage) -> tuple[dict[str, float], dict[str, float]]:
+  status = dict(NEUTRAL_STATUS_VALUES)
+  objects = dict(NEUTRAL_OBJECT_VALUES)
+  status.update(page.status_values)
+  objects.update(page.object_values)
+  return status, objects
+
+
+class HkgClusterDisplayTestController:
+  """One-shot active display test with application-level interlocks.
+
+  This controller is deliberately outside the normal Hyundai actuation path. It
+  sends only while an initialization-time safety flag is present, then disables
+  the local one-shot request on completion or any abort.
+  """
+
+  SAFE_OBSERVATION_NS = 2_000_000_000
+  WAIT_TIMEOUT_NS = 120_000_000_000
+  SEND_INTERVAL_NS = 50_000_000  # 20 Hz, matching public CCNC implementations
+
+  def __init__(self, CP: Any, params: Params | Any | None = None, packer: CANPacker | Any | None = None):
+    self.CP = CP
+    self.params = params or Params()
+    vehicle_safety_active = bool(CP.safetyConfigs and
+                                 CP.safetyConfigs[-1].safetyModel == structs.CarParams.SafetyModel.hyundaiCanfd)
+    self.enabled = bool(is_ev6_hda2_cluster_candidate(CP) and CP.flags & HyundaiFlags.EV and
+                        CP.flags & HyundaiFlags.CANFD_HKG_CLUSTER_TEST and not CP.passive and vehicle_safety_active)
+    self.CAN = CanBus(CP) if self.enabled else None
+    self.packer = packer or (CANPacker(DBC[CP.carFingerprint][Bus.pt]) if self.enabled else None)
+    self.first_update_nanos: int | None = None
+    self.safe_since_nanos: int | None = None
+    self.test_started_nanos: int | None = None
+    self.last_send_nanos: int | None = None
+    self.page_index = -1
+    self.done = not self.enabled
+    self.status = "not_armed" if not self.enabled else "armed_waiting_for_park"
+    if self.enabled:
+      self._set_status(self.status)
+    elif self.params.get_bool(HKG_CLUSTER_TEST_PARAM):
+      self.params.put_bool(HKG_CLUSTER_TEST_PARAM, False)
+      self.status = "not_armed_incompatible_or_passive"
+      self.params.put(HKG_CLUSTER_TEST_STATUS_PARAM, self.status)
+
+  def _set_status(self, status: str) -> None:
+    if status == self.status and self.params.get(HKG_CLUSTER_TEST_STATUS_PARAM) == status:
+      return
+    self.status = status
+    self.params.put(HKG_CLUSTER_TEST_STATUS_PARAM, status)
+
+  def _finish(self, status: str) -> None:
+    if self.done:
+      return
+    self.done = True
+    self._set_status(status)
+    self.params.put_bool(HKG_CLUSTER_TEST_PARAM, False)
+    if status == "complete":
+      cloudlog.warning("HKG stock-cluster display test completed")
+    else:
+      cloudlog.error({"event": "HKG stock-cluster display test stopped", "reason": status})
+
+  @staticmethod
+  def _received_cluster_message(can_packets: Any) -> tuple[int, int] | None:
+    for _, frames in can_packets or ():
+      for address, _, source_bus in frames:
+        if address in (CCNC_STATUS_ADDRESS, CCNC_OBJECTS_ADDRESS) and 0 <= source_bus < 128:
+          return int(address), int(source_bus)
+    return None
+
+  @staticmethod
+  def _safe_vehicle_state(CS: Any, CC: Any) -> bool:
+    return bool(CS.canValid and CS.standstill and abs(float(CS.vEgoRaw)) <= 0.1 and
+                CS.gearShifter == structs.CarState.GearShifter.park and not CS.gasPressed and
+                not CC.enabled and not CC.latActive and not CC.longActive)
+
+  @staticmethod
+  def _page_at(elapsed_s: float) -> tuple[int, ClusterTestPage] | None:
+    boundary = 0.0
+    for index, page in enumerate(HKG_CLUSTER_TEST_PAGES):
+      boundary += page.duration_s
+      if elapsed_s < boundary:
+        return index, page
+    return None
+
+  def update(self, CS: Any, CC: Any, can_packets: Any, now_nanos: int) -> list[tuple[int, bytes, int]]:
+    if self.done:
+      return []
+
+    if not self.params.get_bool(HKG_CLUSTER_PERMISSION_PARAM) or not self.params.get_bool(HKG_CLUSTER_TEST_PARAM):
+      self._finish("cancelled_setting_disabled")
+      return []
+
+    if self.first_update_nanos is None:
+      self.first_update_nanos = now_nanos
+
+    collision = self._received_cluster_message(can_packets)
+    if collision is not None:
+      self._finish(f"aborted_stock_{collision[0]:#x}_on_bus_{collision[1]}")
+      return []
+
+    safe = self._safe_vehicle_state(CS, CC)
+    if self.test_started_nanos is not None and not safe:
+      self._finish("aborted_vehicle_interlock")
+      return []
+
+    if self.test_started_nanos is None:
+      if now_nanos - self.first_update_nanos >= self.WAIT_TIMEOUT_NS:
+        self._finish("aborted_wait_timeout")
+        return []
+      if not safe:
+        self.safe_since_nanos = None
+        self._set_status("waiting_require_park_standstill_disengaged")
+        return []
+      if self.safe_since_nanos is None:
+        self.safe_since_nanos = now_nanos
+      if now_nanos - self.safe_since_nanos < self.SAFE_OBSERVATION_NS:
+        self._set_status("observing_for_stock_message_conflict")
+        return []
+      self.test_started_nanos = now_nanos
+      self.last_send_nanos = None
+
+    elapsed_s = (now_nanos - self.test_started_nanos) * 1e-9
+    selected = self._page_at(elapsed_s)
+    if selected is None:
+      self._finish("complete")
+      return []
+
+    page_index, page = selected
+    if page_index != self.page_index:
+      self.page_index = page_index
+      self._set_status(f"running_{page_index + 1:02d}_of_{len(HKG_CLUSTER_TEST_PAGES):02d}_{page.name}")
+
+    if self.last_send_nanos is not None and now_nanos - self.last_send_nanos < self.SEND_INTERVAL_NS:
+      return []
+    self.last_send_nanos = now_nanos
+
+    status_values, object_values = cluster_test_page_values(page)
+    assert self.CAN is not None and self.packer is not None
+    return [
+      self.packer.make_can_msg("CCNC_0x161", self.CAN.ECAN, status_values),
+      self.packer.make_can_msg("CCNC_0x162", self.CAN.ECAN, object_values),
+    ]
