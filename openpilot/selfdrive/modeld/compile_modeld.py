@@ -12,6 +12,7 @@ from collections import namedtuple
 import numpy as np
 
 from openpilot.selfdrive.modeld.helpers import dump_oob, load_oob
+from openpilot.sunnypilot.navd.navigation_model_compat import navigation_feature_input_key
 
 def _patch_tinygrad_fetch_fw():
   import hashlib
@@ -121,6 +122,8 @@ def get_policy_npy_shapes(input_shapes):
   feat_dim = math.prod(fb[2:])
   # TODO prev_feat shouldn't exist and be handled inside the JIT, but corrupt on QCOM for now
   shapes = {'desire': (dp[2],), 'traffic_convention': tuple(tc), 'action_t': tuple(at), 'prev_feat': (fb[0], feat_dim)}
+  if (nav_key := navigation_feature_input_key(input_shapes)) is not None:
+    shapes[nav_key] = tuple(input_shapes[nav_key])
   return shapes, [math.prod(s) for s in shapes.values()]
 
 
@@ -195,7 +198,12 @@ def make_run_policy(model_runner, model_metadata, frame_skip):
     img = shift_and_sample(img_q, warped[0:1], sample_skip_fn)
     big_img = shift_and_sample(big_img_q, warped[1:2], sample_skip_fn)
 
-    desire, traffic_convention, action_t, prev_feat = (t.reshape(s) for t, s in zip(packed_npy_inputs.split(npy_sizes), npy_shapes.values(), strict=True))
+    unpacked = {key: tensor.reshape(shape) for key, tensor, shape in
+                zip(npy_shapes, packed_npy_inputs.split(npy_sizes), npy_shapes.values(), strict=True)}
+    desire = unpacked.pop('desire')
+    traffic_convention = unpacked.pop('traffic_convention')
+    action_t = unpacked.pop('action_t')
+    prev_feat = unpacked.pop('prev_feat')
     desire_buf = shift_and_sample(desire_q, desire.reshape(1, 1, -1), sample_desire_fn)
     feat_buf = shift_and_sample(feat_q, prev_feat.reshape(1, 1, -1), sample_skip_fn)
 
@@ -207,6 +215,7 @@ def make_run_policy(model_runner, model_metadata, frame_skip):
       'traffic_convention': traffic_convention,
       'action_t': action_t,
     }
+    inputs.update(unpacked)
     inputs = {name: value.cast(model_input_dtypes[name]) for name, value in inputs.items()}
     out = next(iter(model_runner(inputs).values())).cast('float32')
     return out,

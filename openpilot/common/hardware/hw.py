@@ -97,6 +97,18 @@ class Paths:
       return "/data/media/0/osm"
 
   @staticmethod
+  def mapbox_navigation_cache_root() -> str:
+    return str(Path(Paths.mapd_root()) / "mapbox_navigation")
+
+  @staticmethod
+  def mapbox_navigation_shm_root() -> str:
+    return str(Path(Paths.shm_path()) / "mapbox_navigation")
+
+  @staticmethod
+  def navigation_model_root() -> str:
+    return str(Path(Paths.model_root()) / "navigation")
+
+  @staticmethod
   def qr_decoder_root() -> str:
     if PC:
       return str(Path(Paths.comma_home()) / "media" / "0" / "qr_decoder")

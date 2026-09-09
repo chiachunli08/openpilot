@@ -2643,10 +2643,10 @@ struct Event {
     liveMapDataSP @115 :Custom.LiveMapDataSP;
     modelDataV2SP @116 :Custom.ModelDataV2SP;
     cornerRadarStateSP @136 :Custom.CornerRadarStateSP;
-    customReserved11 @137 :Custom.CustomReserved11;
-    customReserved12 @138 :Custom.CustomReserved12;
-    customReserved13 @139 :Custom.CustomReserved13;
-    customReserved14 @140 :Custom.CustomReserved14;
+    navigationStateSP @137 :Custom.NavigationStateSP;
+    mapboxNavigationStateSP @138 :Custom.MapboxNavigationStateSP;
+    navigationModelStateSP @139 :Custom.NavigationModelStateSP;
+    navigationIntentStateSP @140 :Custom.NavigationIntentStateSP;
     customReserved15 @141 :Custom.CustomReserved15;
     customReserved16 @142 :Custom.CustomReserved16;
     customReserved17 @143 :Custom.CustomReserved17;

@@ -17,6 +17,7 @@ from openpilot.common.params import Params
 from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_public_token, decode_mapbox_secret_token
 from openpilot.sunnypilot.navd.destination_input import parse_coordinate_destination
 from openpilot.sunnypilot.navd.qr_decoder import install_decoder, VERSION
+from openpilot.sunnypilot.navd.mapbox_mapd import display_map_supported, model_map_supported
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.selfdrive.ui.layouts.settings.software import time_ago
 from openpilot.common.hardware.hw import Paths
@@ -61,11 +62,31 @@ class OSMLayout(Widget):
       tr("Use Mapbox routing and show the next maneuver. A network connection is required to load or recalculate a route; " +
          "an already loaded route remains available if the connection drops."),
       initial_state=ui_state.params.get_bool("NavigationEnabled"), param="NavigationEnabled")
+    self._navigation_prompt_toggle = toggle_item_sp(
+      tr("Turn-by-turn Instructions"),
+      tr("Show the next maneuver, road text, remaining distance, and estimated arrival time on the driving screen."),
+      initial_state=ui_state.params.get_bool("NavigationTurnPromptEnabled"), param="NavigationTurnPromptEnabled")
+    self._mapbox_display_toggle = toggle_item_sp(
+      tr("C3X Mapbox Driving Map"),
+      tr("Show Mapbox tiles, the active route, and vehicle position on the comma 3X driving screen. Display is not supported on other hardware."),
+      initial_state=ui_state.params.get_bool("MapboxMapDisplayEnabled"), param="MapboxMapDisplayEnabled")
     self._navigation_intent_toggle = toggle_item_sp(
       tr("Navigation Intent for Driving Model"),
       tr("Convert an approaching left or right navigation maneuver into the model's existing turn desire. This does not operate the vehicle turn signals; " +
          "the driver remains responsible for signaling and supervising the maneuver."),
       initial_state=ui_state.params.get_bool("NavigationIntentEnabled"), param="NavigationIntentEnabled")
+    self._navigation_model_toggle = toggle_item_sp(
+      tr("taco2 Navigation Model (Shadow)"),
+      tr("Run the pinned taco2 navigation model and publish its 64-dimensional features for comparison. It does not steer the vehicle."),
+      initial_state=ui_state.params.get_bool("NavigationModelEnabled"), param="NavigationModelEnabled")
+    self._navigation_model_fusion_toggle = toggle_item_sp(
+      tr("Navigation Features for Driving Model"),
+      tr("Available only when the selected driving model exposes a verified 64-value navigation input. Current incompatible models remain in shadow mode."),
+      initial_state=ui_state.params.get_bool("NavigationModelFusionEnabled"), param="NavigationModelFusionEnabled")
+    self._navigation_runtime_status = text_item(tr("Navigation Runtime"), self._navigation_status_text)
+    self._mapbox_runtime_status = text_item(tr("C3X Mapbox Map"), self._mapbox_status_text)
+    self._navigation_intent_status = text_item(tr("Navigation Intent"), self._navigation_intent_status_text)
+    self._navigation_model_status = text_item(tr("Navigation Model"), self._navigation_model_status_text)
     self._mapbox_public_key = button_item_sp(
       tr("Mapbox Public Token"), lambda: tr("EDIT"),
       description=tr("Public access token used for Directions requests."),
@@ -99,11 +120,100 @@ class OSMLayout(Widget):
     self._country_btn = ListItemSP(tr("Country"), action_item=NoElideButtonAction(tr("SELECT"), enabled=True), callback=lambda: self._select_region("Country"))
     self._state_btn = ListItemSP(tr("State"), action_item=NoElideButtonAction(tr("SELECT"), enabled=True), callback=lambda: self._select_region("State"))
 
-    self.items = [self._navigation_toggle, self._navigation_intent_toggle,
+    self.items = [self._navigation_toggle, self._navigation_prompt_toggle, self._mapbox_display_toggle,
+                  self._navigation_intent_toggle, self._navigation_model_toggle, self._navigation_model_fusion_toggle,
+                  self._navigation_runtime_status, self._mapbox_runtime_status,
+                  self._navigation_intent_status, self._navigation_model_status,
                   self._mapbox_public_key, self._mapbox_secret_key, self._decoder_download, self._decoder_info, self._mapbox_qr_scanner,
                   self._navigation_destination, self._cancel_navigation,
                   self._mapd_version, self._delete_maps_btn, self._progress,
                   self._update_btn, self._country_btn, self._state_btn]
+
+  @staticmethod
+  def _service_fresh(service: str, max_age: float = 3.0) -> bool:
+    return bool(ui_state.sm.valid[service] and ui_state.sm.alive[service] and
+                0 <= monotonic() - ui_state.sm.recv_time[service] <= max_age)
+
+  @staticmethod
+  def _navigation_status_text() -> str:
+    service = "navigationStateSP"
+    if OSMLayout._service_fresh(service):
+      state = ui_state.sm[service]
+      statuses = {
+        "noDestination": tr("No destination"),
+        "waitingForLocation": tr("Waiting for GPS"),
+        "waitingForRoute": tr("Waiting for route"),
+        "recalculating": tr("Recalculating route"),
+        "routeLoaded": tr("Route loaded"),
+        "cachedRoute": tr("Route loaded from cache"),
+        "routeError": tr("Route request failed"),
+        "stale": tr("Route is off course; waiting to recalculate"),
+        "arrived": tr("Arrived"),
+      }
+      return statuses.get(str(state.status), str(state.status))
+    return tr("Navigation process not running")
+
+  @staticmethod
+  def _mapbox_status_text() -> str:
+    if not display_map_supported():
+      return tr("Unavailable: comma 3X only")
+    if not ui_state.params.get_bool("MapboxMapDisplayEnabled"):
+      return tr("Disabled")
+    service = "mapboxNavigationStateSP"
+    if OSMLayout._service_fresh(service):
+      state = ui_state.sm[service]
+      statuses = {
+        "missingToken": tr("Mapbox token required"),
+        "waitingForLocation": tr("Waiting for GPS"),
+        "waitingForRoute": tr("Map ready; no active route"),
+        "loadingTiles": tr("Loading map tiles"),
+        "online": tr("Map and route loaded"),
+        "cached": tr("Using cached map tiles"),
+        "incomplete": tr("Some map tiles are unavailable"),
+        "error": tr("Map renderer error"),
+      }
+      return statuses.get(str(state.status), str(state.status))
+    return tr("Map renderer not running")
+
+  @staticmethod
+  def _navigation_intent_status_text() -> str:
+    if not ui_state.params.get_bool("NavigationIntentEnabled"):
+      return tr("Disabled")
+    service = "navigationIntentStateSP"
+    if OSMLayout._service_fresh(service):
+      state = ui_state.sm[service]
+      runner = str(state.modelRunner)
+      if state.pulseSent:
+        return tr("Intent sent to %s") % runner
+      statuses = {
+        "alreadySent": tr("Intent delivered once; duplicate suppressed"),
+        "awaitingTrigger": tr("Waiting for maneuver trigger distance"),
+        "tooClose": tr("Maneuver is too close for a new intent"),
+        "driverInput": tr("Driver input has priority"),
+        "existingDesire": tr("Existing model intent has priority"),
+        "staleInstruction": tr("Navigation instruction expired"),
+        "navigationInvalid": tr("Navigation data invalid"),
+        "unsupportedManeuver": tr("Maneuver does not map to a model intent"),
+      }
+      return statuses.get(str(state.reason), str(state.reason))
+    return tr("Available while the driving model is running")
+
+  @staticmethod
+  def _navigation_model_status_text() -> str:
+    service = "navigationModelStateSP"
+    if OSMLayout._service_fresh(service):
+      state = ui_state.sm[service]
+      statuses = {
+        "modelMissing": tr("Model asset not installed"),
+        "compiling": tr("Preparing model while parked"),
+        "mapUnavailable": tr("Compatible model map unavailable"),
+        "runningShadow": tr("Running in shadow mode"),
+        "modelIncompatible": tr("Driving model is not compatible"),
+        "fused": tr("Features fused into driving model"),
+        "error": tr("Navigation model error"),
+      }
+      return statuses.get(str(state.status), str(state.status))
+    return ui_state.params.get("NavigationModelInstallStatus") or tr("Not prepared")
 
   @staticmethod
   def _edit_mapbox_key(param: str, title: str, password_mode: bool) -> None:
@@ -393,6 +503,18 @@ class OSMLayout(Widget):
     busy = self._decoder_job is not None
     self._decoder_download.action_item.set_enabled(not busy and not ui_state.is_onroad())
     self._mapbox_qr_scanner.action_item.set_enabled(not busy and not ui_state.is_onroad())
+    c3x = display_map_supported()
+    model_hw = model_map_supported()
+    self._mapbox_display_toggle.action_item.set_enabled(c3x)
+    self._navigation_model_toggle.action_item.set_enabled(model_hw and ui_state.is_offroad())
+    compatible = ui_state.params.get_bool("NavigationModelFusionCompatible")
+    self._navigation_model_fusion_toggle.action_item.set_enabled(compatible and
+                                                                  ui_state.params.get_bool("NavigationModelEnabled") and
+                                                                  ui_state.is_offroad())
+    if not c3x and ui_state.params.get_bool("MapboxMapDisplayEnabled"):
+      ui_state.params.put_bool("MapboxMapDisplayEnabled", False)
+    if not model_hw and ui_state.params.get_bool("NavigationModelEnabled"):
+      ui_state.params.put_bool("NavigationModelEnabled", False)
     if busy:
       device._reset_interactive_timeout()
     now = monotonic()

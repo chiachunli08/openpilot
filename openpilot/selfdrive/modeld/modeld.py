@@ -39,6 +39,8 @@ from openpilot.selfdrive.modeld.helpers import chestnut_present, chestnut_compil
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
+from openpilot.sunnypilot.navd.navigation_model_bridge import NavigationModelBridge
+from openpilot.sunnypilot.navd.navigation_model_compat import navigation_feature_input_key
 
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
 
@@ -186,6 +188,7 @@ class ModelState(ModelStateBase):
     self.model_device = input_devices['model']
     metadata = jits['metadata']
     self.input_shapes = metadata['input_shapes']
+    self.navigation_feature_contract = metadata.get('navigation_feature_contract', '')
     self.vision_input_names = [k for k in self.input_shapes if 'img' in k]
     self.output_slices = metadata['output_slices']
 
@@ -214,6 +217,9 @@ class ModelState(ModelStateBase):
     self.prev_desire[:] = inputs['desire_pulse']
     self.npy['traffic_convention'][:] = inputs['traffic_convention']
     self.npy['action_t'][:] = inputs['action_t']
+    for key, value in inputs.items():
+      if key in self.npy and key not in ('desire', 'traffic_convention', 'action_t'):
+        self.npy[key][:] = value
     self.npy['tfm'][:,:] = transforms['img'][:,:]
     self.npy['big_tfm'][:,:] = transforms['big_img'][:,:]
 
@@ -234,6 +240,8 @@ class ModelState(ModelStateBase):
     dummy_frames = {k: np.zeros(self.frame_copy_size, dtype=np.uint8) for k in self.vision_input_names}
     eye = np.eye(3, dtype=np.float32)
     dims = {'desire_pulse': ModelConstants.DESIRE_LEN, 'traffic_convention': 2, 'action_t': 2}
+    if (nav_key := navigation_feature_input_key({key: value.shape for key, value in self.npy.items()})) is not None:
+      dims[nav_key] = self.npy[nav_key].shape
     self.run(dummy_frames, dict.fromkeys(self.vision_input_names, eye), {k: np.zeros(v, dtype=np.float32) for k, v in dims.items()})
     self.input_queues, self.npy, self.frame_views = make_input_queues(
       self.input_shapes, self.frame_skip, device=self.model_device, frame_copy_size=self.frame_copy_size)
@@ -319,10 +327,10 @@ def main(demo=False):
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
   # messaging
-  pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"] + (["chestnutState"] if CHESTNUT else [])
+  pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP", "navigationIntentStateSP"] + (["chestnutState"] if CHESTNUT else [])
   pm = PubMaster(pub_socks)
   sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay",
-                  "navInstruction"])
+                  "navInstruction", "navigationStateSP", "navigationModelStateSP"])
 
   publish_state = PublishState()
   params = Params()
@@ -354,7 +362,7 @@ def main(demo=False):
 
   DH = DesireHelper(bool(CP.brand == "hyundai" and CP.flags & HyundaiFlags.CANFD_CREEP_LANE_CHANGE))
   RELC = RoadEdgeLaneChangeController()
-  last_navigation_maneuver_id = ""
+  navigation_bridge = NavigationModelBridge(params, "stock")
 
   while True:
     # Keep receiving frames until we are at least 1 frame ahead of previous extra frame
@@ -390,21 +398,12 @@ def main(demo=False):
       meta_extra = meta_main
 
     sm.update(0)
-    desire = DH.desire
-    if desire == log.Desire.none and params.get_bool("NavigationIntentEnabled") and sm.valid["navInstruction"]:
-      nav = sm["navInstruction"]
-      modifier = nav.maneuverModifier.lower()
-      maneuver_id = params.get("NavigationManeuverId") or ""
-      if 8.0 <= nav.maneuverDistance <= 180.0 and maneuver_id and maneuver_id != last_navigation_maneuver_id:
-        if "left" in modifier:
-          desire = log.Desire.turnLeft
-          last_navigation_maneuver_id = maneuver_id
-        elif "right" in modifier:
-          desire = log.Desire.turnRight
-          last_navigation_maneuver_id = maneuver_id
     is_rhd = sm["driverMonitoringState"].isRHD
     frame_id = sm["narrowRoadCameraState"].frameId
     v_ego = max(sm["carState"].vEgo, 0.)
+    navigation = navigation_bridge.update(sm=sm, pm=pm, base_desire=DH.desire, v_ego=v_ego, is_rhd=is_rhd,
+                                          model_inputs=model.npy, navigation_feature_contract=model.navigation_feature_contract)
+    desire = navigation.desire
     model.lat_delay = get_lat_delay(params, sm["lateralDelay"].lateralDelay)
     lat_delay = sm["lateralDelay"].lateralDelay + LAT_SMOOTH_SECONDS
     if sm.updated["extrinsicsCalibration"] and sm.seen['narrowRoadCameraState'] and sm.seen['deviceState']:
@@ -445,6 +444,11 @@ def main(demo=False):
       'traffic_convention': traffic_convention,
       'action_t': np.array([lat_action_t, long_action_t], dtype=np.float32),
     }
+    if navigation.feature_key is not None:
+      # Explicitly clear the optional input when navigation becomes stale or
+      # unavailable. Retaining a previous route's learned features is unsafe.
+      inputs[navigation.feature_key] = (navigation.features if navigation.fused and navigation.features is not None
+                                        else np.zeros_like(model.npy[navigation.feature_key]))
 
     mt1 = time.perf_counter()
     try:

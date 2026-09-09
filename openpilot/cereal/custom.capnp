@@ -514,16 +514,115 @@ struct CornerRadarStateSP @0xcb9fd56c7057593a {
   }
 }
 
-struct CustomReserved11 @0xc2243c65e0340384 {
+struct NavigationStateSP @0xc2243c65e0340384 {
+  routeId @0 :Text;
+  maneuverId @1 :Text;
+  routeLoaded @2 :Bool;
+  locationValid @3 :Bool;
+  instructionValid @4 :Bool;
+  networkAvailable @5 :Bool;
+  usingCachedRoute @6 :Bool;
+  recalculating @7 :Bool;
+  routeAgeSec @8 :Float32;
+  instructionAgeSec @9 :Float32;
+  status @10 :Status;
+
+  enum Status {
+    disabled @0;
+    noDestination @1;
+    waitingForLocation @2;
+    waitingForRoute @3;
+    routeLoaded @4;
+    cachedRoute @5;
+    routeError @6;
+    arrived @7;
+    stale @8;
+    recalculating @9;
+  }
 }
 
-struct CustomReserved12 @0x9ccdc8676701b412 {
+struct MapboxNavigationStateSP @0x9ccdc8676701b412 {
+  displaySupported @0 :Bool;
+  displayEnabled @1 :Bool;
+  displayImageValid @2 :Bool;
+  modelImageValid @3 :Bool;
+  usedCachedTiles @4 :Bool;
+  missingTiles @5 :UInt16;
+  generation @6 :UInt32;
+  displayImagePath @7 :Text;
+  modelInputPath @8 :Text;
+  latitude @9 :Float64;
+  longitude @10 :Float64;
+  bearingDeg @11 :Float32;
+  zoom @12 :Float32;
+  routeId @13 :Text;
+  locationMonoTime @14 :UInt64;
+  renderTime @15 :Float32;
+  status @16 :Status;
+  modelPositionValid @17 :Bool;
+  modelLocationMonoTime @18 :UInt64;
+
+  enum Status {
+    disabled @0;
+    unsupportedHardware @1;
+    missingToken @2;
+    waitingForLocation @3;
+    loadingTiles @4;
+    online @5;
+    cached @6;
+    incomplete @7;
+    error @8;
+    waitingForRoute @9;
+  }
 }
 
-struct CustomReserved13 @0xcd96dafb67a082d0 {
+struct NavigationModelStateSP @0xcd96dafb67a082d0 {
+  enabled @0 :Bool;
+  assetReady @1 :Bool;
+  compiledReady @2 :Bool;
+  running @3 :Bool;
+  inputValid @4 :Bool;
+  featuresValid @5 :Bool;
+  shadowOnly @6 :Bool;
+  routeId @7 :Text;
+  inputMonoTime @8 :UInt64;
+  features @9 :List(Float32);
+  desirePrediction @10 :List(Float32);
+  positionX @11 :List(Float32);
+  positionY @12 :List(Float32);
+  positionXStd @13 :List(Float32);
+  positionYStd @14 :List(Float32);
+  executionTime @15 :Float32;
+  status @16 :Status;
+
+  enum Status {
+    disabled @0;
+    unsupportedHardware @1;
+    modelMissing @2;
+    compiling @3;
+    mapUnavailable @4;
+    runningShadow @5;
+    modelIncompatible @6;
+    fused @7;
+    error @8;
+  }
 }
 
-struct CustomReserved14 @0xb057204d7deadf3f {
+struct NavigationIntentStateSP @0xb057204d7deadf3f {
+  enabled @0 :Bool;
+  navigationValid @1 :Bool;
+  pulseSent @2 :Bool;
+  desire @3 :UInt8;
+  maneuverId @4 :Text;
+  maneuverType @5 :Text;
+  maneuverModifier @6 :Text;
+  modelRunner @7 :Text;
+  reason @8 :Text;
+  triggerDistance @9 :Float32;
+  instructionAgeSec @10 :Float32;
+  navFeaturesCompatible @11 :Bool;
+  navFeaturesAvailable @12 :Bool;
+  navFeaturesFused @13 :Bool;
 }
 
 struct CustomReserved15 @0xbd443b539493bc68 {
