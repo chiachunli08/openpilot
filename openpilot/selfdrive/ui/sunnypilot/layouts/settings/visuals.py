@@ -5,6 +5,7 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 from openpilot.common.params import Params
+from opendbc.car.hyundai.values import HyundaiFlags
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp
@@ -38,6 +39,12 @@ class VisualsLayout(Widget):
         lambda: tr("Show Blind Spot Warnings"),
         tr("Enabling this will display warnings when a vehicle is detected in your " +
            "blind spot as long as your car has BSM supported."),
+        None,
+      ),
+      "HkgCornerRadarDetection": (
+        lambda: tr("HKG Corner Radar Detection (Experimental)"),
+        tr("Passively display candidate 64-byte corner-radar targets. Source bus, mounting, status, and speed fields " +
+           "require vehicle validation. Display and logging only; no control decisions."),
         None,
       ),
       "TorqueBar": (
@@ -149,6 +156,10 @@ class VisualsLayout(Widget):
 
     for param in self._toggle_defs:
       self._toggles[param].action_item.set_state(self._params.get_bool(param))
+
+    hkg_canfd = (ui_state.CP is not None and ui_state.CP.brand == "hyundai" and
+                 bool(ui_state.CP.flags & HyundaiFlags.CANFD))
+    self._toggles["HkgCornerRadarDetection"].set_visible(hkg_canfd)
 
     self._rainbow_style.action_item.set_selected_button(1 if self._params.get("RainbowModeStyle", return_default=True) == 1 else 0)
     self._rainbow_style.action_item.set_enabled(self._params.get_bool("RainbowMode"))

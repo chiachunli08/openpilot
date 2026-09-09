@@ -23,6 +23,15 @@ sections:
     title: Show Blind Spot Warnings
     description: Enabling this will display warnings when a vehicle is detected in your blind spot as long as your car has
       BSM supported.
+  - key: HkgCornerRadarDetection
+    widget: toggle
+    title: HKG Corner Radar Detection (Experimental)
+    description: Passively display candidate 64-byte corner-radar targets. Source bus, mounting, status, and speed fields
+      require vehicle validation. Display and logging only; no control decisions.
+    visibility:
+    - type: capability
+      field: hkg_corner_radar_available
+      equals: true
   - key: TorqueBar
     widget: toggle
     title: Steering Arc
