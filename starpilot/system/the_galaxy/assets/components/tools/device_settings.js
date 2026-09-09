@@ -34,7 +34,7 @@ const VEHICLE_SETTING_MAKES = {
   RemoteStartBootsComma: GM_MAKES,
   HKGRemoteStartBootsComma: HKG_MAKES,
   VoltSNG: ["Chevrolet", "Holden"],
-  GMAutoHold: ["Chevrolet", "Holden"],
+  GMAutoHold: ["Buick", "Chevrolet", "Holden"],
   VoltOnePedalMode: ["Chevrolet", "Holden"],
   RemapCancelToDistance: ["Chevrolet", "Holden"],
   JeepBrakeHold: ["Jeep"],
@@ -490,7 +490,7 @@ function numericBounds(param) {
     return { min: 1, max: 101, step: 1 }
   }
   if (param.key === "ScreenBrightnessOnroad") {
-    return { min: 1, max: 101, step: 1 }
+    return { min: 0, max: 101, step: 1 }
   }
 
   if (param.key === "LaneCenterOffset") {
