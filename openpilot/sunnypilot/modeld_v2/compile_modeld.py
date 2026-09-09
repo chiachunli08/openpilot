@@ -313,8 +313,11 @@ if __name__ == "__main__":
   parser.add_argument('--supercombo-onnx', help='supercombo ONNX (for supercombo)')
 
   args = parser.parse_args()
+  from openpilot.sunnypilot.modeld_v2.compile_optimizations import configure_tensor_core_optimizer
+  compiler_optimizer = configure_tensor_core_optimizer()
+  print(f"Compiler optimizer: {compiler_optimizer}")
   model_w, model_h = args.model_size
-  output_data = {}
+  output_data = {'compiler_optimizer': compiler_optimizer}
 
   args.vision_onnx = read_file_chunked_to_disk(args.vision_onnx)
   args.policy_onnx = read_file_chunked_to_disk(args.policy_onnx)

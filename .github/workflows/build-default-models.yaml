@@ -231,7 +231,7 @@ jobs:
           CAMERA_RES=$(python3 -c "from openpilot.common.transformations.camera import _ar_ox_fisheye as a, _os_fisheye as o; print(f'{a.width}x{a.height} {o.width}x{o.height}')")
           FRAME_SKIP=$(python3 -c "from openpilot.selfdrive.modeld.constants import ModelConstants as MC; print(MC.MODEL_RUN_FREQ // MC.MODEL_CONTEXT_FREQ)")
 
-          TG_FLAGS="DEBUG=2 DEV=USB+AMD:LLVM WARP_DEV=QCOM FLOAT16=1 JIT_BATCH_SIZE=0 GMMU=0 TC_OPT=2"
+          TG_FLAGS="DEBUG=1 DEV=USB+AMD:LLVM FRAME_DEV=CPU FLOAT16=1 JIT_BATCH_SIZE=0 GMMU=0 TC_OPT=2 TC_MIN_GLOBALS=32"
 
           env ${TG_FLAGS} python3 \
             ${{ github.workspace }}/openpilot/selfdrive/modeld/compile_modeld.py \
@@ -519,4 +519,3 @@ jobs:
         run: |
           source ${UV_PROJECT_ENVIRONMENT}/bin/activate
           PYTHONPATH=$PYTHONPATH:${{ github.workspace }}/ ${{ github.workspace }}/scripts/manage-powersave.py --enable
-

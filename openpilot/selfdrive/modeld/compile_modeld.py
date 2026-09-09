@@ -305,11 +305,16 @@ if __name__ == "__main__":
                  help='timed loaded-JIT runs for each correctness seed')
   args = p.parse_args()
 
+  from openpilot.sunnypilot.modeld_v2.compile_optimizations import configure_tensor_core_optimizer
+  compiler_optimizer = configure_tensor_core_optimizer()
+  print(f"Compiler optimizer: {compiler_optimizer}")
+
   model_path = read_file_chunked_to_disk(args.onnx)
   model_w, model_h = args.model_size
 
   model_runner = OnnxRunner(model_path)
   out = {
+    'compiler_optimizer': compiler_optimizer,
     'metadata': make_metadata_dict(model_path),
     'input_devices': {'model': Device.DEFAULT},
     'run_model': {},

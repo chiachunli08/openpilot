@@ -28,9 +28,10 @@ reported c3x lag is not yet attributed to a measured cause.
 
 ## Different camera input costs
 
-The local `modeld/SConscript` selects OS geometry for mici (c4), AR/OX otherwise
-on comma hardware; `camera.py` defines their dimensions. Actual runtime geometry
-depends on the detected sensor. `nv12_info.py` and
+At the investigation base above, `modeld/SConscript` selected OS geometry for
+mici (c4), AR/OX otherwise on comma hardware. The subsequent
+[compiler alignment](MODEL_COMPILATION_ALIGNMENT.md) builds both geometries;
+runtime still selects the detected sensor's dimensions. `nv12_info.py` and
 `compile_modeld.py:nv12_copy_size` yield for these configurations:
 
 | Device | Camera frame | Padded bytes per camera copied by the packed-input path | Two cameras at 20 Hz |
@@ -93,5 +94,7 @@ about model performance. Raw timestamps remain available for correlation.
    disabled one at a time to isolate host load. Absence of an alert after a single
    run is not proof of a fix.
 
-Only the diagnostic tool is added. There is no alert suppression, model-rate
-reduction, automatic model replacement, camera-size change or CAN change.
+The diagnostic tool does not suppress alerts, reduce the model rate, replace
+models, change camera capture sizes or send CAN. See
+[MODEL_COMPILATION_ALIGNMENT.md](MODEL_COMPILATION_ALIGNMENT.md) for the later
+compile-only optimization; already downloaded CTM files are not rebuilt by it.
