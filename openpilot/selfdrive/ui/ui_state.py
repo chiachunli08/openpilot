@@ -121,6 +121,10 @@ class UIState(UIStateSP):
   def add_offroad_transition_callback(self, callback: Callable[[], None]):
     self._offroad_transition_callbacks.append(callback)
 
+  def remove_offroad_transition_callback(self, callback: Callable[[], None]):
+    if callback in self._offroad_transition_callbacks:
+      self._offroad_transition_callbacks.remove(callback)
+
   def add_engaged_transition_callback(self, callback: Callable[[], None]):
     self._engaged_transition_callbacks.append(callback)
 
@@ -212,7 +216,7 @@ class UIState(UIStateSP):
         self.started_time = time.monotonic()
         self.chestnut_present = self.sm["deviceState"].chestnutPresent
 
-      for callback in self._offroad_transition_callbacks:
+      for callback in self._offroad_transition_callbacks.copy():
         callback()
 
       self._started_prev = self.started
@@ -323,6 +327,10 @@ class Device(DeviceSP):
   def add_interactive_timeout_callback(self, callback: Callable):
     self._interactive_timeout_callbacks.append(callback)
 
+  def remove_interactive_timeout_callback(self, callback: Callable):
+    if callback in self._interactive_timeout_callbacks:
+      self._interactive_timeout_callbacks.remove(callback)
+
   def update(self):
     self._start_brightness_thread()  # start thread after manager forks ui
 
@@ -394,7 +402,7 @@ class Device(DeviceSP):
 
     interaction_timeout = time.monotonic() > self._interaction_time
     if interaction_timeout and not self._prev_timed_out:
-      for callback in self._interactive_timeout_callbacks:
+      for callback in self._interactive_timeout_callbacks.copy():
         callback()
     self._prev_timed_out = interaction_timeout
 

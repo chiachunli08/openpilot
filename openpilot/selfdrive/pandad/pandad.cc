@@ -16,6 +16,7 @@
 #include "common/timing.h"
 #include "common/util.h"
 #include "common/hardware/hw.h"
+#include "selfdrive/pandad/qr_scan_ir.h"
 
 #define MAX_IR_PANDA_VAL 50
 #define CUTOFF_IL 400
@@ -292,6 +293,7 @@ void process_panda_state(Panda *panda, PubMaster *pm, bool engaged, bool engaged
 
 void process_peripheral_state(Panda *panda, PubMaster *pm, bool no_fan_control, bool is_onroad) {
   static Params params;
+  static Params memory_params("/dev/shm/params");
   static SubMaster sm({"deviceState", "cabinCameraState"});
 
   static uint64_t last_cabin_camera_t = 0;
@@ -362,11 +364,18 @@ void process_peripheral_state(Panda *panda, PubMaster *pm, bool no_fan_control, 
       ir_pwr = 0;
     }
 
-    if (ir_pwr != prev_ir_pwr || sm.frame % 100 == 0) {
-      int16_t ir_panda = util::map_val(ir_pwr, 0, 100, 0, MAX_IR_PANDA_VAL);
+    // Keep auto-exposure IR power updating underneath the temporary override so
+    // normal illumination resumes immediately on cancellation or lease expiry.
+    int output_ir_pwr = ir_pwr;
+    if (!is_onroad && params.getBool("IsDriverViewEnabled")) {
+      output_ir_pwr = qr_scan_ir_power(ir_pwr, memory_params.get("MapboxQrScanHeartbeat"), nanos_since_boot(), is_onroad, true);
+    }
+
+    if (output_ir_pwr != prev_ir_pwr || sm.frame % 100 == 0) {
+      int16_t ir_panda = util::map_val(output_ir_pwr, 0, 100, 0, MAX_IR_PANDA_VAL);
       panda->set_ir_pwr(ir_panda);
-      Hardware::set_ir_power(ir_pwr);
-      prev_ir_pwr = ir_pwr;
+      Hardware::set_ir_power(output_ir_pwr);
+      prev_ir_pwr = output_ir_pwr;
     }
   }
 }

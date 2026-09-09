@@ -256,6 +256,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 
     // mapd
     {"MapboxPublicKey", {PERSISTENT | DONT_LOG, STRING}},
+    {"MapboxQrScanHeartbeat", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION | DONT_LOG, STRING}},
     {"MapboxSecretKey", {PERSISTENT | DONT_LOG, STRING}},
     {"NavDestination", {PERSISTENT | DONT_LOG, JSON}},
     {"NavigationEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},

@@ -4,8 +4,10 @@ import numpy as np
 import pyray as rl
 
 from openpilot.cereal.visionipc import VisionStreamType
+from openpilot.common.params import Params
 from openpilot.selfdrive.ui.onroad.cameraview import CameraView
 from openpilot.selfdrive.ui.ui_state import device, ui_state
+from openpilot.sunnypilot.navd.mapbox_qr_scan import MapboxQrScanSession
 from openpilot.sunnypilot.navd.mapbox_token_codec import decode_mapbox_qr_payload
 from openpilot.system.ui.lib.application import FontWeight, TextAlignment, gui_app
 from openpilot.system.ui.lib.multilang import tr
@@ -19,29 +21,58 @@ class MapboxQrScannerDialog(CameraView):
   SCAN_INTERVAL = 0.35
 
   def __init__(self):
+    self._closed = False
+    self._session = None
     super().__init__("camerad", VisionStreamType.VISION_STREAM_CABIN)
     self._last_scan = 0.0
-    self._finished = False
     self._status = tr("Hold the QR code inside the frame")
-    device.add_interactive_timeout_callback(gui_app.pop_widget)
-    ui_state.params.put_bool("IsDriverViewEnabled", True, block=True)
+    try:
+      import zxingcpp
+      self._decoder = zxingcpp
+    except (ImportError, OSError):
+      self._decoder = None
+      self._status = tr("QR decoder missing. Complete the device update and restart.")
+
+    self._session = MapboxQrScanSession(ui_state.params, Params("/dev/shm/params"))
+    device.add_interactive_timeout_callback(self._cancel)
+
+  def show_event(self):
+    super().show_event()
+    if ui_state.is_onroad():
+      self._cancel()
+    elif self._decoder is not None:
+      self._session.start(ui_state.ignition)
 
   def hide_event(self):
     super().hide_event()
-    ui_state.params.put_bool("IsDriverViewEnabled", False, block=True)
     self.close()
 
-  def _offroad_transition(self):
-    super()._offroad_transition()
-    if ui_state.is_onroad():
+  def close(self):
+    if self._closed:
+      return
+    self._closed = True
+    try:
+      if self._session is not None:
+        self._session.stop()
+    finally:
+      ui_state.remove_offroad_transition_callback(self._offroad_transition)
+      device.remove_interactive_timeout_callback(self._cancel)
+      super().close()
+
+  def _cancel(self):
+    if not self._closed and gui_app.get_active_widget() is self:
       gui_app.pop_widget()
+
+  def _offroad_transition(self):
+    if not self._closed and ui_state.is_onroad():
+      self._cancel()
 
   def _handle_mouse_release(self, _):
     super()._handle_mouse_release(_)
-    gui_app.pop_widget()
+    self._cancel()
 
   def _scan_frame(self) -> None:
-    if self.frame is None or self._finished:
+    if self.frame is None or self._closed or self._decoder is None:
       return
 
     now = time.monotonic()
@@ -50,32 +81,48 @@ class MapboxQrScannerDialog(CameraView):
     self._last_scan = now
 
     try:
-      import zxingcpp
-
       # The cabin stream is NV12. QR decoding only needs its full-resolution Y plane.
-      luminance = np.array(self.frame.data[:self.frame.uv_offset], dtype=np.uint8)
+      luminance = np.frombuffer(self.frame.data, dtype=np.uint8, count=self.frame.uv_offset)
       luminance = luminance.reshape((-1, self.frame.stride))[:self.frame.height, :self.frame.width]
-      results = zxingcpp.read_barcodes(luminance, formats=zxingcpp.BarcodeFormat.QRCode,
-                                      try_rotate=True, try_downscale=True, try_invert=True)
-      for result in results:
-        try:
-          param, token = decode_mapbox_qr_payload(result.text)
-        except ValueError:
-          self._status = tr("This is not a sunnypilot Mapbox QR code")
-          continue
+      results = self._decoder.read_barcodes(luminance, formats=self._decoder.BarcodeFormat.QRCode,
+                                           try_rotate=True, try_downscale=True, try_invert=True)
+    except (BufferError, TypeError, ValueError, RuntimeError):
+      self._status = tr("Unable to decode camera frame. Close and retry.")
+      return
 
-        ui_state.params.put(param, token)
-        self._finished = True
-        token_type = tr("Public") if param == "MapboxPublicKey" else tr("Secret")
-        gui_app.pop_widget()
-        gui_app.push_widget(alert_dialog(tr("Mapbox %s token saved") % token_type))
+    self._status = tr("No QR detected. Adjust distance and screen brightness.")
+    for result in results:
+      try:
+        param, token = decode_mapbox_qr_payload(result.text)
+      except ValueError:
+        self._status = tr("This is not a sunnypilot Mapbox QR code")
+        continue
+
+      try:
+        ui_state.params.put(param, token, block=True)
+      except (OSError, RuntimeError):
+        self._status = tr("Unable to save token. Close and retry.")
         return
-    except (BufferError, ImportError, TypeError, ValueError):
-      self._status = tr("QR scanner unavailable")
+      token_type = tr("Public") if param == "MapboxPublicKey" else tr("Secret")
+      self._cancel()
+      gui_app.push_widget(alert_dialog(tr("Mapbox %s token saved") % token_type))
+      return
 
   def _render(self, rect: rl.Rectangle) -> int:
-    super()._render(rect)
-    self._scan_frame()
+    if self._closed:
+      return -1
+    if ui_state.is_onroad() or (self._session.active and not self._session.update(ui_state.is_onroad(), ui_state.ignition)):
+      self._cancel()
+      return -1
+    if self._decoder is not None:
+      super()._render(rect)
+      if self.frame is None:
+        self._status = tr("Camera starting. Tap anywhere to cancel.")
+      self._scan_frame()
+      if self._closed:
+        return -1
+    else:
+      rl.draw_rectangle_rec(rect, rl.BLACK)
 
     guide_size = min(rect.width * 0.58, rect.height * 0.64)
     guide = rl.Rectangle(rect.x + (rect.width - guide_size) / 2,
@@ -85,6 +132,11 @@ class MapboxQrScannerDialog(CameraView):
     gui_label(rl.Rectangle(rect.x + 40, rect.y + 35, rect.width - 80, 90),
               tr("Scan Mapbox Token QR"), font_size=58, font_weight=FontWeight.BOLD,
               alignment=TextAlignment.CENTER)
-    gui_label(rl.Rectangle(rect.x + 40, rect.y + rect.height - 120, rect.width - 80, 80),
+    footer = rl.Rectangle(rect.x, rect.y + rect.height - 160, rect.width, 160)
+    rl.draw_rectangle_rec(footer, rl.Color(0, 0, 0, 210))
+    gui_label(rl.Rectangle(rect.x + 40, footer.y, rect.width - 80, 80),
               self._status, font_size=36, alignment=TextAlignment.CENTER)
+    gui_label(rl.Rectangle(rect.x + 40, footer.y + 80, rect.width - 80, 65),
+              tr("IR pauses during scanning. Tap anywhere to cancel.") if self._session.active else tr("Tap anywhere to cancel."),
+              font_size=32, alignment=TextAlignment.CENTER)
     return -1

@@ -1219,3 +1219,43 @@ msgstr "請啟動車輛以確認車型相容性。"
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
 msgid "Unavailable for this vehicle. Requires compatible HKG CAN-FD torque steering."
 msgstr "此車型無法使用。需要相容的 HKG CAN-FD 扭力轉向系統。"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "Scan Mapbox Token QR"
+msgstr "掃描 Mapbox Token QR"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "Hold the QR code inside the frame"
+msgstr "請將 QR 碼放在畫面框內"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "QR decoder missing. Complete the device update and restart."
+msgstr "QR 解碼器未載入，請完成設備更新並重新啟動。"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "Unable to decode camera frame. Close and retry."
+msgstr "無法解碼相機影像，請關閉後重試。"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "No QR detected. Adjust distance and screen brightness."
+msgstr "尚未辨識到 QR 碼，請調整距離與手機螢幕亮度。"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "This is not a sunnypilot Mapbox QR code"
+msgstr "這不是 sunnypilot 專用的 Mapbox QR 碼"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "Unable to save token. Close and retry."
+msgstr "無法儲存 Token，請關閉後重試。"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "Camera starting. Tap anywhere to cancel."
+msgstr "相機啟動中，點一下畫面即可取消。"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "IR pauses during scanning. Tap anywhere to cancel."
+msgstr "掃描期間暫停紅外線補光，點一下畫面即可取消。"
+
+#: openpilot/selfdrive/ui/sunnypilot/widgets/mapbox_qr_scanner.py
+msgid "Tap anywhere to cancel."
+msgstr "點一下畫面即可取消。"
