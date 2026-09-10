@@ -100,7 +100,9 @@ def test_ui_restores_hierarchical_sub_toggle_rendering():
   assert "hasChildParams" in params
 
   assert "SettingTree" in settings
-  assert '<SettingTree :params="activeSection.params"' in settings
+  assert '<SettingTree :params="ordinaryParams(activeSection)"' in settings
+  assert '<LongitudinalMode v-if="modeSection(activeSection)"' in settings
+  assert 's.params.filter(p => !this.isModeParam(p))' in settings
 
   # SettingTree recursively reveals children; subpanels are collapsed by default
   # (classic Galaxy behavior) and expand only when the user taps Manage/Close.
@@ -688,6 +690,11 @@ assert(P.isSettingVisible(sec, sec.params[1], {}) === false, "advanced hidden (o
 assert(P.isSettingVisible(sec, sec.params[1], { GalaxyDeveloperMode: true }) === true, "advanced visible (on)")
 assert(P.countAdvancedHiddenByDeveloperMode([sec], {}) === 1, "count hidden (off)")
 assert(P.countAdvancedHiddenByDeveloperMode([sec], { GalaxyDeveloperMode: true }) === 0, "count hidden (on)")
+const developer = { name: "Developer", params: [] }
+const clusterOffset = { key: "ClusterOffset", parent_key: "GalaxyDeveloperMode", settings_tier: "advanced", data_type: "float" }
+assert(P.isVehicleSettingVisible(developer, clusterOffset, { CarMake: "gm" }) === true, "cluster offset has no vehicle filter")
+assert(P.isSettingVisible(developer, clusterOffset, { CarMake: "gm" }) === false, "cluster offset hidden without developer mode")
+assert(P.isSettingVisible(developer, clusterOffset, { CarMake: "gm", GalaxyDeveloperMode: true }) === true, "cluster offset visible in developer mode")
 const slider = { key: "DeviceShutdown", data_type: "int", min: 1, max: 30, step: 1 }
 assert(P.snapNumericToBoundsAndStep(17.9, P.numericBounds(slider, {}), 0) === 18, "snap")
 assert(P.formatSliderValue(6, "1", 0, "DeviceShutdown") === "6 hours", "format")

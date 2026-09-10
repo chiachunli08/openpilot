@@ -70,7 +70,6 @@ const VEHICLE_SETTING_MAKES = {
   SubaruSNGManualParkingBrake: ["Subaru"],
   SubaruStopStartOff: ["Subaru"],
   SubaruRedneckCruise: ["Subaru"],
-  ClusterOffset: ["Lexus", "Toyota"],
   SNGHack: ["Lexus", "Toyota"],
   ToyotaAutoHold: ["Lexus", "Toyota"],
 }

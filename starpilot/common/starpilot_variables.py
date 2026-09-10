@@ -31,6 +31,7 @@ from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.starpilot.common.model_versions import is_tinygrad_model_version
 from openpilot.starpilot.common.lateral_delay import full_lateral_delay
 from openpilot.starpilot.common.lateral_only_experimental import lateral_only_experimental_available
+from openpilot.starpilot.common.longitudinal_mode import read_mode_values
 from openpilot.starpilot.common.accel_profile import (
   ACCELERATION_PROFILES,
   A_CRUISE_MAX_BP_CUSTOM,
@@ -48,6 +49,12 @@ from openpilot.starpilot.common.accel_profile import (
   normalize_acceleration_profile,
   normalize_deceleration_profile,
   parse_custom_accel_profile_curve,
+)
+from openpilot.starpilot.common.longitudinal_personality_profiles import (
+  PERSONALITY_PROFILES_PARAM,
+  is_truck_fingerprint,
+  load_personality_profile_enable_values,
+  migrate_profile_document,
 )
 from openpilot.system.hardware import HARDWARE
 from openpilot.system.hardware.hw import Paths
@@ -617,6 +624,14 @@ class StarPilotVariables:
 
   def update(self, holiday_theme="stock", started=False, clear_update_flag=True):
     toggle = self.starpilot_toggles
+    try:
+      mode_values = read_mode_values(self.params)
+    except OSError:
+      self.params_memory.put_bool("StarPilotTogglesUpdated", True)
+      if hasattr(toggle, "longitudinal_mode_values"):
+        return
+      mode_values = {"ExperimentalMode": False, "ConditionalChill": False, "ConditionalExperimental": False}
+      clear_update_flag = False
     # CarParams uses this value to select the matching Panda safety configuration.
     toggle.tesla_cooperative_steering = self.params.get_bool("TeslaCoopSteering")
     toggle.rivian_angle_control = self.params.get_bool("RivianAngleControl")
@@ -806,6 +821,10 @@ class StarPilotVariables:
     # Seed powertrain-based defaults once, but always honor persisted user overrides.
     toggle.ev_tuning = ev_tuning_param
     toggle.truck_tuning = truck_tuning_param
+    toggle.personality_ev_tuning = bool(ev_vehicle)
+    toggle.personality_truck_tuning = (
+      is_truck_fingerprint(CP.carFingerprint) or truck_tuning_param
+    ) and not toggle.personality_ev_tuning
     toggle.trailer_load_kg = self.get_value("TrailerLoad", cast=float, condition=advanced_longitudinal_tuning,
                                             default=0.0, conversion=CV.LB_TO_KG, min=0, max=15000 * CV.LB_TO_KG)
     toggle.longitudinalActuatorDelay = self.get_value("LongitudinalActuatorDelay", cast=float, condition=advanced_longitudinal_tuning, default=longitudinalActuatorDelay, min=0, max=1)
@@ -861,10 +880,12 @@ class StarPilotVariables:
       toggle.car_model = car_model
 
     self.migrate_prius_cluster_offset(str(toggle.car_model))
-    toggle.cluster_offset = self.get_value("ClusterOffset", cast=float, condition=toggle.car_make == "toyota")
+    toggle.cluster_offset = self.get_value("ClusterOffset", cast=float)
 
-    toggle.conditional_experimental_mode = toggle.openpilot_longitudinal and self.get_value("ConditionalExperimental")
-    toggle.conditional_chill_mode = toggle.openpilot_longitudinal and not toggle.conditional_experimental_mode and self.get_value("ConditionalChill")
+    toggle.longitudinal_mode_values = mode_values
+    toggle.experimental_mode = toggle.experimental_mode_available and not toggle.safe_mode and mode_values["ExperimentalMode"]
+    toggle.conditional_experimental_mode = toggle.openpilot_longitudinal and not toggle.safe_mode and mode_values["ConditionalExperimental"]
+    toggle.conditional_chill_mode = toggle.openpilot_longitudinal and not toggle.safe_mode and not toggle.conditional_experimental_mode and mode_values["ConditionalChill"]
     toggle.conditional_curves = self.get_value("CECurves", condition=toggle.conditional_experimental_mode)
     toggle.conditional_curves_lead = self.get_value("CECurvesLead", condition=toggle.conditional_curves)
     toggle.conditional_lead = self.get_value("CELead", condition=toggle.conditional_experimental_mode)
@@ -901,6 +922,10 @@ class StarPilotVariables:
     toggle.speed_limit_changed_alert = self.get_value("SpeedLimitChangedAlert")
 
     toggle.custom_personalities = toggle.openpilot_longitudinal and self.get_value("CustomPersonalities")
+    for runtime_key, enabled in load_personality_profile_enable_values(self.get_value).items():
+      setattr(toggle, runtime_key, enabled)
+    profile_settings_raw = self.params_raw.get(PERSONALITY_PROFILES_PARAM)
+    toggle.longitudinal_personality_profiles = migrate_profile_document(profile_settings_raw) or {}
     toggle.aggressive_jerk_acceleration = self.get_value("AggressiveJerkAcceleration", cast=float, condition=toggle.custom_personalities, conversion=0.01, min=0.25, max=2.0)
     toggle.aggressive_jerk_deceleration = self.get_value("AggressiveJerkDeceleration", cast=float, condition=toggle.custom_personalities, conversion=0.01, min=0.25, max=2.0)
     toggle.aggressive_jerk_danger = self.get_value("AggressiveJerkDanger", cast=float, condition=toggle.custom_personalities, conversion=0.01, min=0.25, max=2.0)
