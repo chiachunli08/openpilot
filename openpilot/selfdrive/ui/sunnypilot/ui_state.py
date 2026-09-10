@@ -218,7 +218,7 @@ class UIStateSP:
         self.params.put_bool("NeuralNetworkLateralControl", False, block=True)
 
       if self.params.get_bool("LateralJerkTorqueController") and self.params.get_bool("NeuralNetworkLateralControl"):
-        self.params.put_bool("EnforceTorqueControl", False, block=True)
+        self.params.put_bool("LateralJerkTorqueController", False, block=True)
         self.params.put_bool("NeuralNetworkLateralControl", False, block=True)
 
       # Angle steering: no torque-based lateral controls
