@@ -71,7 +71,7 @@ class DisplayLayout(Widget):
       title=lambda: display_tr("Onroad Brightness"),
       description="",
       min_value=0,
-      max_value=22,
+      max_value=23 if self._is_tici else 22,
       value_change_step=1,
       label_callback=lambda value: self.update_onroad_brightness(value),
       inline=True
