@@ -72,7 +72,7 @@ class HudRendererSP(HudRenderer):
   def _get_icbm_status(self):
     if not self.pcm_cruise_speed and ui_state.sm['carControl'].enabled:
       if round(self.set_speed) != round(self.speed_cluster):
-        self.icbm_active_counter = 3 * gui_app.target_fps
+        self.icbm_active_counter = 3 * gui_app.target_fps  # 3 seconds usually
       elif self.icbm_active_counter > 0:
         self.icbm_active_counter -= 1
     else:
