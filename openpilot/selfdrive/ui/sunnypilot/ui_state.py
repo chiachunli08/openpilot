@@ -174,8 +174,12 @@ class UIStateSP:
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
     self.developer_ui = self.params.get("DevUIInfo")
     self.hide_v_ego_ui = self.params.get_bool("HideVEgoUI")
+
+    prev_onroad_brightness = self.onroad_brightness
+    prev_onroad_brightness_timer_param = self.onroad_brightness_timer_param
     self.onroad_brightness = int(float(self.params.get("OnroadScreenOffBrightness", return_default=True)))
     self.onroad_brightness_timer_param = self.params.get("OnroadScreenOffTimer", return_default=True)
+
     self.rainbow_path = self.params.get_bool("RainbowMode")
     self.rainbow_mode_style = self.params.get("RainbowModeStyle", return_default=True)
     self.road_name_toggle = self.params.get_bool("RoadNameToggle")
@@ -198,6 +202,11 @@ class UIStateSP:
     if not self._sp_initialized:
       self._sp_initialized = True
       self.reset_onroad_sleep_timer()
+    elif (self.onroad_brightness != prev_onroad_brightness or
+          self.onroad_brightness_timer_param != prev_onroad_brightness_timer_param):
+      # Brightness mode and delay are allowed to change while driving. Restart the timer so a newly
+      # enabled C3X night low-light mode never jumps straight into the sparse OLED view.
+      self.reset_onroad_sleep_timer()
 
   def _enforce_constraints(self) -> None:
     has_long = self.has_longitudinal_control
@@ -209,7 +218,7 @@ class UIStateSP:
         self.params.put_bool("NeuralNetworkLateralControl", False, block=True)
 
       if self.params.get_bool("LateralJerkTorqueController") and self.params.get_bool("NeuralNetworkLateralControl"):
-        self.params.put_bool("LateralJerkTorqueController", False, block=True)
+        self.params.put_bool("EnforceTorqueControl", False, block=True)
         self.params.put_bool("NeuralNetworkLateralControl", False, block=True)
 
       # Angle steering: no torque-based lateral controls
@@ -291,13 +300,16 @@ class DeviceSP:
         return max(30.0, cur_brightness)
       return cur_brightness
 
-    # 0: Auto (Default), 1: Auto (Dark), 2: Screen Off
+    # 0: Auto (Default), 1: Auto (Dark), 2: Screen Off, 23: C3X night low-light mode
     if _ui_state.onroad_brightness == OnroadBrightness.AUTO:
       return cur_brightness
     if _ui_state.onroad_brightness == OnroadBrightness.AUTO_DARK:
       return cur_brightness
     if _ui_state.onroad_brightness == OnroadBrightness.SCREEN_OFF:
       return 0.0
+    if _ui_state.onroad_brightness == OnroadBrightness.NIGHT_LOW_LIGHT:
+      # Keep sparse HUD pixels readable while limiting their peak output on the C3X OLED.
+      return 10.0
 
     # 3-22: 5% - 100%
     return float((_ui_state.onroad_brightness - 2) * 5)
