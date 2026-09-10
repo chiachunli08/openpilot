@@ -7,7 +7,6 @@ The collector's observed message gaps are not modeld's frameDropPerc metric.
 import argparse
 import json
 import math
-import os
 from pathlib import Path
 import statistics
 import subprocess
@@ -117,9 +116,7 @@ def local_metadata():
   return {"type": "metadata", "mode": "live", "device_type": HARDWARE.get_device_type(),
           "commit": revision(root), "tinygrad_commit": revision(root / "tinygrad_repo"), "bundles": bundles,
           "model_runner": params.get("ModelRunnerTypeCache"), "chestnut_active": params.get_bool("ChestnutActive"),
-          "chestnut_loading": params.get_bool("ChestnutLoading"), "chestnut_model_error": params.get_bool("ChestnutModelError"),
-          "c3x_c4_preprocess_requested": params.get_bool("C3XC4ModelPreprocess"),
-          "c3x_c4_preprocess_effective": os.getenv("C3X_C4_MODEL_PREPROCESS") == "1"}
+          "chestnut_loading": params.get_bool("ChestnutLoading"), "chestnut_model_error": params.get_bool("ChestnutModelError")}
 
 
 def live_samples(seconds):

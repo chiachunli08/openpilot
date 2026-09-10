@@ -6,7 +6,7 @@ import sys
 import time
 import traceback
 
-from openpilot.cereal import custom, log
+from openpilot.cereal import log
 import openpilot.cereal.messaging as messaging
 import openpilot.system.sentry as sentry
 from openpilot.common.utils import atomic_write
@@ -20,8 +20,6 @@ from openpilot.system.athena.registration import register, UNREGISTERED_DONGLE_I
 from openpilot.common.swaglog import cloudlog, add_file_handler
 from openpilot.common.version import get_build_metadata
 from openpilot.common.hardware.hw import Paths
-from openpilot.selfdrive.modeld.helpers import chestnut_present
-from openpilot.sunnypilot.models.helpers import get_active_model_runner
 
 from openpilot.sunnypilot.system.params_migration import run_migration
 
@@ -60,18 +58,6 @@ def manager_init() -> None:
     default_value = params.get_default_value(k)
     if default_value is not None and params.get(k) is None:
       params.put(k, default_value, block=True)
-
-  # camerad and modeld inherit this for their whole process lifetime. Requiring
-  # tizi, a live Chestnut, and the tinygrad runner keeps stock/non-GPU paths on
-  # their native camera output. Changing the toggle requires a reboot.
-  c3x_c4_preprocess = (HARDWARE.get_device_type() == "tizi" and
-                       params.get_bool("C3XC4ModelPreprocess") and
-                       chestnut_present() and
-                       get_active_model_runner(params, force_check=True) == custom.ModelManagerSP.Runner.tinygrad)
-  if c3x_c4_preprocess:
-    os.environ["C3X_C4_MODEL_PREPROCESS"] = "1"
-  else:
-    os.environ.pop("C3X_C4_MODEL_PREPROCESS", None)
 
   # Create folders needed for msgq
   try:
