@@ -14,7 +14,7 @@ from opendbc.sunnypilot.car.hyundai.factory_cluster import (
   is_ev6_hda2_candidate,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.system.ui.lib.multilang import multilang, tr, tr_noop
+from openpilot.system.ui.lib.multilang import multilang, tr
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets import Widget
