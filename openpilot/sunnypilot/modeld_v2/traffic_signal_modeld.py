@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Start sunnypilot modeld_v2 with the optional display-only traffic-signal detector attached.
 
 This wrapper deliberately keeps Chestnut access in modeld's process. The primary driving model
