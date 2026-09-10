@@ -2,6 +2,7 @@ import numpy as np
 import pyray as rl
 from openpilot.cereal import log
 from openpilot.cereal.visionipc import VisionStreamType
+from openpilot.common.hardware import HARDWARE
 from openpilot.selfdrive.ui import UI_BORDER_SIZE
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.selfdrive.ui.onroad.alert_renderer import AlertRenderer
@@ -14,6 +15,7 @@ from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCamera
 from openpilot.common.transformations.orientation import rot_from_euler
 
 if gui_app.sunnypilot_ui():
+  from openpilot.selfdrive.ui.sunnypilot.layouts.settings.display import OnroadBrightness
   from openpilot.selfdrive.ui.sunnypilot.onroad.alert_renderer import AlertRendererSP as AlertRenderer
   from openpilot.selfdrive.ui.sunnypilot.onroad.augmented_road_view import BORDER_COLORS_SP, AugmentedRoadViewSP
   from openpilot.selfdrive.ui.sunnypilot.onroad.driver_state import DriverStateRendererSP as DriverStateRenderer
@@ -74,6 +76,28 @@ class AugmentedRoadView(CameraView, AugmentedRoadViewSP):
       rect.width - 2 * UI_BORDER_SIZE,
       rect.height - 2 * UI_BORDER_SIZE,
     )
+
+    # C3X/tici OLED-only night mode. Leave the camera/model pipeline running, but stop drawing the
+    # bright road image and model graphics once the existing on-road brightness timer expires.
+    # This preserves HUD/alert rendering while allowing most OLED pixels to remain black.
+    night_low_light = (
+      gui_app.sunnypilot_ui()
+      and HARDWARE.get_device_type() == "tici"
+      and ui_state.onroad_brightness == OnroadBrightness.NIGHT_LOW_LIGHT
+      and ui_state.onroad_brightness_timer_expired
+    )
+    if night_low_light:
+      rl.draw_rectangle_rec(rect, rl.BLACK)
+      rl.begin_scissor_mode(
+        int(self._content_rect.x),
+        int(self._content_rect.y),
+        int(self._content_rect.width),
+        int(self._content_rect.height),
+      )
+      self._hud_renderer.render(self._content_rect)
+      self.alert_renderer.render(self._content_rect)
+      rl.end_scissor_mode()
+      return
 
     # Enable scissor mode to clip all rendering within content rectangle boundaries
     # This creates a rendering viewport that prevents graphics from drawing outside the border
