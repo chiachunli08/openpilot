@@ -49,6 +49,8 @@ class UIStateSP:
     self.adjacent_lane_object_markers: bool = False
     self.model_runner_tinygrad: bool = False
     self.blindspot: bool = False
+    self.blindspot_display_style: int = 0
+    self.blindspot_edge_bars: bool = False
     self.hkg_corner_radar: bool = False
     self.chevron_metrics = None
     self.custom_interactive_timeout: int = 0
@@ -58,6 +60,7 @@ class UIStateSP:
     self.onroad_brightness: int = 0
     self.onroad_brightness_timer: int = 0
     self.onroad_brightness_timer_param: int = 0
+    self.predicted_stop_marker: bool = False
     self.rainbow_path: bool = False
     self.rainbow_mode_style: int = 0
     self.road_name_toggle: bool = False
@@ -168,7 +171,10 @@ class UIStateSP:
     # stock only counts the default big model's compiled pkl. a downloaded big bundle runs on the
     # chestnut just the same, so ChestnutState has to see it as available too.
     self.chestnut_compiled = self.chestnut_compiled or self.model_runner_tinygrad
-    self.blindspot = self.params.get_bool("BlindSpot")
+    blindspot_enabled = self.params.get_bool("BlindSpot")
+    self.blindspot_display_style = int(self.params.get("BlindSpotDisplayStyle", return_default=True))
+    self.blindspot = blindspot_enabled and self.blindspot_display_style == 0
+    self.blindspot_edge_bars = blindspot_enabled and self.blindspot_display_style == 1
     self.hkg_corner_radar = self.params.get_bool("HkgCornerRadarDetection")
     self.chevron_metrics = self.params.get("ChevronInfo")
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
@@ -180,6 +186,7 @@ class UIStateSP:
     self.onroad_brightness = int(float(self.params.get("OnroadScreenOffBrightness", return_default=True)))
     self.onroad_brightness_timer_param = self.params.get("OnroadScreenOffTimer", return_default=True)
 
+    self.predicted_stop_marker = self.params.get_bool("PredictedStopMarker")
     self.rainbow_path = self.params.get_bool("RainbowMode")
     self.rainbow_mode_style = self.params.get("RainbowModeStyle", return_default=True)
     self.road_name_toggle = self.params.get_bool("RoadNameToggle")
