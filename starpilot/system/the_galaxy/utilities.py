@@ -3260,6 +3260,7 @@ def process_route(footage_path, route_name, segment_count=0, first_segment_num=0
     "isCustomName": custom_name is not None,
     "is_preserved": has_preserve_attr(segment_path),
     "segmentCount": max(0, int(segment_count)),
+    "firstSegmentNum": max(0, int(first_segment_num)),
     "approxDurationSeconds": max(0, int(segment_count)) * 60,
   }
 

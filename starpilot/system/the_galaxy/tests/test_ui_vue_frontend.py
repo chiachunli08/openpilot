@@ -494,6 +494,12 @@ def test_ui_all_remaining_classic_tools_native_no_embed():
               "js/components/LateralTuningPanel.js"]:
     assert "fetch(" not in _read(rel), f"{rel} should not use raw fetch()"
 
+  lateral = _read("js/components/LateralTuningPanel.js")
+  assert "MAX_SEGMENTS = 5" in lateral
+  assert "segmentRanges" in lateral and "selectedSegmentRanges" in lateral
+  assert "flmAnalyze(this.selectedRoutes, this.selectedSegmentRanges())" in lateral
+  assert "routeSelectedSegmentCount" in lateral
+
 
 def test_ui_cameras_hub_vasm_and_pip_native_no_embed():
   app = _read("js/app.js")

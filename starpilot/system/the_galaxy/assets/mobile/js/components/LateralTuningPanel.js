@@ -4,6 +4,7 @@ import { GalaxyConfirm } from "./GalaxyModal.js"
 import { GxNotice } from "./GxNotice.js"
 
 const MAX_ROUTES = 250
+const MAX_SEGMENTS = 5
 
 export const LateralTuningPanel = {
   name: "LateralTuningPanel",
@@ -20,6 +21,7 @@ export const LateralTuningPanel = {
       laneCentering: false,
       routes: [],
       selectedRoutes: [],
+      segmentRanges: {},
       report: null,
       reportLoading: false,
       loadedReportId: "",
@@ -29,6 +31,7 @@ export const LateralTuningPanel = {
       feedbackNotes: "",
       pending: null,
       pendingName: "",
+      maxSegments: MAX_SEGMENTS,
     }
   },
   created() {
@@ -102,7 +105,10 @@ export const LateralTuningPanel = {
       return !!(rep && rep.car && rep.car.controlPath === "angle")
     },
     canAnalyze() {
-      return this.selectedRoutes.length > 0 && !this.isOnroad && !this.laneCentering
+      return this.selectedRoutes.length > 0 && this.selectedSegmentCount > 0 && this.selectedSegmentCount <= MAX_SEGMENTS && !this.isOnroad && !this.laneCentering
+    },
+    selectedSegmentCount() {
+      return this.selectedRoutes.reduce((total, routeName) => total + this.routeSelectedSegmentCount(routeName), 0)
     },
     canApplyTrial() {
       const trial = this.activeTrial
@@ -146,6 +152,32 @@ export const LateralTuningPanel = {
       const min = Math.max(1, Math.round(this.num(route && route.approxDurationSeconds) / 60) || seg)
       const dur = min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m` : `~${min} min`
       return `${seg} segment${seg === 1 ? "" : "s"} (${dur})`
+    },
+    routeSegmentBounds(routeName) {
+      const route = this.routes.find((item) => item && item.name === routeName) || {}
+      const count = Math.max(0, Math.round(this.num(route.segmentCount)))
+      const first = Math.max(0, Math.round(this.num(route.firstSegmentNum)))
+      return { first, last: first + Math.max(0, count - 1), count }
+    },
+    routeSelectedSegmentCount(routeName) {
+      const bounds = this.routeSegmentBounds(routeName)
+      if (!bounds.count) return 0
+      const selected = this.segmentRanges[routeName] || {}
+      const rawStart = String(selected.start ?? "").trim()
+      const rawEnd = String(selected.end ?? "").trim()
+      const start = Math.min(bounds.last, Math.max(bounds.first, rawStart === "" ? bounds.first : this.num(rawStart, bounds.first)))
+      const end = Math.max(bounds.first, Math.min(bounds.last, rawEnd === "" ? bounds.last : this.num(rawEnd, bounds.last)))
+      return end >= start ? end - start + 1 : 0
+    },
+    setSegmentRange(routeName, key, value) {
+      const cleaned = String(value ?? "").replace(/[^\d]/g, "")
+      this.segmentRanges = {
+        ...this.segmentRanges,
+        [routeName]: {
+          ...(this.segmentRanges[routeName] || {}),
+          [key]: cleaned,
+        },
+      }
     },
     syncFeedback(report) {
       const fb = (report && report.feedback) || {}
@@ -307,14 +339,65 @@ export const LateralTuningPanel = {
     },
     toggleRoute(name) {
       const set = new Set(this.selectedRoutes)
-      if (set.has(name)) set.delete(name); else set.add(name)
+      const ranges = { ...this.segmentRanges }
+      if (set.has(name)) {
+        set.delete(name)
+        delete ranges[name]
+      } else {
+        const remaining = MAX_SEGMENTS - this.selectedSegmentCount
+        if (remaining <= 0) {
+          showSnackbar(`FLM is limited to ${MAX_SEGMENTS} segments at a time.`, "error")
+          return
+        }
+        const bounds = this.routeSegmentBounds(name)
+        if (!bounds.count) return
+        set.add(name)
+        if (bounds.count > remaining) {
+          ranges[name] = { start: String(bounds.first), end: String(bounds.first + remaining - 1) }
+        }
+      }
+      this.segmentRanges = ranges
       this.selectedRoutes = [...set]
     },
-    clearSelection() { this.selectedRoutes = [] },
+    selectFirstSegments() {
+      const selected = []
+      const ranges = {}
+      let remaining = MAX_SEGMENTS
+      for (const route of this.routes) {
+        if (remaining <= 0) break
+        const bounds = this.routeSegmentBounds(route.name)
+        if (!bounds.count) continue
+        const take = Math.min(bounds.count, remaining)
+        selected.push(route.name)
+        if (take < bounds.count) {
+          ranges[route.name] = { start: String(bounds.first), end: String(bounds.first + take - 1) }
+        }
+        remaining -= take
+      }
+      this.selectedRoutes = selected
+      this.segmentRanges = ranges
+    },
+    clearSelection() {
+      this.selectedRoutes = []
+      this.segmentRanges = {}
+    },
+    selectedSegmentRanges() {
+      const ranges = {}
+      for (const routeName of this.selectedRoutes) {
+        const selected = this.segmentRanges[routeName] || {}
+        const start = String(selected.start ?? "").trim()
+        const end = String(selected.end ?? "").trim()
+        if (start || end) ranges[routeName] = { start: start || null, end: end || null }
+      }
+      return ranges
+    },
     async analyze() {
       if (!this.canAnalyze || this.busy) return
-      const ok = await this.runWith(() => api.flmAnalyze(this.selectedRoutes, {}), "FLM analysis started.")
-      if (ok && this.selectedRoutes.length) this.selectedRoutes = []
+      const ok = await this.runWith(() => api.flmAnalyze(this.selectedRoutes, this.selectedSegmentRanges()), "FLM analysis started.")
+      if (ok && this.selectedRoutes.length) {
+        this.selectedRoutes = []
+        this.segmentRanges = {}
+      }
     },
     async stopAnalyze() {
       await this.runWith(() => api.flmStopAnalyze(), "FLM analysis stopped.")
@@ -520,24 +603,33 @@ export const LateralTuningPanel = {
           <span class="gx-section__title">Local Routes</span>
         </div>
         <div style="padding: var(--sp-4);">
-          <p style="color: var(--text-muted); line-height:1.6; margin:0 0 var(--sp-2);">Pick up to 8 routes to analyze. Whole routes are used.</p>
+          <p style="color: var(--text-muted); line-height:1.6; margin:0 0 var(--sp-2);">Pick routes and segment ranges to analyze. A run is limited to 5 segments total.</p>
           <div v-if="loadingRoutes" class="gx-loading">Loading local routes...</div>
           <div v-else-if="!routes.length" class="gx-empty">No local routes found.</div>
           <div v-else>
-            <label class="gx-chip" style="cursor:pointer;" :style="'user-select:none;'">
-              <input type="checkbox" :checked="selectedRoutes.length === routes.length" style="margin-right:6px;" @change="selectedRoutes = (selectedRoutes.length === routes.length) ? [] : routes.map(r => r.name)" />
-              Select all
-            </label>
+            <span class="gx-chip" :style="selectedSegmentCount > maxSegments ? 'background:var(--error);color:var(--on-error);' : ''">
+              {{ selectedSegmentCount }}/{{ maxSegments }} segments selected
+            </span>
+            <button type="button" class="gx-btn gx-btn--text" style="font-size:var(--fs-xs);" @click="selectFirstSegments">Select first {{ maxSegments }}</button>
             <button type="button" class="gx-btn gx-btn--text" style="font-size:var(--fs-xs);" @click="clearSelection">Clear</button>
             <div v-for="route in routes" :key="route.name" style="border-top:1px solid var(--glass-border); padding: var(--sp-2) 0;">
               <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer;">
-                <input type="checkbox" :checked="selectedRoutes.includes(route.name)" @change="toggleRoute(route.name)" style="margin-top:4px;" />
+                <input type="checkbox" :checked="selectedRoutes.includes(route.name)" :disabled="!selectedRoutes.includes(route.name) && selectedSegmentCount >= maxSegments" @change="toggleRoute(route.name)" style="margin-top:4px;" />
                 <span style="min-width:0;">
                   <strong>{{ fmtDate(route.timestamp) }}</strong>
                   <div class="gx-row__desc" style="word-break:break-all;">{{ route.name }}</div>
-                  <div class="gx-row__desc">{{ fmtLen(route) }}</div>
+                  <div class="gx-row__desc">{{ fmtLen(route) }} · {{ routeSelectedSegmentCount(route.name) }} selected</div>
                 </span>
               </label>
+              <div v-if="selectedRoutes.includes(route.name)" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:8px 0 0 28px;">
+                <span class="gx-row__desc">Segments</span>
+                <input class="gx-field" style="width:92px;" type="number" :min="routeSegmentBounds(route.name).first" :max="routeSegmentBounds(route.name).last" inputmode="numeric" placeholder="First"
+                  :value="segmentRanges[route.name]?.start || ''" @input="setSegmentRange(route.name, 'start', $event.target.value)" />
+                <span class="gx-row__desc">to</span>
+                <input class="gx-field" style="width:92px;" type="number" :min="routeSegmentBounds(route.name).first" :max="routeSegmentBounds(route.name).last" inputmode="numeric" placeholder="Last"
+                  :value="segmentRanges[route.name]?.end || ''" @input="setSegmentRange(route.name, 'end', $event.target.value)" />
+                <small class="gx-row__desc">Blank uses the whole route.</small>
+              </div>
             </div>
           </div>
         </div>
