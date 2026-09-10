@@ -8,6 +8,7 @@ import time
 
 import openpilot.cereal.messaging as messaging
 import openpilot.sunnypilot.modeld_v2.modeld as base
+from opendbc.car.structs import car
 from openpilot.sunnypilot.modeld_v2.traffic_signal_yolo import TrafficSignalYolo
 
 _original_init = base.ModelState.__init__
@@ -38,6 +39,8 @@ def _patched_run(self, bufs, transforms, inputs, after_enqueue=None):
 
       sm.update(0)
       speed = max(0.0, float(sm["carState"].vEgo)) if sm.seen["carState"] else 0.0
+      parked = bool(sm.seen["carState"] and sm["carState"].gearShifter == car.CarState.GearShifter.park)
+
       controls_active = False
       if sm.seen["selfdriveState"]:
         controls_active = bool(sm["selfdriveState"].enabled)
@@ -48,7 +51,10 @@ def _patched_run(self, bufs, transforms, inputs, after_enqueue=None):
       if sm.seen["modelV2"] and sm.valid["modelV2"]:
         previous_drop = float(sm["modelV2"].frameDropPerc)
 
-      detector.maybe_run(road_buf, main_model_ms, previous_drop, speed, controls_active)
+      # The fifth argument only gates download/warmup/first validation. After validation, normal
+      # low-rate detection can run while driving if the primary model has enough measured headroom.
+      setup_blocked = controls_active or not parked
+      detector.maybe_run(road_buf, main_model_ms, previous_drop, speed, setup_blocked)
     except Exception:
       # Display-only code must never be allowed to take modeld down.
       pass
