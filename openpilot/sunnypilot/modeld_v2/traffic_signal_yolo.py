@@ -31,14 +31,18 @@ CLASSES = ("green", "left-green", "left-red", "left-yellow", "red", "yellow")
 STATE_PATH = Path("/dev/shm/sunnypilot_traffic_signal_yolo.json")
 MODEL_PATH = Path(Paths.model_root()) / "traffic_signal_yolo11s.onnx"
 
-# Hard admission-control limits. These are deliberately conservative because the primary model
-# has a 50 ms cadence. A YOLO run is not allowed unless warmup proves it fits inside spare budget.
-TARGET_PERIOD_S = 0.50  # 2 Hz maximum
-MAIN_MODEL_HEADROOM_MS = 25.0
+# Conservative admission-control limits. The primary driving model runs at 20 Hz (50 ms cadence).
+# YOLO is admitted only when the previous primary pass is comfortably below that budget, and the
+# complete auxiliary path has already been measured on a real stationary camera frame.
+TARGET_PERIOD_S = 0.50  # 2 Hz maximum after validation
+SLOW_PERIOD_S = 1.00
+MAIN_MODEL_MAX_MS = 22.0
 MAX_YOLO_INFERENCE_MS = 12.0
+MAX_AUX_TOTAL_MS = 18.0
+HARD_AUX_TOTAL_MS = 25.0
 MAX_PREVIOUS_FRAME_DROP_PCT = 0.5
 BACKOFF_S = 5.0
-RESULT_TTL_S = 1.25
+SLOW_BACKOFF_S = 10.0
 CONFIDENCE_THRESHOLD = 0.60
 
 
@@ -112,6 +116,11 @@ def _letterbox_rgb_from_nv12(buf, cam_w: int, cam_h: int) -> np.ndarray:
 
 
 def _decode(output: np.ndarray) -> tuple[str | None, float]:
+  """Return the most relevant high-confidence signal from a standard Ultralytics detect head.
+
+  YOLO11 detect exports normally expose [cx, cy, w, h, class...] with either (C,N) or (N,C)
+  layout. We only need the best class for the HUD, so duplicate-box NMS is unnecessary here.
+  """
   arr = np.asarray(output)
   while arr.ndim > 2:
     arr = arr[0]
@@ -124,7 +133,8 @@ def _decode(output: np.ndarray) -> tuple[str | None, float]:
     return None, 0.0
 
   scores = arr[:, 4:4 + len(CLASSES)]
-  if not scores.size or not np.isfinite(scores).all():
+  boxes = arr[:, :4]
+  if not scores.size or not np.isfinite(scores).all() or not np.isfinite(boxes).all():
     return None, 0.0
   best_class_per_box = np.argmax(scores, axis=1)
   best_score_per_box = scores[np.arange(len(scores)), best_class_per_box]
@@ -132,10 +142,14 @@ def _decode(output: np.ndarray) -> tuple[str | None, float]:
   if not len(valid):
     return None, 0.0
 
-  # Prefer a confident signal near the image center, which is more likely to apply to our lane.
-  centers_x = arr[valid, 0] / MODEL_INPUT
+  # Prefer signals near the forward field and suppress tiny far-away candidates. This is only a HUD
+  # relevance heuristic; it is never used as a driving decision.
+  centers_x = boxes[valid, 0] / MODEL_INPUT
+  widths = np.clip(boxes[valid, 2] / MODEL_INPUT, 0.0, 1.0)
+  heights = np.clip(boxes[valid, 3] / MODEL_INPUT, 0.0, 1.0)
   center_weight = 1.0 - np.minimum(np.abs(centers_x - 0.5), 0.5) * 0.55
-  ranked = best_score_per_box[valid] * center_weight
+  size_weight = np.clip(np.sqrt(widths * heights) * 5.0, 0.55, 1.0)
+  ranked = best_score_per_box[valid] * center_weight * size_weight
   idx = valid[int(np.argmax(ranked))]
   cls_idx = int(best_class_per_box[idx])
   return CLASSES[cls_idx], float(best_score_per_box[idx])
@@ -149,9 +163,12 @@ class TrafficSignalYolo:
     self.jit = None
     self.input_name: str | None = None
     self.qualified = False
+    self.runtime_validated = False
     self.last_run = 0.0
     self.backoff_until = 0.0
+    self.period_s = TARGET_PERIOD_S
     self.last_inference_ms = math.inf
+    self.last_aux_total_ms = math.inf
     self._download_thread: threading.Thread | None = None
     self._load_failed = False
     _publish_state(active=False, status="disabled")
@@ -187,10 +204,11 @@ class TrafficSignalYolo:
         self.jit(dummy).realize()
         Device[Device.DEFAULT].synchronize()
         timings.append((time.perf_counter() - st) * 1000.0)
-      # Ignore first compile-heavy pass; moving operation is admitted only if steady-state fits.
+      # Ignore the compile-heavy first pass. Moving operation is still blocked until a complete real
+      # camera-frame path is measured while stationary.
       self.last_inference_ms = max(timings[1:])
       self.qualified = self.last_inference_ms <= MAX_YOLO_INFERENCE_MS
-      _publish_state(active=False, status="ready" if self.qualified else "insufficient_headroom",
+      _publish_state(active=False, status="awaiting_stationary_validation" if self.qualified else "insufficient_headroom",
                      inferenceMs=round(self.last_inference_ms, 2))
       return self.qualified
     except Exception:
@@ -200,22 +218,43 @@ class TrafficSignalYolo:
       _publish_state(active=False, status="load_error")
       return False
 
+  def _run_once(self, buf, main_model_ms: float, previous_frame_drop_pct: float) -> tuple[float, float, str | None, float]:
+    from tinygrad import Tensor, dtypes
+    from tinygrad.device import Device
+
+    aux_st = time.perf_counter()
+    rgb = _letterbox_rgb_from_nv12(buf, self.cam_w, self.cam_h)
+    inp = Tensor(rgb, device=Device.DEFAULT).permute(2, 0, 1).unsqueeze(0).cast(dtypes.float32) / 255.0
+
+    infer_st = time.perf_counter()
+    out = self.jit(inp)
+    out.realize()
+    Device[Device.DEFAULT].synchronize()
+    inference_ms = (time.perf_counter() - infer_st) * 1000.0
+
+    cls_name, confidence = _decode(out.numpy())
+    aux_total_ms = (time.perf_counter() - aux_st) * 1000.0
+    self.last_inference_ms = inference_ms
+    self.last_aux_total_ms = aux_total_ms
+    return inference_ms, aux_total_ms, cls_name, confidence
+
   def maybe_run(self, buf, main_model_ms: float, previous_frame_drop_pct: float,
                 speed_mps: float, controls_active: bool) -> None:
     if not is_enabled():
       _publish_state(active=False, status="disabled")
       return
 
-    # Downloads and JIT warmup never happen while moving or while lateral/longitudinal control is active.
+    # Downloads and ONNX/JIT warmup never happen while moving or while lateral/longitudinal control is active.
+    stationary_idle = speed_mps < 0.1 and not controls_active
     if not model_ready():
-      if speed_mps < 0.1 and not controls_active:
+      if stationary_idle:
         self._ensure_download()
       else:
         _publish_state(active=False, status="model_not_ready")
       return
 
     if self.runner is None:
-      if speed_mps < 0.1 and not controls_active:
+      if stationary_idle:
         self._load_and_benchmark()
       else:
         _publish_state(active=False, status="waiting_for_stationary_warmup")
@@ -225,43 +264,62 @@ class TrafficSignalYolo:
       return
 
     now = time.monotonic()
-    if now < self.backoff_until or now - self.last_run < TARGET_PERIOD_S:
+    if now < self.backoff_until or now - self.last_run < self.period_s:
       return
-    if previous_frame_drop_pct > MAX_PREVIOUS_FRAME_DROP_PCT or main_model_ms > MAIN_MODEL_HEADROOM_MS:
+
+    # Before any moving inference, validate the complete real-frame path while stationary. This
+    # includes NV12 conversion, resize, USB/GPU input, inference, GPU->CPU result and decoding.
+    if not self.runtime_validated and not stationary_idle:
+      _publish_state(active=False, status="waiting_for_stationary_validation")
+      return
+
+    if self.runtime_validated and (previous_frame_drop_pct > MAX_PREVIOUS_FRAME_DROP_PCT or main_model_ms > MAIN_MODEL_MAX_MS):
       self.backoff_until = now + BACKOFF_S
       _publish_state(active=False, status="backoff", mainModelMs=round(main_model_ms, 2),
-                     frameDropPerc=round(previous_frame_drop_pct, 2))
+                     frameDropPerc=round(previous_frame_drop_pct, 2), auxTotalMs=round(self.last_aux_total_ms, 2))
       return
 
     try:
-      from tinygrad import Tensor, dtypes
-      from tinygrad.device import Device
-
-      pre_st = time.perf_counter()
-      rgb = _letterbox_rgb_from_nv12(buf, self.cam_w, self.cam_h)
-      inp = Tensor(rgb, device=Device.DEFAULT).permute(2, 0, 1).unsqueeze(0).cast(dtypes.float32) / 255.0
-      prep_ms = (time.perf_counter() - pre_st) * 1000.0
-
-      st = time.perf_counter()
-      out = self.jit(inp)
-      out.realize()
-      Device[Device.DEFAULT].synchronize()
-      inference_ms = (time.perf_counter() - st) * 1000.0
-      self.last_inference_ms = inference_ms
+      inference_ms, aux_total_ms, cls_name, confidence = self._run_once(buf, main_model_ms, previous_frame_drop_pct)
       self.last_run = now
 
-      if inference_ms > MAX_YOLO_INFERENCE_MS:
-        self.backoff_until = now + BACKOFF_S
-        self.qualified = False
-        _publish_state(active=False, status="runtime_headroom_exceeded", inferenceMs=round(inference_ms, 2))
+      # A stationary validation failure means this device/model combination is not admitted for driving.
+      if not self.runtime_validated:
+        if inference_ms <= MAX_YOLO_INFERENCE_MS and aux_total_ms <= MAX_AUX_TOTAL_MS:
+          self.runtime_validated = True
+          self.period_s = TARGET_PERIOD_S
+        else:
+          self.qualified = False
+          _publish_state(active=False, status="stationary_validation_failed",
+                         inferenceMs=round(inference_ms, 2), auxTotalMs=round(aux_total_ms, 2),
+                         mainModelMs=round(main_model_ms, 2))
+          return
+
+      # Runtime jitter gets an escalating response. Moderate overruns back off and drop to 1 Hz;
+      # a large overrun disables further inference until modeld restarts and re-validates stationary.
+      if inference_ms > MAX_YOLO_INFERENCE_MS or aux_total_ms > MAX_AUX_TOTAL_MS:
+        self.backoff_until = now + SLOW_BACKOFF_S
+        self.period_s = SLOW_PERIOD_S
+        if aux_total_ms > HARD_AUX_TOTAL_MS:
+          self.qualified = False
+          self.runtime_validated = False
+          status = "runtime_disabled_slow"
+        else:
+          status = "runtime_backoff_slow"
+        _publish_state(active=False, status=status, inferenceMs=round(inference_ms, 2),
+                       auxTotalMs=round(aux_total_ms, 2), mainModelMs=round(main_model_ms, 2))
         return
 
-      cls_name, confidence = _decode(out.numpy())
+      # Restore normal rate only after a comfortably fast pass.
+      if aux_total_ms <= MAX_AUX_TOTAL_MS * 0.8:
+        self.period_s = TARGET_PERIOD_S
+
       _publish_state(active=cls_name is not None, status="detected" if cls_name else "clear",
                      signal=cls_name or "none", confidence=round(confidence, 4),
-                     inferenceMs=round(inference_ms, 2), preprocessMs=round(prep_ms, 2),
-                     mainModelMs=round(main_model_ms, 2), frameDropPerc=round(previous_frame_drop_pct, 2))
+                     inferenceMs=round(inference_ms, 2), auxTotalMs=round(aux_total_ms, 2),
+                     mainModelMs=round(main_model_ms, 2), frameDropPerc=round(previous_frame_drop_pct, 2),
+                     rateHz=round(1.0 / self.period_s, 2))
     except Exception:
-      self.backoff_until = now + BACKOFF_S
+      self.backoff_until = now + SLOW_BACKOFF_S
       cloudlog.exception("traffic signal YOLO inference failed")
       _publish_state(active=False, status="inference_error")
