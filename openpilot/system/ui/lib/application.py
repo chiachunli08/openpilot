@@ -720,6 +720,7 @@ class GuiApplication(GuiApplicationExt):
     if language not in self._fallback_fonts:
       chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
       chars.update(TRANSLATIONS_DIR.joinpath(f"app_{language}.po").read_text(encoding="utf-8"))
+      chars.update(text)
       codepoints = sorted(map(ord, chars))
       codepoint_buffer = rl.ffi.new("int[]", codepoints)
       with as_file(FONT_DIR) as fspath:
@@ -733,15 +734,23 @@ class GuiApplication(GuiApplicationExt):
     # Use bundled Unifont for those strings, with the same font for measuring/drawing.
     if any(not c.isspace() and ord(c) not in self._fallback_codepoints[language] for c in text):
       fallback_key = language + ":unifont"
-      if fallback_key not in self._fallback_fonts:
+      required_codepoints = {ord(c) for c in text if not c.isspace()}
+      loaded_codepoints = self._fallback_codepoints.get(fallback_key, set())
+      if not required_codepoints.issubset(loaded_codepoints):
         chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
         chars.update(TRANSLATIONS_DIR.joinpath(f"app_{language}.po").read_text(encoding="utf-8"))
+        chars.update(map(chr, loaded_codepoints))
+        chars.update(text)
         codepoints = sorted(map(ord, chars))
         buffer = rl.ffi.new("int[]", codepoints)
         with as_file(FONT_DIR) as fspath:
           fallback = rl.load_font_ex((fspath / "unifont.otf").as_posix(), 48, rl.ffi.cast("int *", buffer), len(codepoints))
         rl.set_texture_filter(fallback.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
+        old_fallback = self._fallback_fonts.get(fallback_key)
         self._fallback_fonts[fallback_key] = fallback
+        self._fallback_codepoints[fallback_key] = {fallback.glyphs[i].value for i in range(fallback.glyphCount)}
+        if old_fallback is not None:
+          rl.unload_font(old_fallback)
       return self._fallback_fonts[fallback_key]
     return self._fallback_fonts[language]
 
