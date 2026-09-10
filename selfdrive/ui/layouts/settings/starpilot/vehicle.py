@@ -809,7 +809,7 @@ class StarPilotVehicleSettingsLayout(_SettingsPage):
       allowed_ids = set(range(9)) | {11, 12, 13, 14}
       if key == "LKASButtonControl":
         allowed_ids.add(9)
-      developer_access = self._params.get_bool("DeveloperUI") or self._params.get_bool("GalaxyDeveloperMode")
+      developer_access = gui_app.big_ui() or self._params.get_bool("DeveloperUI") or self._params.get_bool("GalaxyDeveloperMode")
       options = [o for o in ACTION_OPTIONS
                  if o["id"] in allowed_ids and
                  (cs.hasOpenpilotLongitudinal or not o.get("requires_longitudinal", False)) and

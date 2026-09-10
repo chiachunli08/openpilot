@@ -989,7 +989,8 @@ class StarPilotVariables:
     toggle.static_pedals_on_ui = self.get_value("StaticPedalsOnUI", condition=toggle.pedals_on_ui)
     toggle.rotating_wheel = self.get_value("RotatingWheel", condition=custom_ui)
 
-    toggle.developer_ui = self.get_value("DeveloperUI")
+    big_ui = os.getenv("BIG", "0") == "1" or HARDWARE.get_device_type() in ("tici", "tizi")
+    toggle.developer_ui = self.get_value("DeveloperUI") or big_ui
     developer_metrics = self.get_value("DeveloperMetrics", condition=toggle.developer_ui)
     border_metrics = self.get_value("BorderMetrics", condition=developer_metrics)
     toggle.blind_spot_metrics = has_bsm and self.get_value("BlindSpotMetrics", condition=border_metrics)
@@ -1042,7 +1043,7 @@ class StarPilotVariables:
       condition=toggle.car_make == "gm" and toggle.has_pedal and "BOLT" in toggle.car_model,
     )
 
-    developer_feature_access = self.params.get_bool("DeveloperUI") or self.params.get_bool("GalaxyDeveloperMode")
+    developer_feature_access = toggle.developer_ui or self.params.get_bool("GalaxyDeveloperMode")
     toggle.pulse_and_glide_available = toggle.openpilot_longitudinal and developer_feature_access
     toggle.pulse_glide_speed_delta = self.get_value(
       "PulseGlideSpeedDelta",
