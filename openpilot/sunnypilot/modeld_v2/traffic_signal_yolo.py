@@ -44,16 +44,31 @@ MAX_PREVIOUS_FRAME_DROP_PCT = 0.5
 BACKOFF_S = 5.0
 SLOW_BACKOFF_S = 10.0
 CONFIDENCE_THRESHOLD = 0.60
+STATE_REFRESH_S = 2.0
+
+_STATE_LOCK = threading.Lock()
+_LAST_STATE_SIGNATURE: str | None = None
+_LAST_STATE_WRITE_MONO = 0.0
+_MODEL_READY_CACHE: tuple[int, int, bool] | None = None
 
 
 def _publish_state(**kwargs) -> None:
-  state = {"timestamp": time.time(), **kwargs}
-  tmp = STATE_PATH.with_suffix(".tmp")
-  try:
-    tmp.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
-    os.replace(tmp, STATE_PATH)
-  except OSError:
-    pass
+  """Publish state atomically without doing a /dev/shm write on every 20 Hz modeld pass."""
+  global _LAST_STATE_SIGNATURE, _LAST_STATE_WRITE_MONO
+  signature = json.dumps(kwargs, sort_keys=True, separators=(",", ":"))
+  now_mono = time.monotonic()
+  with _STATE_LOCK:
+    if signature == _LAST_STATE_SIGNATURE and now_mono - _LAST_STATE_WRITE_MONO < STATE_REFRESH_S:
+      return
+    state = {"timestamp": time.time(), **kwargs}
+    tmp = STATE_PATH.with_suffix(".tmp")
+    try:
+      tmp.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+      os.replace(tmp, STATE_PATH)
+      _LAST_STATE_SIGNATURE = signature
+      _LAST_STATE_WRITE_MONO = now_mono
+    except OSError:
+      pass
 
 
 def _git_blob_sha1(path: Path) -> str:
@@ -66,13 +81,23 @@ def _git_blob_sha1(path: Path) -> str:
 
 
 def model_ready() -> bool:
+  """Verify the 37.9 MB artifact once per unchanged file, not once per model frame."""
+  global _MODEL_READY_CACHE
   try:
-    return MODEL_PATH.stat().st_size == MODEL_SIZE and _git_blob_sha1(MODEL_PATH) == MODEL_GIT_BLOB_SHA1
+    stat = MODEL_PATH.stat()
+    cache_key = (stat.st_size, stat.st_mtime_ns)
+    if _MODEL_READY_CACHE is not None and _MODEL_READY_CACHE[:2] == cache_key:
+      return _MODEL_READY_CACHE[2]
+    ready = stat.st_size == MODEL_SIZE and _git_blob_sha1(MODEL_PATH) == MODEL_GIT_BLOB_SHA1
+    _MODEL_READY_CACHE = (stat.st_size, stat.st_mtime_ns, ready)
+    return ready
   except OSError:
+    _MODEL_READY_CACHE = None
     return False
 
 
 def _download_model() -> None:
+  global _MODEL_READY_CACHE
   if model_ready():
     return
   MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -88,6 +113,7 @@ def _download_model() -> None:
     if tmp.stat().st_size != MODEL_SIZE or _git_blob_sha1(tmp) != MODEL_GIT_BLOB_SHA1:
       raise RuntimeError("traffic-signal model integrity check failed")
     os.replace(tmp, MODEL_PATH)
+    _MODEL_READY_CACHE = None
     _publish_state(active=False, status="downloaded")
   except Exception:
     cloudlog.exception("traffic signal YOLO download failed")
@@ -218,7 +244,7 @@ class TrafficSignalYolo:
       _publish_state(active=False, status="load_error")
       return False
 
-  def _run_once(self, buf, main_model_ms: float, previous_frame_drop_pct: float) -> tuple[float, float, str | None, float]:
+  def _run_once(self, buf) -> tuple[float, float, str | None, float]:
     from tinygrad import Tensor, dtypes
     from tinygrad.device import Device
 
@@ -280,7 +306,7 @@ class TrafficSignalYolo:
       return
 
     try:
-      inference_ms, aux_total_ms, cls_name, confidence = self._run_once(buf, main_model_ms, previous_frame_drop_pct)
+      inference_ms, aux_total_ms, cls_name, confidence = self._run_once(buf)
       self.last_run = now
 
       # A stationary validation failure means this device/model combination is not admitted for driving.
