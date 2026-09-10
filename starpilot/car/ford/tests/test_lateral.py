@@ -208,6 +208,55 @@ def test_mach_e_signaled_manual_turn_yields_until_inputs_settle(controller):
   assert result.curvature > 0.0
 
 
+def test_mach_e_manual_turn_waits_for_wheel_to_unwind(controller):
+  controller.CP.carFingerprint = CAR.FORD_MUSTANG_MACH_E_MK1
+  CC = SimpleNamespace(latActive=True)
+  actuators = SimpleNamespace(curvature=0.006)
+
+  assert not controller.update(CC, car_state(
+    steering_pressed=True, steering_angle=-30.0, steering_torque=-2.0,
+    right_blinker=True), actuators).active
+
+  for _ in range(8):
+    result = controller.update(CC, car_state(steering_angle=-35.0), actuators)
+    assert not result.active
+
+  for _ in range(4):
+    result = controller.update(CC, car_state(steering_angle=-10.0), actuators)
+    assert not result.active
+  result = controller.update(CC, car_state(steering_angle=-10.0), actuators)
+  assert result.active
+
+
+def test_mach_e_left_manual_turn_waits_for_wheel_to_unwind(controller):
+  controller.CP.carFingerprint = CAR.FORD_MUSTANG_MACH_E_MK1
+  CC = SimpleNamespace(latActive=True)
+  actuators = SimpleNamespace(curvature=-0.006)
+
+  assert not controller.update(CC, car_state(
+    steering_pressed=True, steering_angle=30.0, steering_torque=2.0,
+    left_blinker=True), actuators).active
+
+  for _ in range(8):
+    result = controller.update(CC, car_state(steering_angle=35.0), actuators)
+    assert not result.active
+
+  for _ in range(4):
+    result = controller.update(CC, car_state(steering_angle=10.0), actuators)
+    assert not result.active
+  result = controller.update(CC, car_state(steering_angle=10.0), actuators)
+  assert result.active
+
+
+def test_non_mach_e_signaled_turn_does_not_latch(controller):
+  CC = SimpleNamespace(latActive=True)
+  result = controller.update(CC, car_state(
+    steering_pressed=True, steering_angle=30.0, steering_torque=2.0,
+    left_blinker=True), SimpleNamespace(curvature=-0.006))
+
+  assert result.active
+
+
 def test_mach_e_opposite_blinker_correction_does_not_start_manual_turn(controller):
   controller.CP.carFingerprint = CAR.FORD_MUSTANG_MACH_E_MK1
 

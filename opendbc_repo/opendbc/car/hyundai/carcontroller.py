@@ -16,6 +16,7 @@ from opendbc.car.hyundai.values import HyundaiFlags, HyundaiSafetyFlags, Hyundai
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.common.params import Params
+from openpilot.selfdrive.controls.lib.longitudinal_vehicle_tunes import get_hyundai_canfd_scc_jerk_limits
 from openpilot.starpilot.common.testing_grounds import testing_ground
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -862,7 +863,6 @@ class CarController(CarControllerBase):
     longitudinal_active = bool(self.long_active_ecu and getattr(CC, "longActive", False))
     lfa_status_cars = (
       CAR.HYUNDAI_IONIQ_6,
-      CAR.GENESIS_GV70_ELECTRIFIED_1ST_GEN,
       CAR.KIA_EV6,
     )
     lfa_longitudinal_active = self.CP.openpilotLongitudinalControl \
@@ -896,7 +896,8 @@ class CarController(CarControllerBase):
     if angle_lkas_alt:
       steering_msg_active = bool(steering_msg_active and drive_gear)
     angle_lkas_alt_standstill_handoff = bool(getattr(CS.out, "standstill", False) and not CC.latActive)
-    forward_stock_lkas = self.CP.carFingerprint in CANFD_ANGLE_LONGITUDINAL_CAR and angle_lkas_alt and (
+    forward_stock_lkas = (self.CP.carFingerprint in CANFD_ANGLE_LONGITUDINAL_CAR or
+                          self.CP.carFingerprint == CAR.KIA_SPORTAGE_HEV_2026) and angle_lkas_alt and (
       angle_lkas_alt_standstill_handoff or not (drive_gear and (CC.latActive or CC.enabled))
     )
     preserve_stock_lfa_status = preserve_stock_canfd_lfa_status(self.CP.carFingerprint)
@@ -1023,7 +1024,11 @@ class CarController(CarControllerBase):
                                                                                  CC.rightBlinker))
       if self.frame % 2 == 0:
         if self.CP.carFingerprint == CAR.GENESIS_GV70_ELECTRIFIED_1ST_GEN:
-          acc_kwargs = {}
+          scc_jerk_limits = get_hyundai_canfd_scc_jerk_limits(self.CP)
+          acc_kwargs = {
+            "jerk_upper": scc_jerk_limits[0],
+            "jerk_lower": scc_jerk_limits[1],
+          }
         else:
           lead_visible, lead_distance, lead_rel_speed = self._get_canfd_scc_lead_state(CC, CS, now_nanos)
           acc_kwargs = {

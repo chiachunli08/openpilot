@@ -24,6 +24,7 @@ def test_ui_app_shell_files_exist():
     "js/store.js",
     "js/api.js",
     "js/params.js",
+    "js/i18n.js",
     "js/components/AppShell.js",
     "js/components/GalaxyModal.js",
     "js/components/GalaxySection.js",
@@ -35,6 +36,7 @@ def test_ui_app_shell_files_exist():
     "js/components/WheelControls.js",
     "js/components/BluetoothPanel.js",
     "js/components/DevModeBanner.js",
+    "js/components/LanguageSelector.js",
     "js/composables.js",
     "js/views/Home.js",
     "js/views/Settings.js",
@@ -71,6 +73,19 @@ def test_ui_uses_same_backend_endpoints():
   assert '"/api/params/all"' in api
   assert '"/api/params"' in api
   assert '"/api/params/defaults"' in api
+
+
+def test_ui_language_selector_uses_shared_device_language_setting():
+  i18n = _read("js/i18n.js")
+  selector = _read("js/components/LanguageSelector.js")
+  settings = _read("js/views/Settings.js")
+
+  for code in ["en", "es", "fr", "ko", "zh-CHS"]:
+    assert f'value: "{code}"' in i18n
+  assert "localStorage" in i18n
+  assert "LanguageSetting" in selector
+  assert "main_${next}" in selector
+  assert "<LanguageSelector" in settings
 
 
 def test_ui_ports_developer_mode_gating():

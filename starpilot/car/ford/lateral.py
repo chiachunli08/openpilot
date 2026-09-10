@@ -44,6 +44,7 @@ FORD_MANUAL_TURN_LATCH_CARS = frozenset({
   CAR.FORD_MUSTANG_MACH_E_MK1,
 })
 MANUAL_TURN_ENTRY_ANGLE_DEG = 12.0
+MANUAL_TURN_RELEASE_ANGLE_DEG = 12.0
 MANUAL_TURN_RECOVERY_SECONDS = 0.25
 
 
@@ -207,7 +208,8 @@ class FordLateralController:
       self.manual_turn_recovery_timer = 0.0
       return False
 
-    if CS.out.steeringPressed or blinker_direction != 0.0:
+    if (CS.out.steeringPressed or blinker_direction != 0.0 or
+        abs(CS.out.steeringAngleDeg) > MANUAL_TURN_RELEASE_ANGLE_DEG):
       self.manual_turn_recovery_timer = 0.0
     else:
       self.manual_turn_recovery_timer += STEER_DT

@@ -744,10 +744,10 @@ def test_ascent_angle_controller_blocks_parking_lot_aol_engagement():
   assert parser.vl["ES_LKAS_ANGLE"]["LKAS_Output"] == pytest.approx(CS.out.steeringAngleDeg)
 
 
-def test_lkas_hud_state_uses_lateral_active():
+def test_lkas_hud_state_uses_outback_angle_request_state():
   update_source = inspect.getsource(CarController.update)
 
-  assert "create_es_lkas_state(self.packer, self.frame // 10, CS.es_lkas_state_msg, CC.latActive" in update_source
+  assert "create_es_lkas_state(self.packer, self.frame // 10, CS.es_lkas_state_msg, self._lkas_status_active(CC)" in update_source
   assert "create_es_lkas_state(self.packer, self.frame // 10, CS.es_lkas_state_msg, CC.enabled" not in update_source
 
 
@@ -765,3 +765,38 @@ def test_lkas_hud_active_bit_follows_lateral_state(enabled, expected):
 
   assert parser.can_valid
   assert parser.vl["ES_LKAS_State"]["LKAS_ACTIVE"] == expected
+
+
+def test_outback_manual_steering_releases_angle_request_before_lkas_fault():
+  CP = CarInterface.get_non_essential_params(CAR.SUBARU_OUTBACK_2023)
+  controller = CarController({}, CP)
+  CC = SimpleNamespace(
+    enabled=False,
+    latActive=True,
+    actuators=SimpleNamespace(steeringAngleDeg=-225.0),
+  )
+  CS = SimpleNamespace(out=SimpleNamespace(
+    vEgoRaw=0.9,
+    steeringAngleDeg=-57.0,
+    steeringRateDeg=-45.0,
+    steeringTorque=-127.0,
+    steeringPressed=True,
+    gearShifter=structs.CarState.GearShifter.drive,
+    standstill=False,
+  ))
+  parser = CANParser(DBC[CP.carFingerprint][Bus.pt], [("ES_LKAS_ANGLE", 0)], CanBus.main)
+
+  msg = controller.lateral_angle(CC, CS)
+  parser.update([(1, [msg])])
+
+  assert parser.vl["ES_LKAS_ANGLE"]["LKAS_Request"] == 0
+  assert parser.vl["ES_LKAS_ANGLE"]["LKAS_Output"] == pytest.approx(CS.out.steeringAngleDeg)
+  assert not controller._lkas_status_active(CC)
+
+
+def test_other_angle_cars_keep_lateral_status_behavior():
+  CP = CarInterface.get_non_essential_params(CAR.SUBARU_CROSSTREK_2025)
+  controller = CarController({}, CP)
+  controller.angle_lkas_active = False
+
+  assert controller._lkas_status_active(SimpleNamespace(latActive=True))

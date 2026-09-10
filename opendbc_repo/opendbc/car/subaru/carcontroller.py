@@ -222,12 +222,14 @@ class CarController(CarControllerBase):
     self.angle_reclaim_frames = 0
     self.angle_reclaim_start_angle = 0.0
 
-  def _angle_manual_handoff(self, CS, lat_active):
+  def _angle_manual_handoff(self, CS, lat_active, use_steering_pressed=False):
     if not lat_active:
       self._reset_angle_handoff()
       return False
 
     driver_override = self._update_angle_driver_override(CS)
+    if use_steering_pressed:
+      driver_override = driver_override or getattr(CS.out, "steeringPressed", False)
     if driver_override:
       self.angle_handoff_active = True
       self.angle_override_hold_frames = _ANGLE_OVERRIDE_HOLD_FRAMES
@@ -325,7 +327,9 @@ class CarController(CarControllerBase):
       lkas_available = CC.latActive and (not mads_only or mads_only_ok) and \
         CS.out.gearShifter == structs.CarState.GearShifter.drive and not CS.out.standstill
 
-      manual_handoff = self._angle_manual_handoff(CS, CC.latActive)
+      manual_handoff = self._angle_manual_handoff(
+        CS, CC.latActive, use_steering_pressed=self.CP.carFingerprint == CAR.SUBARU_OUTBACK_2023,
+      )
       lkas_active = lkas_available and not manual_handoff
 
       if lkas_active and not self.angle_lkas_active:
@@ -408,6 +412,11 @@ class CarController(CarControllerBase):
 
     return subarucan.create_steering_control(self.packer, apply_torque, apply_steer_req)
 
+  def _lkas_status_active(self, CC):
+    if self.CP.carFingerprint == CAR.SUBARU_OUTBACK_2023:
+      return self.angle_lkas_active
+    return CC.latActive
+
   def update(self, CC, CS, now_nanos, starpilot_toggles):
     actuators = CC.actuators
     hud_control = CC.hudControl
@@ -484,7 +493,7 @@ class CarController(CarControllerBase):
                                                         CC.longActive, hud_control.leadVisible,
                                                         self.status_bus))
 
-        can_sends.append(subarucan.create_es_lkas_state(self.packer, self.frame // 10, CS.es_lkas_state_msg, CC.latActive, hud_control.visualAlert,
+        can_sends.append(subarucan.create_es_lkas_state(self.packer, self.frame // 10, CS.es_lkas_state_msg, self._lkas_status_active(CC), hud_control.visualAlert,
                                                         hud_control.leftLaneVisible, hud_control.rightLaneVisible,
                                                         hud_control.leftLaneDepart, hud_control.rightLaneDepart, self.status_bus))
 

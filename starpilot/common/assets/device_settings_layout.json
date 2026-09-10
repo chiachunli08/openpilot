@@ -3600,9 +3600,9 @@
       },
       {
         "key": "GMAutoHold",
-        "label": "Volt Auto Hold",
-        "description": "Hold the car at a stop on supported non-CC-only Chevy Volts until the gas pedal is pressed.",
-        "picker_description": "Holds Chevy Volt brakes until the gas pedal is pressed.",
+        "label": "GM Auto Hold",
+        "description": "Hold supported GM vehicles at a stop until the gas pedal is pressed.",
+        "picker_description": "Holds supported GM vehicle brakes until the gas pedal is pressed.",
         "data_type": "bool",
         "ui_type": "toggle",
         "settings_tier": "simple"

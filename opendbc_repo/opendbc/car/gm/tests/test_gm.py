@@ -11,6 +11,7 @@ from opendbc.car.gm import gmcan
 from opendbc.car.gm.carstate import (
   CarState as GMCarState,
   get_hard_cruise_buttons,
+  is_gm_auto_hold_active,
   update_auto_hold_drive_timers,
   update_startup_acc_fault_suppression,
 )
@@ -210,6 +211,19 @@ class TestBoltGps:
 
 
 class TestGMCarState:
+  @parameterized.expand([
+    (CAR.BUICK_LACROSSE, True, True, True, True, False, True),
+    (CAR.CHEVROLET_VOLT, True, True, True, True, False, True),
+    (CAR.CHEVROLET_BOLT_CC_2017, True, True, True, True, False, False),
+    (CAR.BUICK_LACROSSE, True, True, True, False, False, False),
+    (CAR.BUICK_LACROSSE, True, True, True, True, True, False),
+  ])
+  def test_auto_hold_alert_state_requires_supported_complete_stop(self, car_fingerprint, engaged, in_drive,
+                                                                    cruise_available, standstill, gas_pressed, expected):
+    assert is_gm_auto_hold_active(
+      car_fingerprint, engaged, in_drive, cruise_available, standstill, gas_pressed,
+    ) is expected
+
   def test_lacrosse_startup_acc_fault_is_suppressed(self):
     timer, suppressed = update_startup_acc_fault_suppression(
       CAR.BUICK_LACROSSE, 2, 0, 0.0, 3, False,

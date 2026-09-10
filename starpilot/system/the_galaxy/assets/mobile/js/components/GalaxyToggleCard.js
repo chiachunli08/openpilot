@@ -5,6 +5,7 @@ import {
   resolveVehicleUnitParam, stepPrecision,
 } from "../params.js"
 import { FavoritesEditor } from "./FavoritesEditor.js"
+import { t } from "../i18n.js"
 
 export const GalaxyToggleCard = {
   name: "GalaxyToggleCard",
@@ -67,6 +68,7 @@ export const GalaxyToggleCard = {
     },
   },
   methods: {
+    tr(key, fallback = key) { return t(key, fallback) },
     normalizeHexColor,
     getColorDefault,
     coerce(v) { return coerceValueByType(v, this.param.data_type) },
@@ -177,11 +179,11 @@ export const GalaxyToggleCard = {
     <div>
       <div class="gx-row" :class="{ disabled: locked, 'gx-row--favorites': isFavorites, 'gx-row--stack': isSlider || isSelect }">
         <div class="gx-row__info">
-          <span class="gx-row__label">{{ displayParam.label }}
-            <span v-if="displayParam.settings_tier === 'advanced'" class="gx-chip gx-chip--advanced">Advanced</span>
+          <span class="gx-row__label">{{ tr(displayParam.label, displayParam.label) }}
+            <span v-if="displayParam.settings_tier === 'advanced'" class="gx-chip gx-chip--advanced">{{ tr("Advanced") }}</span>
           </span>
-          <span v-if="displayParam.description" class="gx-row__desc">{{ displayParam.description }}</span>
-          <div v-if="locked" class="gx-row__desc"><strong>Locked:</strong> {{ lockMessage }}</div>
+          <span v-if="displayParam.description" class="gx-row__desc">{{ tr(displayParam.description, displayParam.description) }}</span>
+          <div v-if="locked" class="gx-row__desc"><strong>{{ tr("Locked:") }}</strong> {{ tr(lockMessage, lockMessage) }}</div>
         </div>
 
         <label v-if="isSwitch" class="gx-switch">
@@ -202,15 +204,15 @@ export const GalaxyToggleCard = {
             @touchstart="beginInteract" @mousedown="beginInteract" @keydown="beginInteract" />
           <div v-if="displayParam.unit_type" class="gx-slider-meta">
             <span>{{ sliderRangeDisplay }}</span>
-            <span>Step: {{ sliderStepDisplay }}</span>
+            <span>{{ tr("Step:") }} {{ sliderStepDisplay }}</span>
           </div>
-          <button class="gx-slider-reset" :disabled="locked || updating" @click="resetToDefault">Default</button>
+          <button class="gx-slider-reset" :disabled="locked || updating" @click="resetToDefault">{{ tr("Default") }}</button>
         </div>
 
         <select v-else-if="isSelect" class="gx-field" :disabled="locked || updating" :value="String(value ?? '')" @change="onSelect">
-          <option v-if="optionsLoading" value="">Loading...</option>
-          <option v-else-if="!selectOptions.length" value="">No options available</option>
-          <option v-for="opt in selectOptions" :key="String(opt.value)" :value="String(opt.value)">{{ opt.label }}</option>
+          <option v-if="optionsLoading" value="">{{ tr("Loading...") }}</option>
+          <option v-else-if="!selectOptions.length" value="">{{ tr("No options available") }}</option>
+          <option v-for="opt in selectOptions" :key="String(opt.value)" :value="String(opt.value)">{{ tr(opt.label, opt.label) }}</option>
         </select>
 
         <input v-else-if="isText" class="gx-field" :type="param.input_type || 'text'" :value="value ?? ''"
@@ -220,19 +222,19 @@ export const GalaxyToggleCard = {
           <span class="gx-row__value">{{ displayValue }}</span>
           <input type="color" class="gx-color" :value="normalizeHexColor(value) || getColorDefault(param)"
             :disabled="locked || updating" @change="onColor" />
-          <button class="gx-slider-reset" :disabled="locked || updating || !normalizeHexColor(value)" @click="resetColor">Stock</button>
+          <button class="gx-slider-reset" :disabled="locked || updating || !normalizeHexColor(value)" @click="resetColor">{{ tr("Stock") }}</button>
         </div>
 
         <span v-else-if="isReadout" class="gx-row__value">{{ displayValue }}</span>
 
         <button v-else-if="isAction" class="gx-btn" :disabled="locked || updating" @click="runAction">
-          {{ updating ? "Working..." : (param.action_label || "Run") }}
+          {{ updating ? tr("Working...") : tr(param.action_label || "Run", param.action_label || "Run") }}
         </button>
 
-        <button v-else-if="isGroup" class="gx-btn gx-btn--tonal" @click="$emit('manage', param.key)">Manage</button>
+        <button v-else-if="isGroup" class="gx-btn gx-btn--tonal" @click="$emit('manage', param.key)">{{ tr("Manage") }}</button>
       </div>
       <button v-if="manageable" type="button" class="gx-manage-btn" @click="$emit('manage', param.key)">
-        {{ manageOpen ? "Close" : "Manage" }}
+        {{ manageOpen ? tr("Close") : tr("Manage") }}
         <i class="bi" :class="manageOpen ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
       </button>
     </div>
