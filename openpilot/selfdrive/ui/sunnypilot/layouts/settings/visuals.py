@@ -14,6 +14,7 @@ from opendbc.sunnypilot.car.hyundai.factory_cluster import (
   is_ev6_hda2_candidate,
 )
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.sunnypilot.modeld_v2.traffic_signal_settings import is_enabled as traffic_signal_yolo_enabled, set_enabled as set_traffic_signal_yolo_enabled
 from openpilot.system.ui.lib.multilang import multilang, tr
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -162,6 +163,16 @@ class VisualsLayout(Widget):
       )
       self._toggles[param] = toggle
 
+    self._traffic_signal_yolo = toggle_item_sp(
+      title=lambda: vtr("YOLO Traffic Signal Detection (Experimental)", "YOLO 交通號誌辨識（實驗）"),
+      description=lambda: vtr(
+        "Display-only traffic signal recognition using the UsamaMasood12 YOLO11s model. When Chestnut is active, detection runs only in spare GPU headroom after the driving model. It automatically backs off when model latency or frame drops increase. Results are never used for steering, acceleration, braking, or planning.",
+        "使用 UsamaMasood12 YOLO11s 模型進行僅供顯示的交通號誌辨識。Chestnut 啟用時，只會在駕駛大模型完成後利用剩餘 GPU 餘裕執行；當模型延遲或掉幀增加時會自動退避。辨識結果不會用於轉向、加速、煞車或路徑規劃。",
+      ),
+      initial_state=traffic_signal_yolo_enabled(),
+      callback=self._on_traffic_signal_yolo,
+    )
+
     self._blindspot_style = multiple_button_item_sp(
       title=lambda: vtr("Blind Spot Warning Style", "盲點警告顯示樣式"),
       description=lambda: vtr("Choose the original small icons beside the speedometer or flashing light bars along the left/right screen edges.",
@@ -199,12 +210,19 @@ class VisualsLayout(Widget):
     )
     items = list(self._toggles.values())
     items.insert(list(self._toggles).index("BlindSpot") + 1, self._blindspot_style)
+    items.insert(items.index(self._toggles["PredictedStopMarker"]) + 1, self._traffic_signal_yolo)
     items.insert(items.index(self._toggles["RainbowMode"]) + 1, self._rainbow_style)
     items += [
       self._chevron_info,
       self._dev_ui_info,
     ]
     return items
+
+  def _on_traffic_signal_yolo(self, state=None):
+    # ToggleAction invokes callbacks with the new state. ListItem may invoke a second no-arg callback
+    # after rendering the click; ignore that no-arg notification so the persisted marker is not flipped twice.
+    if state is not None:
+      set_traffic_signal_yolo_enabled(bool(state))
 
   def _on_factory_side_display(self, state: bool):
     status = configuration_status(ui_state.CP, state)
@@ -215,6 +233,9 @@ class VisualsLayout(Widget):
 
     for param in self._toggle_defs:
       self._toggles[param].action_item.set_state(self._params.get_bool(param))
+
+    self._traffic_signal_yolo.action_item.set_state(traffic_signal_yolo_enabled())
+    self._traffic_signal_yolo.set_visible(bool(ui_state.chestnut_present or ui_state.chestnut_active))
 
     self._blindspot_style.action_item.set_selected_button(int(self._params.get("BlindSpotDisplayStyle", return_default=True)))
     self._blindspot_style.action_item.set_enabled(self._params.get_bool("BlindSpot"))
