@@ -17,13 +17,12 @@ _original_run = base.ModelState.run
 
 def _patched_init(self, cam_w: int, cam_h: int, chestnut: bool = False):
   _original_init(self, cam_w, cam_h, chestnut)
-  self._traffic_signal_cam_w = cam_w
-  self._traffic_signal_cam_h = cam_h
   self._traffic_signal_yolo = TrafficSignalYolo(cam_w, cam_h) if chestnut else None
   self._traffic_signal_sm = messaging.SubMaster(["carState", "selfdriveState", "selfdriveStateSP", "modelV2"]) if chestnut else None
 
 
 def _patched_run(self, bufs, transforms, inputs, after_enqueue=None):
+  # Measure only the driving model itself. This is the admission signal used by the visual detector.
   st = time.perf_counter()
   output = _original_run(self, bufs, transforms, inputs, after_enqueue)
   main_model_ms = (time.perf_counter() - st) * 1000.0
@@ -32,6 +31,12 @@ def _patched_run(self, bufs, transforms, inputs, after_enqueue=None):
   sm = getattr(self, "_traffic_signal_sm", None)
   if detector is not None and sm is not None and output is not None:
     try:
+      # ModelState.warmup() passes numpy arrays. Never download, compile or run YOLO during the
+      # driving-model warmup. Real VisionBuf objects expose .data.
+      road_buf = next((buf for key, buf in bufs.items() if "big" not in key), None)
+      if road_buf is None or not hasattr(road_buf, "data"):
+        return output
+
       sm.update(0)
       speed = max(0.0, float(sm["carState"].vEgo)) if sm.seen["carState"] else 0.0
       controls_active = False
@@ -44,11 +49,9 @@ def _patched_run(self, bufs, transforms, inputs, after_enqueue=None):
       if sm.seen["modelV2"] and sm.valid["modelV2"]:
         previous_drop = float(sm["modelV2"].frameDropPerc)
 
-      road_buf = next((buf for key, buf in bufs.items() if "big" not in key), None)
-      if road_buf is not None:
-        detector.maybe_run(road_buf, main_model_ms, previous_drop, speed, controls_active)
+      detector.maybe_run(road_buf, main_model_ms, previous_drop, speed, controls_active)
     except Exception:
-      # Visuals must never be allowed to take modeld down.
+      # Display-only code must never be allowed to take modeld down.
       pass
 
   return output
