@@ -1214,3 +1214,67 @@ msgstr "啟動車輛以檢查相容性。"
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
 msgid "Unavailable for this vehicle. Requires compatible HKG CAN-FD torque steering."
 msgstr "此車型無法使用。需要相容的 HKG CAN-FD 扭力轉向系統。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Kia EV6 Factory Cluster Side Vehicles"
+msgstr "Kia EV6 原廠儀表左右車輛顯示"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Keep real left/right vehicle graphics on the Kia factory instrument cluster while sunnypilot longitudinal control or Experimental Mode is active. Display only: this does not enable Kia automatic lane changes or use side targets for driving decisions. Unsupported firmware, stale data, or a CAN sender conflict produces no added vehicle graphic. A restart is required after changing this setting."
+msgstr "當 sunnypilot 縱向控制或實驗模式啟用時，在 Kia 原廠儀表保留真實左右車輛圖形。此功能僅供顯示：不會啟用 Kia 原廠自動變道，也不會將側方目標用於駕駛決策。不支援的韌體、過期資料或 CAN 發送者衝突都不會補入車輛圖形。變更此設定後需要重新啟動。"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: incompatible vehicle"
+msgstr "無法使用：車型不相容"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: vehicle firmware and CAN profile not verified"
+msgstr "無法使用：尚未驗證車輛韌體與 CAN 設定檔"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: original target message not captured"
+msgstr "無法使用：尚未擷取原廠目標訊息"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: original target message failed validation"
+msgstr "無法使用：原廠目標訊息驗證失敗"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: original target message is stale"
+msgstr "無法使用：原廠目標訊息已過期"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: real target data is stale or missing"
+msgstr "無法使用：真實目標資料已過期或遺失"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: real target cannot be encoded safely"
+msgstr "無法使用：無法安全編碼真實目標"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: message is not authorized by Panda safety"
+msgstr "無法使用：Panda 安全策略未允許此訊息"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Blocked: another ECU is sending the same message"
+msgstr "已阻擋：另一個 ECU 正在發送相同訊息"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Active: preserving original vehicle targets"
+msgstr "使用中：保留原廠車輛目標"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Active: displaying verified real targets"
+msgstr "使用中：顯示已驗證的真實目標"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Active: blind-spot region warning only"
+msgstr "使用中：僅顯示盲點區域警示"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Active: no nearby targets"
+msgstr "使用中：附近沒有目標"
+
+#: openpilot/selfdrive/ui/sunnypilot/layouts/settings/visuals.py
+msgid "Unavailable: unknown state"
+msgstr "無法使用：未知狀態"

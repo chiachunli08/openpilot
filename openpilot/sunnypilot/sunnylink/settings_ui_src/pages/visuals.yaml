@@ -33,6 +33,18 @@ sections:
     - type: capability
       field: hkg_corner_radar_available
       equals: true
+  - key: HkgFactorySideVehicleDisplay
+    widget: toggle
+    title: Kia EV6 Factory Cluster Side Vehicles
+    description: >-
+      Keep verified real left/right vehicle graphics on the Kia factory instrument cluster while sunnypilot longitudinal
+      control or Experimental Mode is active. Display only: this does not enable Kia automatic lane changes or use side
+      targets for driving decisions. Unsupported firmware, stale data, or a CAN sender conflict produces no added vehicle
+      graphic. A restart is required after changing this setting.
+    visibility:
+    - type: capability
+      field: hkg_factory_side_display_candidate
+      equals: true
   - key: TorqueBar
     widget: toggle
     title: Steering Arc

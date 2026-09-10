@@ -11,6 +11,7 @@ from openpilot.cereal import log, custom
 
 from opendbc.car import structs
 from opendbc.car.hyundai.values import HyundaiFlags
+from opendbc.sunnypilot.car.hyundai.values import HyundaiFlagsSP
 from openpilot.common.params import Params
 from openpilot.common.constants import CV
 from openpilot.common.swaglog import cloudlog
@@ -37,6 +38,9 @@ class ControlsExt(ModelStateBase):
     cloudlog.info("controlsd_ext got CarParamsSP")
 
     self.sm_services_ext = ['radarState', 'selfdriveStateSP', 'modelDataV2SP']
+    self.factory_cluster_display_enabled = bool(self.CP_SP.flags & HyundaiFlagsSP.FACTORY_CLUSTER_SIDE_DISPLAY)
+    if self.factory_cluster_display_enabled:
+      self.sm_services_ext.append('radarTracks')
     self.pm_services_ext = ['carControlSP']
 
   def initialize_lateral_control(self, lac, CI, dt):
@@ -129,6 +133,24 @@ class ControlsExt(ModelStateBase):
 
     self.get_lead_data(CC_SP.leadOne, sm['radarState'].leadOne)
     self.get_lead_data(CC_SP.leadTwo, sm['radarState'].leadTwo)
+
+    # Raw measured radar points are transported only to the evidence-gated
+    # factory-cluster serializer. They are not added to radarState, planning,
+    # lane-change logic, or any control decision.
+    if self.factory_cluster_display_enabled:
+      radar_mono_time = sm.logMonoTime['radarTracks']
+      radar_valid = bool(sm.valid['radarTracks'] and radar_mono_time > 0)
+      CC_SP.factoryClusterRadarMonoTime = radar_mono_time
+      CC_SP.factoryClusterRadarValid = radar_valid
+      points = sm['radarTracks'].points if radar_valid else ()
+      targets = CC_SP.init('factoryClusterTargets', len(points))
+      for output, point in zip(targets, points, strict=True):
+        output.trackId = point.trackId
+        output.sourceMonoTime = radar_mono_time
+        output.dRel = point.dRel
+        output.yRel = point.yRel
+        output.vRel = point.vRel
+        output.measured = point.deprecated.measured
 
     # MADS state
     mads_src = sm['selfdriveStateSP'].mads

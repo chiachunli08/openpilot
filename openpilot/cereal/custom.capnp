@@ -384,6 +384,18 @@ struct CarControlSP @0xa5cd762cd951a455 {
   leadTwo @3 :LeadData;
   intelligentCruiseButtonManagement @4 :IntelligentCruiseButtonManagement;
   creepLaneChangeActive @5 :Bool;
+  factoryClusterTargets @6 :List(FactoryClusterTarget);
+  factoryClusterRadarMonoTime @7 :UInt64;
+  factoryClusterRadarValid @8 :Bool;
+
+  struct FactoryClusterTarget {
+    trackId @0 :UInt64;
+    sourceMonoTime @1 :UInt64;
+    dRel @2 :Float32;
+    yRel @3 :Float32;
+    vRel @4 :Float32;
+    measured @5 :Bool;
+  }
 
   struct Param {
     key @0 :Text;

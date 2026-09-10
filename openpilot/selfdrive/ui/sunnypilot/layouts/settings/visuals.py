@@ -6,6 +6,13 @@ See the LICENSE.md file in the root directory for more details.
 """
 from openpilot.common.params import Params
 from opendbc.car.hyundai.values import HyundaiFlags
+from opendbc.sunnypilot.car.hyundai.factory_cluster import (
+  FACTORY_SIDE_DISPLAY_PARAM,
+  FACTORY_SIDE_DISPLAY_STATUS_PARAM,
+  FactoryClusterStatus,
+  configuration_status,
+  is_ev6_hda2_candidate,
+)
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp
@@ -17,6 +24,30 @@ CHEVRON_INFO_DESCRIPTION = {
                      "only applicable to cars with sunnypilot longitudinal control."),
   "disabled": tr_noop("This feature requires sunnypilot longitudinal control to be available.")
 }
+
+FACTORY_CLUSTER_STATUS_TEXT = {
+  FactoryClusterStatus.OFF.value: tr_noop("Off"),
+  FactoryClusterStatus.UNAVAILABLE_VEHICLE.value: tr_noop("Unavailable: incompatible vehicle"),
+  FactoryClusterStatus.UNAVAILABLE_UNVERIFIED_PROFILE.value: tr_noop("Unavailable: vehicle firmware and CAN profile not verified"),
+  FactoryClusterStatus.UNAVAILABLE_NO_STOCK_TEMPLATE.value: tr_noop("Unavailable: original target message not captured"),
+  FactoryClusterStatus.UNAVAILABLE_INVALID_STOCK_TEMPLATE.value: tr_noop("Unavailable: original target message failed validation"),
+  FactoryClusterStatus.UNAVAILABLE_STALE_STOCK_MESSAGE.value: tr_noop("Unavailable: original target message is stale"),
+  FactoryClusterStatus.UNAVAILABLE_RADAR_DATA.value: tr_noop("Unavailable: real target data is stale or missing"),
+  FactoryClusterStatus.UNAVAILABLE_TARGET_ENCODING.value: tr_noop("Unavailable: real target cannot be encoded safely"),
+  FactoryClusterStatus.UNAVAILABLE_UNSUPPORTED_MESSAGE.value: tr_noop("Unavailable: message is not authorized by Panda safety"),
+  FactoryClusterStatus.BLOCKED_SENDER_CONFLICT.value: tr_noop("Blocked: another ECU is sending the same message"),
+  FactoryClusterStatus.ACTIVE_STOCK_PASSTHROUGH.value: tr_noop("Active: preserving original vehicle targets"),
+  FactoryClusterStatus.ACTIVE_REAL_TARGETS.value: tr_noop("Active: displaying verified real targets"),
+  FactoryClusterStatus.ACTIVE_BSM_REGION.value: tr_noop("Active: blind-spot region warning only"),
+  FactoryClusterStatus.ACTIVE_NO_TARGETS.value: tr_noop("Active: no nearby targets"),
+}
+FACTORY_CLUSTER_DESCRIPTION = (
+  "Keep real left/right vehicle graphics on the Kia factory instrument cluster "
+  + "while sunnypilot longitudinal control or Experimental Mode is active. "
+  + "Display only: this does not enable Kia automatic lane changes or use side targets for driving decisions. "
+  + "Unsupported firmware, stale data, or a CAN sender conflict produces no added vehicle graphic. "
+  + "A restart is required after changing this setting."
+)
 
 
 class VisualsLayout(Widget):
@@ -46,6 +77,11 @@ class VisualsLayout(Widget):
         tr("Show yellow radar candidates beside the speedometer, separately from blind-spot icons. RADAR* means experimental: " +
            "sensor mounting and validity still need vehicle validation. Display only; no control decisions."),
         None,
+      ),
+      FACTORY_SIDE_DISPLAY_PARAM: (
+        lambda: tr("Kia EV6 Factory Cluster Side Vehicles"),
+        tr(FACTORY_CLUSTER_DESCRIPTION),
+        self._on_factory_side_display,
       ),
       "TorqueBar": (
         lambda: tr("Steering Arc"),
@@ -151,6 +187,10 @@ class VisualsLayout(Widget):
     ]
     return items
 
+  def _on_factory_side_display(self, state: bool):
+    status = configuration_status(ui_state.CP, state)
+    self._params.put(FACTORY_SIDE_DISPLAY_STATUS_PARAM, status.value)
+
   def _update_state(self):
     super()._update_state()
 
@@ -160,6 +200,14 @@ class VisualsLayout(Widget):
     hkg_canfd = (ui_state.CP is not None and ui_state.CP.brand == "hyundai" and
                  bool(ui_state.CP.flags & HyundaiFlags.CANFD))
     self._toggles["HkgCornerRadarDetection"].set_visible(hkg_canfd)
+
+    factory_cluster_toggle = self._toggles[FACTORY_SIDE_DISPLAY_PARAM]
+    factory_cluster_toggle.set_visible(is_ev6_hda2_candidate(ui_state.CP))
+    status = self._params.get(FACTORY_SIDE_DISPLAY_STATUS_PARAM) or FactoryClusterStatus.OFF.value
+    status_text = FACTORY_CLUSTER_STATUS_TEXT.get(str(status), tr_noop("Unavailable: unknown state"))
+    factory_cluster_toggle.set_right_value(tr(status_text))
+    base_description = tr(FACTORY_CLUSTER_DESCRIPTION)
+    factory_cluster_toggle.set_description(f"<b>{tr(status_text)}</b><br><br>{base_description}")
 
     self._rainbow_style.action_item.set_selected_button(1 if self._params.get("RainbowModeStyle", return_default=True) == 1 else 0)
     self._rainbow_style.action_item.set_enabled(self._params.get_bool("RainbowMode"))

@@ -11,6 +11,7 @@ from opendbc.car.structs import car
 from opendbc.car.hyundai.values import CAR as HYUNDAI_CAR, HyundaiFlags, UNSUPPORTED_LONGITUDINAL_CAR
 from opendbc.car.subaru.values import CAR as SUBARU_CAR, SubaruFlags
 from opendbc.sunnypilot.car.hyundai.torque import supports_low_speed_torque
+from opendbc.sunnypilot.car.hyundai.factory_cluster import is_ev6_hda2_candidate, resolve_verified_profile
 from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -31,6 +32,8 @@ CAPABILITY_FIELDS = (
   "torque_allowed",
   "hkg_low_speed_torque_available",
   "hkg_corner_radar_available",
+  "hkg_factory_side_display_candidate",
+  "hkg_factory_side_display_available",
   "brand",
   "pcm_cruise",
   "alpha_long_available",
@@ -55,6 +58,8 @@ CAPABILITY_LABELS: dict[str, str] = {
   "torque_allowed": "torque steering (not available for angle steering vehicles)",
   "hkg_low_speed_torque_available": "compatible HKG CAN-FD torque steering",
   "hkg_corner_radar_available": "HKG CAN-FD corner-radar research display",
+  "hkg_factory_side_display_candidate": "Kia EV6 HDA2 factory-cluster side-vehicle candidate",
+  "hkg_factory_side_display_available": "verified Kia EV6 factory-cluster side-vehicle display",
   "brand": "Vehicle brand",
   "pcm_cruise": "PCM cruise",
   "alpha_long_available": "Alpha Longitudinal available",
@@ -163,6 +168,8 @@ def generate_capabilities(params: Params | None = None) -> dict:
       caps["torque_allowed"] = CP.steerControlType != car.CarParams.SteerControlType.angle
       caps["hkg_low_speed_torque_available"] = supports_low_speed_torque(CP)
       caps["hkg_corner_radar_available"] = bool(CP.brand == "hyundai" and CP.flags & HyundaiFlags.CANFD)
+      caps["hkg_factory_side_display_candidate"] = is_ev6_hda2_candidate(CP)
+      caps["hkg_factory_side_display_available"] = resolve_verified_profile(CP) is not None
       if not caps["brand"] and CP.brand:
         caps["brand"] = str(CP.brand)
       caps["pcm_cruise"] = bool(CP.pcmCruise)
