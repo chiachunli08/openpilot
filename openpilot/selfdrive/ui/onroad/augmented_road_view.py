@@ -113,6 +113,14 @@ class AugmentedRoadView(CameraView, AugmentedRoadViewSP):
 
     # Draw all UI overlays
     self.model_renderer.render(self._content_rect)
+    if gui_app.sunnypilot_ui():
+      self.model_renderer.draw_predicted_stop_marker(
+        self._content_rect,
+        self.model_renderer._path,
+        ui_state.sm,
+        self.model_renderer._map_to_screen,
+        self.model_renderer._path_offset_z,
+      )
     AugmentedRoadViewSP.update_fade_out_bottom_overlay(self, self._content_rect)
     self._hud_renderer.render(self._content_rect)
     self.alert_renderer.render(self._content_rect)
