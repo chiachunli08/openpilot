@@ -29,6 +29,16 @@ class CameraConfig:
     # aka 'K_inv' aka view_frame_from_camera_frame
     return np.linalg.inv(self.intrinsics)
 
+
+def scale_intrinsics(intrinsics: np.ndarray, source_size: tuple[int, int], output_size: tuple[int, int]) -> np.ndarray:
+  """Transform camera intrinsics after an axis-aligned hardware resize."""
+  source_width, source_height = source_size
+  output_width, output_height = output_size
+  if min(source_width, source_height, output_width, output_height) <= 0:
+    raise ValueError("camera dimensions must be positive")
+  scale = np.diag((output_width / source_width, output_height / source_height, 1.0))
+  return scale @ intrinsics
+
 @dataclass(frozen=True)
 class _NoneCameraConfig(CameraConfig):
   width: int = 0

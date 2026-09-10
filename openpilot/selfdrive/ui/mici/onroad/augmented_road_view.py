@@ -15,7 +15,7 @@ from openpilot.system.ui.lib.application import FontWeight, gui_app, MousePos, M
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets import Widget
 from openpilot.common.filter_simple import BounceFilter
-from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
+from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, scale_intrinsics, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
 from enum import IntEnum
 
@@ -294,6 +294,8 @@ class AugmentedRoadView(CameraView):
       int(self._content_rect.height),
       self.stream_type,
       round(ui_state.sm['carState'].vEgo, 1),
+      self.frame.width if self.frame is not None else 0,
+      self.frame.height if self.frame is not None else 0,
     )
 
     if cache_key == self._matrix_cache_key and self._cached_matrix is not None:
@@ -302,7 +304,9 @@ class AugmentedRoadView(CameraView):
     # Get camera configuration
     device_camera = self.device_camera or DEFAULT_DEVICE_CAMERA
     is_wide_camera = self.stream_type == WIDE_CAM
-    intrinsic = device_camera.wide_road.intrinsics if is_wide_camera else device_camera.narrow_road.intrinsics
+    camera = device_camera.wide_road if is_wide_camera else device_camera.narrow_road
+    frame_size = (self.frame.width, self.frame.height) if self.frame is not None else camera.size
+    intrinsic = scale_intrinsics(camera.intrinsics, camera.size, frame_size)
     calibration = self.view_from_wide_calib if is_wide_camera else self.view_from_calib
     if is_wide_camera:
       zoom = 0.7 * 1.5

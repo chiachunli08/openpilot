@@ -30,7 +30,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.common.params import Params
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import config_realtime_process, DT_MDL
-from openpilot.common.transformations.camera import DEVICE_CAMERAS
+from openpilot.common.transformations.camera import DEVICE_CAMERAS, scale_intrinsics
 from openpilot.common.transformations.model import get_warp_matrix
 from openpilot.system import sentry
 from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
@@ -468,10 +468,17 @@ def main(demo=False):
     if sm.updated["extrinsicsCalibration"] and sm.seen['narrowRoadCameraState'] and sm.seen['deviceState']:
       device_from_calib_euler = np.array(sm["extrinsicsCalibration"].rpyCalib, dtype=np.float32)
       dc = DEVICE_CAMERAS[(str(sm['deviceState'].deviceType), str(sm['narrowRoadCameraState'].sensor))]
-      main_intrinsics = dc.wide_road.intrinsics if main_wide_camera else dc.narrow_road.intrinsics
+      main_camera = dc.wide_road if main_wide_camera else dc.narrow_road
+      main_intrinsics = scale_intrinsics(main_camera.intrinsics, main_camera.size,
+                                         (vipc_client_main.width, vipc_client_main.height))
       model_transform_main = get_warp_matrix(device_from_calib_euler, main_intrinsics, False).astype(np.float32)
-      model_transform_extra = get_warp_matrix(device_from_calib_euler, dc.wide_road.intrinsics, True).astype(np.float32)
-      model_transform_main, model_transform_extra = camera_offset_helper.update(model_transform_main, model_transform_extra, sm, main_wide_camera)
+      extra_size = ((vipc_client_extra.width, vipc_client_extra.height) if use_extra_client else
+                    (vipc_client_main.width, vipc_client_main.height))
+      extra_intrinsics = scale_intrinsics(dc.wide_road.intrinsics, dc.wide_road.size, extra_size)
+      model_transform_extra = get_warp_matrix(device_from_calib_euler, extra_intrinsics, True).astype(np.float32)
+      model_transform_main, model_transform_extra = camera_offset_helper.update(
+        model_transform_main, model_transform_extra, sm, main_wide_camera,
+        intrinsics_main=main_intrinsics, intrinsics_extra=extra_intrinsics)
       live_calib_seen = True
 
     traffic_convention = np.zeros(2)

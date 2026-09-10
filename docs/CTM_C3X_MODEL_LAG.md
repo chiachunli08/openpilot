@@ -88,3 +88,36 @@ decision needs that capture. The three main remaining risks are:
 
 The diagnostic script is read-only: it does not load another model, change model
 rate, suppress alerts, write Params, or send CAN.
+
+## Experimental C4-equivalent preprocessing on C3X
+
+`C3XC4ModelPreprocess` is an opt-in experiment. On reboot, manager enables it
+only when the device is `tizi`, Chestnut is detected, and the selected runner is
+tinygrad. The OX03C10 road cameras then use the Qualcomm IFE to emit 1344x760
+NV12 frames, matching the comma four JIT input size. `modeld_v2` scales the
+camera intrinsics by the actual horizontal and vertical resize factors before
+building its warp matrices. The cabin camera is unchanged.
+
+Enable while parked, then reboot:
+
+```bash
+cd /data/openpilot
+python -c "from openpilot.common.params import Params; Params().put_bool('C3XC4ModelPreprocess', True, block=True)"
+sudo reboot
+```
+
+Disable and reboot before normal driving if camerad fails, overlays do not align,
+calibration behaves abnormally, or model output differs materially from the
+native C3X path:
+
+```bash
+cd /data/openpilot
+python -c "from openpilot.common.params import Params; Params().put_bool('C3XC4ModelPreprocess', False, block=True)"
+sudo reboot
+```
+
+This is not validated for on-road use. The IFE resize is non-uniform because the
+C3X and C4 road frames have different aspect ratios. The adjusted intrinsics
+preserve model ray geometry mathematically, but camera-driver behavior, UI
+projection, model equivalence, and frame timing still require device replay and
+parked testing.

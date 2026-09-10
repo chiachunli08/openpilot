@@ -283,6 +283,19 @@ void SpectraCamera::camera_open(VisionIpcServer *v) {
   buf.out_img_width = sensor->frame_width / sensor->out_scale;
   buf.out_img_height = (sensor->hdr_offset > 0 ? (sensor->frame_height - sensor->hdr_offset) / 2 : sensor->frame_height) / sensor->out_scale;
 
+  // comma four emits 1344x760 road frames from the ISP. This opt-in C3X path
+  // uses the same hardware output size; modeld compensates the axis scale in
+  // its camera intrinsics. Cabin/driver monitoring is intentionally untouched.
+  const bool c3x_c4_model_preprocess = getenv("C3X_C4_MODEL_PREPROCESS") != nullptr &&
+      sensor->image_sensor == cereal::FrameData::ImageSensor::OX03C10 &&
+      (cc.stream_type == VISION_STREAM_NARROW_ROAD || cc.stream_type == VISION_STREAM_WIDE_ROAD);
+  if (c3x_c4_model_preprocess) {
+    buf.out_img_width = 1344;
+    buf.out_img_height = 760;
+    LOGW("C3X C4-equivalent preprocessing enabled for camera %d: %ux%u", cc.camera_num,
+         buf.out_img_width, buf.out_img_height);
+  }
+
   // size is driven by all the HW that handles frames,
   // the video encoder has certain alignment requirements in this case
   std::tie(stride, y_height, uv_height, yuv_size) = get_nv12_info(buf.out_img_width, buf.out_img_height);

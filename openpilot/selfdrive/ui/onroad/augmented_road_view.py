@@ -10,7 +10,7 @@ from openpilot.selfdrive.ui.onroad.hud_renderer import HudRenderer
 from openpilot.selfdrive.ui.onroad.model_renderer import ModelRenderer
 from openpilot.selfdrive.ui.onroad.cameraview import CameraView
 from openpilot.system.ui.lib.application import gui_app
-from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
+from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, scale_intrinsics, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
 
 if gui_app.sunnypilot_ui():
@@ -164,7 +164,9 @@ class AugmentedRoadView(CameraView, AugmentedRoadViewSP):
       ui_state.sm.recv_frame['extrinsicsCalibration'],
       self._content_rect.width,
       self._content_rect.height,
-      self.stream_type
+      self.stream_type,
+      self.frame.width if self.frame is not None else 0,
+      self.frame.height if self.frame is not None else 0,
     )
     if cache_key == self._matrix_cache_key and self._cached_matrix is not None:
       return self._cached_matrix
@@ -172,7 +174,9 @@ class AugmentedRoadView(CameraView, AugmentedRoadViewSP):
     # Get camera configuration
     device_camera = self.device_camera or DEFAULT_DEVICE_CAMERA
     is_wide_camera = self.stream_type == WIDE_CAM
-    intrinsic = device_camera.wide_road.intrinsics if is_wide_camera else device_camera.narrow_road.intrinsics
+    camera = device_camera.wide_road if is_wide_camera else device_camera.narrow_road
+    frame_size = (self.frame.width, self.frame.height) if self.frame is not None else camera.size
+    intrinsic = scale_intrinsics(camera.intrinsics, camera.size, frame_size)
     calibration = self.view_from_wide_calib if is_wide_camera else self.view_from_calib
     zoom = 2.0 if is_wide_camera else 1.1
 
