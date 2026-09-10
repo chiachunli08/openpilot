@@ -60,7 +60,7 @@ def _publish_state(**kwargs) -> None:
   with _STATE_LOCK:
     if signature == _LAST_STATE_SIGNATURE and now_mono - _LAST_STATE_WRITE_MONO < STATE_REFRESH_S:
       return
-    state = {"timestamp": time.time(), **kwargs}
+    state = {"monotonic": now_mono, **kwargs}
     tmp = STATE_PATH.with_suffix(".tmp")
     try:
       tmp.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
@@ -142,11 +142,7 @@ def _letterbox_rgb_from_nv12(buf, cam_w: int, cam_h: int) -> np.ndarray:
 
 
 def _decode(output: np.ndarray) -> tuple[str | None, float]:
-  """Return the most relevant high-confidence signal from a standard Ultralytics detect head.
-
-  YOLO11 detect exports normally expose [cx, cy, w, h, class...] with either (C,N) or (N,C)
-  layout. We only need the best class for the HUD, so duplicate-box NMS is unnecessary here.
-  """
+  """Return the most relevant high-confidence signal from a standard Ultralytics detect head."""
   arr = np.asarray(output)
   while arr.ndim > 2:
     arr = arr[0]
@@ -216,18 +212,21 @@ class TrafficSignalYolo:
       from tinygrad.nn.onnx import OnnxRunner
 
       _publish_state(active=False, status="warming")
-      self.runner = OnnxRunner(str(MODEL_PATH))
-      self.input_name = next(iter(self.runner.graph_inputs))
+      runner = OnnxRunner(str(MODEL_PATH))
+      input_name = next(iter(runner.graph_inputs))
 
       def run_model(x):
-        return next(iter(self.runner({self.input_name: x}).values()))
+        return next(iter(runner({input_name: x}).values()))
 
-      self.jit = TinyJit(run_model)
+      jit = TinyJit(run_model)
+      self.runner = runner
+      self.input_name = input_name
+      self.jit = jit
       dummy = Tensor(np.zeros((1, 3, MODEL_INPUT, MODEL_INPUT), dtype=np.uint8), device=Device.DEFAULT).cast(dtypes.float32) / 255.0
       timings = []
       for _ in range(4):
         st = time.perf_counter()
-        self.jit(dummy).realize()
+        jit(dummy).realize()
         Device[Device.DEFAULT].synchronize()
         timings.append((time.perf_counter() - st) * 1000.0)
       # Ignore the compile-heavy first pass. Moving operation is still blocked until a complete real
@@ -248,12 +247,16 @@ class TrafficSignalYolo:
     from tinygrad import Tensor, dtypes
     from tinygrad.device import Device
 
+    jit = self.jit
+    if jit is None:
+      raise RuntimeError("traffic signal YOLO JIT not initialized")
+
     aux_st = time.perf_counter()
     rgb = _letterbox_rgb_from_nv12(buf, self.cam_w, self.cam_h)
     inp = Tensor(rgb, device=Device.DEFAULT).permute(2, 0, 1).unsqueeze(0).cast(dtypes.float32) / 255.0
 
     infer_st = time.perf_counter()
-    out = self.jit(inp)
+    out = jit(inp)
     out.realize()
     Device[Device.DEFAULT].synchronize()
     inference_ms = (time.perf_counter() - infer_st) * 1000.0
@@ -309,7 +312,6 @@ class TrafficSignalYolo:
       inference_ms, aux_total_ms, cls_name, confidence = self._run_once(buf)
       self.last_run = now
 
-      # A stationary validation failure means this device/model combination is not admitted for driving.
       if not self.runtime_validated:
         if inference_ms <= MAX_YOLO_INFERENCE_MS and aux_total_ms <= MAX_AUX_TOTAL_MS:
           self.runtime_validated = True
@@ -321,8 +323,6 @@ class TrafficSignalYolo:
                          mainModelMs=round(main_model_ms, 2))
           return
 
-      # Runtime jitter gets an escalating response. Moderate overruns back off and drop to 1 Hz;
-      # a large overrun disables further inference until modeld restarts and re-validates stationary.
       if inference_ms > MAX_YOLO_INFERENCE_MS or aux_total_ms > MAX_AUX_TOTAL_MS:
         self.backoff_until = now + SLOW_BACKOFF_S
         self.period_s = SLOW_PERIOD_S
@@ -336,7 +336,6 @@ class TrafficSignalYolo:
                        auxTotalMs=round(aux_total_ms, 2), mainModelMs=round(main_model_ms, 2))
         return
 
-      # Restore normal rate only after a comfortably fast pass.
       if aux_total_ms <= MAX_AUX_TOTAL_MS * 0.8:
         self.period_s = TARGET_PERIOD_S
 
