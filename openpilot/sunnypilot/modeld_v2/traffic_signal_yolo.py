@@ -27,6 +27,7 @@ MODEL_URL = "https://raw.githubusercontent.com/UsamaMasood12/YOLO11s-Traffic-Sig
 MODEL_GIT_BLOB_SHA1 = "acf5b39c8e83184587410f484dcb2213fee3bb4e"
 MODEL_SIZE = 37_936_019
 MODEL_INPUT = 640
+YOLO_DEVICE = "AMD"
 CLASSES = ("green", "left-green", "left-red", "left-yellow", "red", "yellow")
 STATE_PATH = Path("/dev/shm/sunnypilot_traffic_signal_yolo.json")
 MODEL_PATH = Path(Paths.model_root()) / "traffic_signal_yolo11s.onnx"
@@ -133,8 +134,7 @@ def _letterbox_rgb_from_nv12(buf, cam_w: int, cam_h: int) -> np.ndarray:
   new_w = max(1, min(MODEL_INPUT, round(cam_w * scale)))
   new_h = max(1, min(MODEL_INPUT, round(cam_h * scale)))
 
-  # Nearest-neighbor coordinates are adequate for this low-rate visual detector and avoid a full
-  # 1928x1208 RGB conversion on C3X. The YOLO model remains responsible for the actual detection.
+  # Nearest-neighbor coordinates avoid a full 1928x1208 RGB conversion on C3X.
   xs = np.minimum((np.arange(new_w, dtype=np.int32) * cam_w / new_w).astype(np.int32), cam_w - 1)
   ys = np.minimum((np.arange(new_h, dtype=np.int32) * cam_h / new_h).astype(np.int32), cam_h - 1)
   yv = y_plane[np.ix_(ys, xs)].astype(np.int32)
@@ -182,8 +182,6 @@ def _decode(output: np.ndarray) -> tuple[str | None, float]:
   if not len(valid):
     return None, 0.0
 
-  # Prefer signals near the forward field and suppress tiny far-away candidates. This is only a HUD
-  # relevance heuristic; it is never used as a driving decision.
   centers_x = boxes[valid, 0] / MODEL_INPUT
   widths = np.clip(boxes[valid, 2] / MODEL_INPUT, 0.0, 1.0)
   heights = np.clip(boxes[valid, 3] / MODEL_INPUT, 0.0, 1.0)
@@ -240,12 +238,12 @@ class TrafficSignalYolo:
       self.runner = runner
       self.input_name = input_name
       self.jit = jit
-      dummy = Tensor(np.zeros((1, 3, MODEL_INPUT, MODEL_INPUT), dtype=np.uint8), device=Device.DEFAULT).cast(dtypes.float32) / 255.0
+      dummy = Tensor(np.zeros((1, 3, MODEL_INPUT, MODEL_INPUT), dtype=np.uint8), device=YOLO_DEVICE).cast(dtypes.float32) / 255.0
       timings = []
       for _ in range(4):
         st = time.perf_counter()
         jit(dummy).realize()
-        Device[Device.DEFAULT].synchronize()
+        Device[YOLO_DEVICE].synchronize()
         timings.append((time.perf_counter() - st) * 1000.0)
       self.last_inference_ms = max(timings[1:])
       self.qualified = self.last_inference_ms <= MAX_YOLO_INFERENCE_MS
@@ -269,12 +267,12 @@ class TrafficSignalYolo:
 
     aux_st = time.perf_counter()
     rgb = _letterbox_rgb_from_nv12(buf, self.cam_w, self.cam_h)
-    inp = Tensor(rgb, device=Device.DEFAULT).permute(2, 0, 1).unsqueeze(0).cast(dtypes.float32) / 255.0
+    inp = Tensor(rgb, device=YOLO_DEVICE).permute(2, 0, 1).unsqueeze(0).cast(dtypes.float32) / 255.0
 
     infer_st = time.perf_counter()
     out = jit(inp)
     out.realize()
-    Device[Device.DEFAULT].synchronize()
+    Device[YOLO_DEVICE].synchronize()
     inference_ms = (time.perf_counter() - infer_st) * 1000.0
 
     cls_name, confidence = _decode(out.numpy())
@@ -289,7 +287,6 @@ class TrafficSignalYolo:
       _publish_state(active=False, status="disabled")
       return
 
-    # Downloads and ONNX/JIT warmup never happen while moving or while lateral/longitudinal control is active.
     stationary_idle = speed_mps < 0.1 and not controls_active
     if not model_ready():
       if stationary_idle:
@@ -312,8 +309,6 @@ class TrafficSignalYolo:
     if now < self.backoff_until or now - self.last_run < self.period_s:
       return
 
-    # Before any moving inference, validate the complete real-frame path while stationary. This
-    # includes NV12 conversion, resize, USB/GPU input, inference, GPU->CPU result and decoding.
     if not self.runtime_validated and not stationary_idle:
       _publish_state(active=False, status="waiting_for_stationary_validation")
       return
