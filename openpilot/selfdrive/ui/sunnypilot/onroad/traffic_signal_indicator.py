@@ -8,18 +8,19 @@ import pyray as rl
 
 from openpilot.sunnypilot.modeld_v2.traffic_signal_settings import is_enabled
 from openpilot.system.ui.lib.application import gui_app, FontWeight
+from openpilot.system.ui.lib.multilang import multilang
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 
 STATE_PATH = Path("/dev/shm/sunnypilot_traffic_signal_yolo.json")
 STATE_TTL_S = 1.5
 
 LABELS = {
-  "green": "GREEN",
-  "left-green": "LEFT",
-  "left-red": "LEFT",
-  "left-yellow": "LEFT",
-  "red": "RED",
-  "yellow": "YELLOW",
+  "green": ("GREEN", "綠燈"),
+  "left-green": ("LEFT", "左轉"),
+  "left-red": ("LEFT", "左轉"),
+  "left-yellow": ("LEFT", "左轉"),
+  "red": ("RED", "紅燈"),
+  "yellow": ("YELLOW", "黃燈"),
 }
 
 
@@ -39,7 +40,8 @@ class TrafficSignalIndicator:
       return
     try:
       state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-      if time.time() - float(state.get("timestamp", 0.0)) <= STATE_TTL_S and state.get("active"):
+      age = now - float(state.get("monotonic", 0.0))
+      if 0.0 <= age <= STATE_TTL_S and state.get("active"):
         self._state = state
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
       self._state = None
@@ -68,7 +70,7 @@ class TrafficSignalIndicator:
     if signal not in LABELS:
       return
 
-    # Positioned directly below the experimental-mode button in the upper-right HUD area.
+    # Positioned directly below the Experimental Mode button in the upper-right HUD area.
     box_w, box_h = 150, 190
     x = rect.x + rect.width - 30 - box_w
     y = rect.y + 30 + 192 + 24
@@ -83,7 +85,7 @@ class TrafficSignalIndicator:
     if signal.startswith("left-"):
       self._draw_left_arrow(center, rl.Color(15, 15, 15, 235))
 
-    label = LABELS[signal]
+    label = LABELS[signal][1] if multilang.language == "zh-CHT" else LABELS[signal][0]
     label_size = measure_text_cached(self._font, label, 30)
     rl.draw_text_ex(self._font, label, rl.Vector2(x + (box_w - label_size.x) / 2, y + 120), 30, 0, rl.WHITE)
 
