@@ -1,100 +1,90 @@
-# CTM on comma 3X versus comma four
+# CTM / CTMV2 lag on comma 3X
 
-Investigation base: `TonyBinheWu/sunnypilot` `hkg-enhanced`, commit
-`2e9e150a16bb7b137207fde36907652c643119d3`; tinygrad
-`e837e367aac9e1a66e689f4f32ce20ca9367df13`. No device log was supplied, so the
-reported c3x lag is not yet attributed to a measured cause.
+Investigation base: `TonyBinheWu/sunnypilot` `hkg-enhanced` at
+`c398a6235af6e83c38bf9e967121c0b75868f2a4`. The comparison used current
+sunnypilot `master` at `6135084c`, the requested `dev-chestnut` release commit
+`0e51ecbb7efc004c81cb640500a4d886f3ebb9c5`, and that release's recorded source
+commit `b255314f5ad9ff46f5561c7c2ef21c5b3c6585e7`.
 
-## Confirmed source findings
+No comma 3X capture was supplied, so an exact device-level root cause cannot be
+claimed. The branch did, however, contain two concrete divergences capable of
+making a model that is already near its 50 ms budget miss frames intermittently.
 
-- The [sunnypilot CTM announcement](https://community.sunnypilot.ai/t/cinque-terre-model-september-04-2026/7046)
-  lists comma four or comma 3X plus Chestnut. It is not a model intended to run on
-  the phone-class processor alone.
-- The [pinned Chestnut catalog](https://github.com/sunnypilot/sunnypilot-models/blob/fdfa1c7357c9605db701f391cc392a66b926a03d/docs/driving_models_chestnut_v25.json)
-  identifies CTM as reference `68b5f8e48602f4f88041efd7de6c99e97fda454e`,
-  tinygrad runner, generation 12, 20 Hz. CTMV2 is a separate bundle with reference
-  `37bfa1413edcdc2e8844984b83727c33f81d8f46`; record which is selected. The catalog
-  tinygrad revision matches this branch. This is not proof of on-device artifact identity.
-- `process_config.py` selects `modeld_tinygrad` for a selected tinygrad bundle.
-  Both stock and selected-model runners count jumps in consumed camera frame IDs.
-  `frameDropPerc` is a filtered dropped-frame percentage, not display FPS.
-- `selfdrived.py` triggers `modeldLagging` at `frameDropPerc > 1`. The nearby
-  events comment still says 20%; the executable condition is 1%. This diagnostic
-  change does not alter either the threshold or disengagement behavior.
-- Both runners have a 20 Hz / 50 ms processing period. `modelExecutionTime`
-  measures `model.run()`, including copies, output readback/parsing and scheduled
-  Chestnut telemetry. It is not a GPU-only inference timer and excludes some
-  surrounding receive/publish work. A low median alone cannot exclude lag.
+## Findings
 
-## Different camera input costs
+- The requested `0e51ecb` commit is an orphaned, prebuilt `dev-chestnut` release,
+  not a normal source commit. Its commit message records `b255314f` as the master
+  source revision. Comparing that source with current master shows no hidden CTM
+  scheduling or frame-drop fix; the relevant runtime difference is only a helper
+  relocation.
+- `hkg-enhanced` added a second taco2 navigation model and Mapbox renderer. When
+  enabled, that model shared the Chestnut AMD/USB execution path with the 20 Hz
+  driving model. Even at a lower navigation rate, resource contention can produce
+  periodic driving-model misses. A per-frame navigation bridge was also inserted
+  into both driving-model loops.
+- The branch's custom model build change replaced upstream
+  `TC_OCCUPANCY_OPT=1` with a backported `TC_MIN_GLOBALS=32` configuration and
+  changed camera build selection. That is not the build path recorded by the
+  requested release source. It also made locally rebuilt artifacts differ from
+  the official sunnypilot path without device benchmarks proving an improvement.
+- `modelV2.frameDropPerc` measures skipped consumed camera frame IDs. The
+  `Driving Model Lagging` alert fires above 1%; hiding the alert or changing that
+  threshold would not fix inference latency.
 
-At the investigation base above, `modeld/SConscript` selected OS geometry for
-mici (c4), AR/OX otherwise on comma hardware. The subsequent
-[compiler alignment](MODEL_COMPILATION_ALIGNMENT.md) builds both geometries;
-runtime still selects the detected sensor's dimensions. `nv12_info.py` and
-`compile_modeld.py:nv12_copy_size` yield for these configurations:
+The pinned Chestnut v25 catalog gives another useful clue:
 
-| Device | Camera frame | Padded bytes per camera copied by the packed-input path | Two cameras at 20 Hz |
-|---|---|---:|---:|
-| comma 3X | 1928 × 1208 | 3,735,552 | 149.42 MB/s |
-| comma four | 1344 × 760 | 1,622,016 | 64.88 MB/s |
+| Bundle | Reference | Build | Chunks |
+|---|---|---|---:|
+| Sad Model (`SM`) | `30de303d…` | `recompiled24`, 2026-09-01 | 17 |
+| CTM | `68b5f8e4…` | `recompiled25`, 2026-09-05 | 18 |
+| CTMV2 | `37bfa141…` | `recompiled25`, 2026-09-08 | 18 |
 
-These are calculated input volumes (decimal MB), not measured USB throughput or
-neural-network input sizes. The packed-input path copies these frames before
-warping. The actual downloaded pickle path must be checked in modeld startup
-logs. c3x has about 2.30 times the image payload on this path. Copy/USB/warp cost,
-thermal throttling, camera synchronization and telemetry latency are candidates
-to measure, not established diagnoses. Do not resize frames or change trained
-model timing based only on this comparison.
+CTM and CTMV2 share 15 of 18 compiled chunk hashes; Sad Model shares none with
+either. This strongly suggests CTM and CTMV2 use the same newer compiled execution
+shape, distinct from Sad Model. Chunk identity is not a performance measurement,
+so it cannot establish whether the remaining cost is in the model artifact,
+USB transfer, warp, or host scheduling.
 
-## Read-only capture
+## Fix applied in this branch
 
-On each device, with the same CTM version selected and its normal processes
-running, capture the period in which the alert occurs. Start the command while
-parked; a driver must not operate SSH while driving. No extra model is loaded.
+- Removed Mapbox navigation, taco2, all navigation-model processes, services,
+  parameters, UI paths, and the per-frame navigation bridge.
+- Restored the original OSM page plus the upstream `mapd` / `mapd_manager` path.
+- Restored stock and selected-model runtime/build files to current sunnypilot
+  master, including `TC_OCCUPANCY_OPT=1` on the selected Chestnut build workflow.
+- Kept the alert threshold, 20 Hz model rate, camera geometry, and model outputs
+  unchanged. The change removes competing work instead of masking dropped frames.
+
+## Read-only validation
+
+After installing this branch, delete and redownload CTM/CTMV2 if the device holds
+an artifact built locally by the old custom compile path. Then collect a 60-second
+sample while parked; do not operate SSH while driving:
 
 ```bash
 cd /data/openpilot
 python tools/scripts/diagnose_model_lag.py --seconds 60 --output /data/ctm_c3x.jsonl
 ```
 
-Use a different output name for c4, and a new filename for each run. Existing
-files are not overwritten. To inspect a saved rlog instead:
+Use a new output filename for each run; the tool intentionally refuses to
+overwrite a prior capture. To inspect a saved rlog instead:
 
 ```bash
 python tools/scripts/diagnose_model_lag.py --rlog /path/to/rlog.zst --output /data/ctm_rlog.jsonl
 ```
 
-The JSONL records exact code/model selection for live capture; per-message model
-time and reported drop percentage; camera timestamps; device utilization and
-temperature; and Chestnut voltage, faults, PCIe state, clocks, temperatures and
-USB link speed/error counters. It omits network credentials, GPS and USB serials.
-Unavailable data is represented as unknown, not fabricated zeros. The rlog mode
-does not attribute the analyzing computer's code/model selection to the vehicle.
+Compare CTM, CTMV2, and Sad Model under the same device temperature and camera
+conditions. Relevant fields are median/p95/max `modelExecutionTime`, samples over
+50 ms, `frameDropPerc`, camera publication intervals, Chestnut clocks and
+temperature, PCIe state, power/fault state, and USB speed/error counters.
 
-The summary reports median/p95/max execution time, samples exceeding 50 ms,
-reported drop percentage, actual big-model flags and observed service rates.
-Live SubMaster collection can miss messages under load; its observed gaps must
-not be relabeled as model frame drops. Invalid/dead model samples do not enter
-timing distributions. A capture with no valid model samples proves nothing
-about model performance. Raw timestamps remain available for correlation.
+If CTM still drops frames after the competing navigation path is gone, the next
+decision needs that capture. The three main remaining risks are:
 
-## How to use the evidence
+1. The official CTM/CTMV2 compiled artifact itself exceeds the c3x 50 ms budget
+   intermittently and must be rebuilt upstream with measured compiler tuning.
+2. Chestnut thermal, power, PCIe, USB-link, or cable behavior is causing stalls.
+3. Camera synchronization or host load outside modeld is skipping input frames.
 
-1. Check the model bundle reference and `valid_big_model_samples`. Selecting CTM
-   does not prove it stayed active; the runner can fall back to the small model.
-2. Compare camera publication intervals with model timing and `frameDropPerc`.
-   Regular cameras plus slow model cycles point downstream of capture. Camera
-   gaps/synchronization faults require checking camerad and its logs as well.
-3. Correlate bad intervals with Chestnut/device temperature, clocks, power/PCIe
-   events and USB speed/error counters. Nominal negotiated USB speed alone does
-   not establish achieved bandwidth or cable reliability.
-4. Provide both captures and the modeld startup/error log around the incident.
-   If practical, repeat on c3x with the same optional navigation/UI/radar settings
-   disabled one at a time to isolate host load. Absence of an alert after a single
-   run is not proof of a fix.
-
-The diagnostic tool does not suppress alerts, reduce the model rate, replace
-models, change camera capture sizes or send CAN. See
-[MODEL_COMPILATION_ALIGNMENT.md](MODEL_COMPILATION_ALIGNMENT.md) for the later
-compile-only optimization; already downloaded CTM files are not rebuilt by it.
+The diagnostic script is read-only: it does not load another model, change model
+rate, suppress alerts, write Params, or send CAN.

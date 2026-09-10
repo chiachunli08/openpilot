@@ -118,9 +118,6 @@ def initialize_params(params) -> list[dict[str, Any]]:
   # hyundai
   keys.extend([
     "HkgLowSpeedTorque",
-    "HkgStockClusterDisplay",
-    "HkgStockClusterDisplayTest",
-    "HkgLaneChangeAssistIcons",
     "HyundaiLongitudinalTuning",
   ])
 

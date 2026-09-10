@@ -225,20 +225,6 @@ class Test4DFeaturesBuffer(OpenpilotTestCase):
 
 
 class TestStockCompileModeldEquivalence(OpenpilotTestCase):
-  def test_verified_nav_features_are_preserved_in_both_compilers(self):
-    from openpilot.selfdrive.modeld.compile_modeld import get_policy_npy_shapes as stock_get_policy_npy_shapes
-    from openpilot.sunnypilot.modeld_v2.compile_modeld import get_policy_npy_shapes as sunny_get_policy_npy_shapes
-    input_shapes = {
-      'desire_pulse': (1, 25, 8),
-      'features_buffer': (1, 24, 512),
-      'traffic_convention': (1, 2),
-      'action_t': (1, 2),
-      'nav_features': (1, 64),
-    }
-    stock_shapes, _ = stock_get_policy_npy_shapes(input_shapes)
-    sunny_shapes, _ = sunny_get_policy_npy_shapes(input_shapes, is_supercombo=True)
-    assert stock_shapes['nav_features'] == sunny_shapes['nav_features'] == (1, 64)
-
   def test_get_policy_npy_shapes_matches_stock(self):
     from openpilot.selfdrive.modeld.compile_modeld import get_policy_npy_shapes as stock_get_policy_npy_shapes
     from openpilot.sunnypilot.modeld_v2.compile_modeld import get_policy_npy_shapes as sunny_get_policy_npy_shapes

@@ -37,8 +37,7 @@ class UIStateSP:
     self.sm_services_ext = [
       "modelManagerSP", "selfdriveStateSP", "longitudinalPlanSP", "backupManagerSP",
       "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay",
-      "navInstruction", "navRoute", "navigationStateSP", "mapboxNavigationStateSP",
-      "navigationModelStateSP", "navigationIntentStateSP", "cornerRadarStateSP",
+      "cornerRadarStateSP",
     ]
 
     self.sunnylink_state = SunnylinkState()
@@ -171,7 +170,6 @@ class UIStateSP:
     self.chestnut_compiled = self.chestnut_compiled or self.model_runner_tinygrad
     self.blindspot = self.params.get_bool("BlindSpot")
     self.hkg_corner_radar = self.params.get_bool("HkgCornerRadarDetection")
-    self.hkg_stock_cluster_display = self.params.get_bool("HkgStockClusterDisplay")
     self.chevron_metrics = self.params.get("ChevronInfo")
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
     self.developer_ui = self.params.get("DevUIInfo")

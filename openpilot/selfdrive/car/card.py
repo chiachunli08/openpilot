@@ -24,7 +24,6 @@ from openpilot.selfdrive.car.helpers import convert_carControlSP, convert_to_cap
 
 from openpilot.sunnypilot.mads.helpers import set_alternative_experience, set_car_specific_params
 from openpilot.sunnypilot.selfdrive.car import interfaces as sunnypilot_interfaces
-from openpilot.sunnypilot.selfdrive.car.hkg_cluster_display import HkgClusterDisplayTestController
 
 REPLAY = "REPLAY" in os.environ
 
@@ -76,7 +75,6 @@ class Car:
     self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'radarTracks'] + ['carParamsSP', 'carStateSP'])
 
     self.can_rcv_cum_timeout_counter = 0
-    self.last_can_list: list[tuple[int, list[CanData]]] = []
 
     self.CC_prev = car.CarControl.new_message()
     self.CS_prev = car.CarState.new_message()
@@ -140,8 +138,6 @@ class Car:
       safety_config.safetyModel = structs.CarParams.SafetyModel.noOutput
       self.CP.safetyConfigs = [safety_config]
 
-    self.hkg_cluster_display_test = HkgClusterDisplayTestController(self.CP, self.params)
-
     if self.CP.secOcRequired:
       # Copy user key if available
       try:
@@ -198,7 +194,6 @@ class Car:
 
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
-    self.last_can_list = can_list
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
@@ -286,7 +281,6 @@ class Car:
       # send car controls over can
       now_nanos = self.can_log_mono_time if REPLAY else int(time.monotonic() * 1e9)
       self.last_actuators_output, can_sends = self.CI.apply(CC, convert_carControlSP(CC_SP), now_nanos)
-      can_sends.extend(self.hkg_cluster_display_test.update(CS, CC, self.last_can_list, now_nanos))
       self.pm.send('sendcan', can_list_to_can_capnp(can_sends, msgtype='sendcan', valid=CS.canValid))
 
       self.CC_prev = CC

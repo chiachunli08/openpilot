@@ -6,7 +6,7 @@ from opendbc.car.structs import car
 from opendbc.car.hyundai.values import HyundaiFlags
 from openpilot.cereal import custom
 from openpilot.common.params import Params
-from openpilot.common.hardware import PC, COMMA_HARDWARE, HARDWARE
+from openpilot.common.hardware import PC, COMMA_HARDWARE
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
 from openpilot.common.hardware.hw import Paths
 
@@ -95,25 +95,6 @@ def is_stock_model(started, params, CP: car.CarParams) -> bool:
 def mapd_ready(started: bool, params: Params, CP: car.CarParams) -> bool:
   return bool(os.path.exists(Paths.mapd_root()))
 
-def navigation_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and params.get_bool("NavigationEnabled")
-
-def mapbox_navigation_renderer_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
-  if not started or not params.get_bool("NavigationEnabled"):
-    return False
-  device_type = HARDWARE.get_device_type()
-  display = device_type == "tizi" and params.get_bool("MapboxMapDisplayEnabled")
-  model_input = device_type in ("tici", "tizi") and params.get_bool("NavigationModelEnabled")
-  return display or model_input
-
-def navigation_model_prepare_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return (not started and params.get_bool("NavigationEnabled") and params.get_bool("NavigationModelEnabled") and
-          HARDWARE.get_device_type() in ("tici", "tizi"))
-
-def navigation_model_runtime_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return (started and params.get_bool("NavigationEnabled") and params.get_bool("NavigationModelEnabled") and
-          HARDWARE.get_device_type() in ("tici", "tizi"))
-
 def hkg_corner_radar(started: bool, params: Params, CP: car.CarParams) -> bool:
   return (started and params.get_bool("HkgCornerRadarDetection") and CP.brand == "hyundai" and
           bool(CP.flags & HyundaiFlags.CANFD))
@@ -194,8 +175,6 @@ procs = [
 procs += [
   # Models
   PythonProcess("models_manager", "openpilot.sunnypilot.models.manager", only_offroad),
-  PythonProcess("navigation_model_manager", "openpilot.sunnypilot.navd.navigation_model_manager", navigation_model_prepare_enabled),
-  PythonProcess("navigation_modeld", "openpilot.sunnypilot.navd.navigation_modeld", navigation_model_runtime_enabled),
   NativeProcess("modeld_tinygrad", "openpilot/sunnypilot/modeld_v2", ["./modeld"], and_(only_onroad, is_tinygrad_model)),
 
   # Backup
@@ -204,8 +183,6 @@ procs += [
   # mapd
   NativeProcess("mapd", Paths.mapd_root(), ["bash", "-c", f"{MAPD_PATH} > /dev/null 2>&1"], mapd_ready),
   PythonProcess("mapd_manager", "openpilot.sunnypilot.mapd.mapd_manager", always_run),
-  PythonProcess("navigationd", "openpilot.sunnypilot.navd.navigationd", navigation_enabled),
-  PythonProcess("mapbox_mapd", "openpilot.sunnypilot.navd.mapbox_mapd", mapbox_navigation_renderer_enabled),
 
   # locationd
   NativeProcess("locationd_llk", "openpilot/sunnypilot/selfdrive/locationd", ["./locationd"], only_onroad),

@@ -33,27 +33,6 @@ sections:
     - type: capability
       field: hkg_corner_radar_available
       equals: true
-  - key: HkgStockClusterDisplay
-    widget: toggle
-    title: Kia EV6 Stock Cluster Extensions (Research)
-    description: Master permission for verified stock-cluster extensions. Each icon also requires an exact compatible vehicle
-      profile and fresh valid data during normal operation. The on-device Visuals menu also contains a separate local-only,
-      parked one-shot test for restricted 0x161 arrow, lane and navigation pages; sunnylink cannot arm that active test.
-    visibility:
-    - type: capability
-      field: hkg_stock_cluster_display_candidate
-      equals: true
-  - key: HkgLaneChangeAssistIcons
-    widget: toggle
-    title: 換道輔助圖示跟隨 LFA
-    description: >-
-      Link the stock cluster's left/right lane-change-assist status icons to actual lateral control and modelV2 lane-change
-      state. This display-only feature never starts a lane change. The device rejects the setting until the exact EV6 cluster
-      firmware, 0x161 bus, complete frame behavior and Panda authorization have been verified.
-    visibility:
-    - type: capability
-      field: hkg_stock_cluster_display_candidate
-      equals: true
   - key: TorqueBar
     widget: toggle
     title: Steering Arc

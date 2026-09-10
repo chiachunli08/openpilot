@@ -84,7 +84,7 @@ class TimingSummary:
   def result(self):
     services = {}
     for name, times in self.times.items():
-      intervals = [b - a for a, b in zip(times, times[1:])]
+      intervals = [b - a for a, b in zip(times, times[1:], strict=False)]
       ordered = len(times) > 1 and all(dt > 0 for dt in intervals)
       services[name] = {"samples": len(times), "valid_samples": self.valid_counts[name],
                         "observed_hz": (len(times) - 1) / (times[-1] - times[0]) if ordered else None,
@@ -94,7 +94,7 @@ class TimingSummary:
             "reported_frame_drop_percent": distribution(self.drops),
             "execution_over_50ms_samples": sum(ms > 50 for ms in self.execution_ms),
             "valid_big_model_samples": self.big_count, "valid_model_samples": self.model_count,
-            "note": "20 Hz has a 50 ms period. Execution time includes run() work, not just GPU kernels. "
+            "note": "20 Hz has a 50 ms period. Execution time includes run() work, not just GPU kernels. " +
                     "Observed message gaps may include collector delay; inspect reported_frame_drop_percent separately."}
 
 

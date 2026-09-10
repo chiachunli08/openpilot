@@ -6,16 +6,6 @@ See the LICENSE.md file in the root directory for more details.
 """
 from openpilot.common.params import Params
 from opendbc.car.hyundai.values import HyundaiFlags
-from openpilot.sunnypilot.selfdrive.car.hkg_cluster_display import (
-  HKG_CLUSTER_TEST_PARAM,
-  HKG_CLUSTER_TEST_STATUS_PARAM,
-  HKG_CLUSTER_PERMISSION_PARAM,
-  HKG_LCA_ICONS_PARAM,
-  HKG_LCA_ICONS_STATUS_PARAM,
-  ClusterFeature,
-  is_ev6_hda2_cluster_candidate,
-  verified_features_for_car,
-)
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp, multiple_button_item_sp
@@ -56,26 +46,6 @@ class VisualsLayout(Widget):
         tr("Show yellow radar candidates beside the speedometer, separately from blind-spot icons. RADAR* means experimental: " +
            "sensor mounting and validity still need vehicle validation. Display only; no control decisions."),
         None,
-      ),
-      HKG_CLUSTER_PERMISSION_PARAM: (
-        lambda: tr("Kia EV6 Stock Cluster Extensions (Research)"),
-        tr("Master permission for verified stock-cluster extensions. Each icon also requires an exact compatible vehicle " +
-           "profile and fresh valid data. A separate local, parked-only test can send restricted 0x161 pages."),
-        self._on_hkg_cluster_permission,
-      ),
-      HKG_CLUSTER_TEST_PARAM: (
-        lambda: tr("Test EV6 Arrows, Lanes and Navigation (Park Only)"),
-        tr("One-shot research test for lane-change arrows, lane colors, navigation icons. " +
-           "Requires this master permission, exact EV6 HDA2 detection, Park, standstill, no accelerator, and disengaged control. " +
-           "The test stops on any interlock or original 0x161/0x162 conflict, turns itself off, and requires a restart to arm."),
-        self._on_hkg_cluster_test,
-      ),
-      HKG_LCA_ICONS_PARAM: (
-        lambda: tr("換道輔助圖示跟隨 LFA"),
-        tr("Link the stock cluster's left/right lane-change-assist status icons to actual lateral control and modelV2 lane-change state. " +
-           "This display-only feature never starts a lane change. It remains unavailable until the exact EV6 cluster firmware, " +
-           "0x161 bus and full-frame behavior have been verified."),
-        self._on_hkg_lca_icons,
       ),
       "TorqueBar": (
         lambda: tr("Steering Arc"),
@@ -181,19 +151,6 @@ class VisualsLayout(Widget):
     ]
     return items
 
-  def _on_hkg_cluster_permission(self, state: bool):
-    if not state:
-      self._params.put_bool(HKG_CLUSTER_TEST_PARAM, False)
-      self._params.put_bool(HKG_LCA_ICONS_PARAM, False)
-      self._params.put(HKG_CLUSTER_TEST_STATUS_PARAM, "permission_disabled")
-      self._params.put(HKG_LCA_ICONS_STATUS_PARAM, "permission_disabled")
-
-  def _on_hkg_cluster_test(self, state: bool):
-    self._params.put(HKG_CLUSTER_TEST_STATUS_PARAM, "armed_restart_required" if state else "cancelled_by_user")
-
-  def _on_hkg_lca_icons(self, state: bool):
-    self._params.put(HKG_LCA_ICONS_STATUS_PARAM, "enabled" if state else "disabled_by_user")
-
   def _update_state(self):
     super()._update_state()
 
@@ -203,40 +160,6 @@ class VisualsLayout(Widget):
     hkg_canfd = (ui_state.CP is not None and ui_state.CP.brand == "hyundai" and
                  bool(ui_state.CP.flags & HyundaiFlags.CANFD))
     self._toggles["HkgCornerRadarDetection"].set_visible(hkg_canfd)
-
-    hkg_cluster_candidate = is_ev6_hda2_cluster_candidate(ui_state.CP)
-    hkg_cluster_toggle = self._toggles[HKG_CLUSTER_PERMISSION_PARAM]
-    hkg_cluster_toggle.set_visible(hkg_cluster_candidate)
-    hkg_test_toggle = self._toggles[HKG_CLUSTER_TEST_PARAM]
-    hkg_test_toggle.set_visible(hkg_cluster_candidate)
-    master_enabled = self._params.get_bool(HKG_CLUSTER_PERMISSION_PARAM)
-    hkg_test_toggle.action_item.set_enabled(master_enabled)
-    test_status = self._params.get(HKG_CLUSTER_TEST_STATUS_PARAM) or "idle"
-    hkg_test_toggle.set_right_value(tr(str(test_status).replace("_", " ")))
-    verified_count = len(verified_features_for_car(ui_state.CP))
-    lca_toggle = self._toggles[HKG_LCA_ICONS_PARAM]
-    lca_toggle.set_visible(hkg_cluster_candidate)
-    lca_verified = ClusterFeature.LANE_CHANGE_ICONS in verified_features_for_car(ui_state.CP)
-    lca_toggle.action_item.set_enabled(master_enabled and lca_verified)
-    if hkg_cluster_candidate and not lca_verified:
-      if self._params.get_bool(HKG_LCA_ICONS_PARAM):
-        self._params.put_bool(HKG_LCA_ICONS_PARAM, False)
-      unavailable_status = "unavailable_unverified_vehicle_profile"
-      if self._params.get(HKG_LCA_ICONS_STATUS_PARAM) != unavailable_status:
-        self._params.put(HKG_LCA_ICONS_STATUS_PARAM, unavailable_status)
-    lca_status = self._params.get(HKG_LCA_ICONS_STATUS_PARAM) or "unavailable"
-    lca_toggle.set_right_value(tr(str(lca_status).replace("_", " ")))
-    if hkg_cluster_candidate:
-      hkg_cluster_toggle.set_right_value(tr("{} verified").format(verified_count))
-      if verified_count:
-        hkg_cluster_toggle.set_description(tr(
-          "Master permission for verified stock-cluster extensions. Every icon is cleared independently when its source data is invalid or stale."
-        ))
-      else:
-        hkg_cluster_toggle.set_description(tr(
-          "Compatibility is unconfirmed, so normal dynamic cluster output remains disabled. " +
-          "The separate local test sends only restricted pages while parked so each display can be filmed and verified."
-        ))
 
     self._rainbow_style.action_item.set_selected_button(1 if self._params.get("RainbowModeStyle", return_default=True) == 1 else 0)
     self._rainbow_style.action_item.set_enabled(self._params.get_bool("RainbowMode"))

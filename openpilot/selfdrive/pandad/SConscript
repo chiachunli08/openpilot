@@ -7,5 +7,4 @@ if arch != "Darwin":
   env.Program('pandad', ['main.cc', 'pandad.cc', 'panda_safety.cc'], LIBS=[panda] + libs)
 
   if GetOption('extras'):
-    env.Program('tests/test_qr_scan_ir', ['tests/test_qr_scan_ir.cc'])
     env.Program('tests/test_pandad_canprotocol', ['tests/test_pandad_canprotocol.cc'], LIBS=[panda] + libs)

@@ -220,30 +220,3 @@ class TestNotEngagedReplacement(OpenpilotTestCase):
     rule_types = _flatten_rule_types(item.get("enablement"))
     assert "offroad_only" not in rule_types, f"{key} still uses offroad_only"
     assert "not_engaged" in rule_types, f"{key} missing not_engaged"
-
-
-class TestNavigationIntegrationGates(OpenpilotTestCase):
-  def test_driver_map_is_gated_to_exact_c3x_device_type(self, schema):
-    item = _find_item(schema, "MapboxMapDisplayEnabled")
-    assert item is not None
-    rules = json.dumps(item.get("enablement") or [])
-    assert '"field": "device_type"' in rules
-    assert '"equals": "tizi"' in rules
-    assert '"equals": "tici"' not in rules
-
-  def test_navigation_model_is_parked_and_snapdragon_845_only(self, schema):
-    item = _find_item(schema, "NavigationModelEnabled")
-    assert item is not None
-    rules = item.get("enablement") or []
-    serialized = json.dumps(rules)
-    assert "offroad_only" in _flatten_rule_types(rules)
-    assert '"equals": "tici"' in serialized
-    assert '"equals": "tizi"' in serialized
-    assert '"equals": "mici"' not in serialized
-
-  def test_feature_fusion_requires_runtime_compatibility_and_offroad(self, schema):
-    item = _find_item(schema, "NavigationModelFusionEnabled")
-    assert item is not None
-    rules = item.get("enablement") or []
-    assert "offroad_only" in _flatten_rule_types(rules)
-    assert "NavigationModelFusionCompatible" in json.dumps(rules)

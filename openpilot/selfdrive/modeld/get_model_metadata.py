@@ -2,12 +2,10 @@
 import sys
 import pathlib
 import codecs
-import hashlib
 import pickle
 from typing import Any
 
 from tinygrad.nn.onnx import OnnxPBParser
-from openpilot.sunnypilot.navd.navigation_model_compat import verified_navigation_contract
 
 
 class MetadataOnnxPBParser(OnnxPBParser):
@@ -41,21 +39,10 @@ def make_metadata_dict(model_path):
   model = MetadataOnnxPBParser(model_path).parse()
   output_slices = get_metadata_value_by_name(model, 'output_slices')
   assert output_slices is not None, 'output_slices not found in metadata'
-  input_shapes = dict(get_name_and_shape(x) for x in model["graph"]["input"])
-  with open(model_path, "rb") as file:
-    model_sha256 = hashlib.file_digest(file, "sha256").hexdigest()
-  navigation_feature_contract = verified_navigation_contract(
-    input_shapes=input_shapes,
-    model_sha256=model_sha256,
-    declared_contract=get_metadata_value_by_name(model, 'navigation_feature_contract') or "",
-    source_sha256=get_metadata_value_by_name(model, 'navigation_feature_source_sha256') or "",
-  )
   return {
     'model_checkpoint': get_metadata_value_by_name(model, 'model_checkpoint'),
-    'model_sha256': model_sha256,
-    'navigation_feature_contract': navigation_feature_contract,
     'output_slices': pickle.loads(codecs.decode(output_slices.encode(), "base64")),
-    'input_shapes': input_shapes,
+    'input_shapes': dict(get_name_and_shape(x) for x in model["graph"]["input"]),
     'output_shapes': dict(get_name_and_shape(x) for x in model["graph"]["output"]),
   }
 

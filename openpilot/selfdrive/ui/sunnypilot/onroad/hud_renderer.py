@@ -17,9 +17,6 @@ from openpilot.selfdrive.ui.sunnypilot.onroad.turn_signal import TurnSignalContr
 from openpilot.selfdrive.ui.sunnypilot.onroad.circular_alerts import CircularAlertsRenderer
 from openpilot.selfdrive.ui.sunnypilot.onroad.corner_radar_indicators import CornerRadarIndicators
 from openpilot.selfdrive.ui.sunnypilot.onroad.speed_renderer import SpeedRenderer
-from openpilot.selfdrive.ui.sunnypilot.onroad.navigation_instruction import NavigationInstructionRenderer
-from openpilot.selfdrive.ui.sunnypilot.onroad.mapbox_navigation import MapboxNavigationRenderer
-from openpilot.sunnypilot.navd.mapbox_mapd import display_map_supported
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.selfdrive.ui.onroad.hud_renderer import HudRenderer, UI_CONFIG, FONT_SIZES, COLORS, CRUISE_DISABLED_CHAR
 from openpilot.system.ui.lib.application import gui_app
@@ -42,8 +39,6 @@ class HudRendererSP(HudRenderer):
     self.corner_radar_indicators = CornerRadarIndicators()
     self.speed_renderer = SpeedRenderer()
     self._torque_bar = TorqueBar(scale=3.0, always=True)
-    self.navigation_instruction = NavigationInstructionRenderer()
-    self.mapbox_navigation = self._child(MapboxNavigationRenderer()) if display_map_supported() else None
 
     self.pcm_cruise_speed: bool = True
     self.show_icbm_status: bool = False
@@ -139,11 +134,6 @@ class HudRendererSP(HudRenderer):
   def _render(self, rect: rl.Rectangle) -> None:
     super()._render(rect)
 
-    if self.mapbox_navigation is not None:
-      map_width, map_height = self.mapbox_navigation.desired_size
-      map_rect = rl.Rectangle(rect.x + rect.width - map_width - 45, rect.y + 205, map_width, map_height)
-      self.mapbox_navigation.render(map_rect)
-
     if ui_state.torque_bar:
       torque_rect = rect
       if ui_state.developer_ui in (DeveloperUiState.BOTTOM, DeveloperUiState.BOTH):
@@ -158,7 +148,3 @@ class HudRendererSP(HudRenderer):
     self.corner_radar_indicators.render(rect)
     self.circular_alerts_renderer.render(rect)
     self.rocket_fuel.render(rect, ui_state.sm)
-    self.navigation_instruction.render(rect)
-
-  def user_interacting(self) -> bool:
-    return super().user_interacting() or (self.mapbox_navigation is not None and self.mapbox_navigation.is_pressed)

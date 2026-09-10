@@ -2643,10 +2643,10 @@ struct Event {
     liveMapDataSP @115 :Custom.LiveMapDataSP;
     modelDataV2SP @116 :Custom.ModelDataV2SP;
     cornerRadarStateSP @136 :Custom.CornerRadarStateSP;
-    navigationStateSP @137 :Custom.NavigationStateSP;
-    mapboxNavigationStateSP @138 :Custom.MapboxNavigationStateSP;
-    navigationModelStateSP @139 :Custom.NavigationModelStateSP;
-    navigationIntentStateSP @140 :Custom.NavigationIntentStateSP;
+    customReserved11 @137 :Custom.CustomReserved11;
+    customReserved12 @138 :Custom.CustomReserved12;
+    customReserved13 @139 :Custom.CustomReserved13;
+    customReserved14 @140 :Custom.CustomReserved14;
     customReserved15 @141 :Custom.CustomReserved15;
     customReserved16 @142 :Custom.CustomReserved16;
     customReserved17 @143 :Custom.CustomReserved17;
@@ -2704,8 +2704,8 @@ struct Event {
     driverMonitoringStateDEPRECATED @71 :DriverMonitoringStateDEPRECATED;
     gpsNMEADEPRECATED @3 :GPSNMEAData;
     uploaderStateDEPRECATED @79 :UploaderState;
-    navInstruction @82 :NavInstruction;
-    navRoute @83 :NavRoute;
+    navInstructionDEPRECATED @82 :NavInstruction;
+    navRouteDEPRECATED @83 :NavRoute;
     navThumbnailDEPRECATED @84 :Thumbnail;
     gnssMeasurementsDEPRECATED @91 :GnssMeasurements;
     mapRenderStateDEPRECATED @105: MapRenderState;
