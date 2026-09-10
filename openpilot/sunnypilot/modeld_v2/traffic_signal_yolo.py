@@ -123,21 +123,39 @@ def _download_model() -> None:
 
 
 def _letterbox_rgb_from_nv12(buf, cam_w: int, cam_h: int) -> np.ndarray:
-  import cv2
-
+  """Sample NV12 directly to the 640-square model canvas without materializing full-resolution RGB."""
   stride, y_height, uv_height, _ = get_nv12_info(cam_w, cam_h)
   raw = np.frombuffer(buf.data, dtype=np.uint8, count=stride * (y_height + uv_height))
-  y = raw[:stride * y_height].reshape(y_height, stride)[:cam_h, :cam_w]
-  uv = raw[stride * y_height:stride * (y_height + uv_height)].reshape(uv_height, stride)[:cam_h // 2, :cam_w]
-  nv12 = np.vstack((y, uv))
-  rgb = cv2.cvtColor(nv12, cv2.COLOR_YUV2RGB_NV12)
+  y_plane = raw[:stride * y_height].reshape(y_height, stride)
+  uv_plane = raw[stride * y_height:stride * (y_height + uv_height)].reshape(uv_height, stride)
 
   scale = min(MODEL_INPUT / cam_w, MODEL_INPUT / cam_h)
-  new_w, new_h = max(1, round(cam_w * scale)), max(1, round(cam_h * scale))
-  resized = cv2.resize(rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+  new_w = max(1, min(MODEL_INPUT, round(cam_w * scale)))
+  new_h = max(1, min(MODEL_INPUT, round(cam_h * scale)))
+
+  # Nearest-neighbor coordinates are adequate for this low-rate visual detector and avoid a full
+  # 1928x1208 RGB conversion on C3X. The YOLO model remains responsible for the actual detection.
+  xs = np.minimum((np.arange(new_w, dtype=np.int32) * cam_w / new_w).astype(np.int32), cam_w - 1)
+  ys = np.minimum((np.arange(new_h, dtype=np.int32) * cam_h / new_h).astype(np.int32), cam_h - 1)
+  yv = y_plane[np.ix_(ys, xs)].astype(np.int32)
+
+  uv_rows = np.minimum(ys // 2, cam_h // 2 - 1)
+  uv_cols = np.minimum((xs // 2) * 2, cam_w - 2)
+  u = uv_plane[np.ix_(uv_rows, uv_cols)].astype(np.int32)
+  v = uv_plane[np.ix_(uv_rows, uv_cols + 1)].astype(np.int32)
+
+  # Integer BT.601 limited-range YUV -> RGB, matching common NV12 camera conversion behavior.
+  c = np.maximum(yv - 16, 0)
+  d = u - 128
+  e = v - 128
+  r = (298 * c + 409 * e + 128) >> 8
+  g = (298 * c - 100 * d - 208 * e + 128) >> 8
+  b = (298 * c + 516 * d + 128) >> 8
+  sampled = np.stack((r, g, b), axis=-1).clip(0, 255).astype(np.uint8)
+
   canvas = np.full((MODEL_INPUT, MODEL_INPUT, 3), 114, dtype=np.uint8)
   x0, y0 = (MODEL_INPUT - new_w) // 2, (MODEL_INPUT - new_h) // 2
-  canvas[y0:y0 + new_h, x0:x0 + new_w] = resized
+  canvas[y0:y0 + new_h, x0:x0 + new_w] = sampled
   return canvas
 
 
@@ -229,8 +247,6 @@ class TrafficSignalYolo:
         jit(dummy).realize()
         Device[Device.DEFAULT].synchronize()
         timings.append((time.perf_counter() - st) * 1000.0)
-      # Ignore the compile-heavy first pass. Moving operation is still blocked until a complete real
-      # camera-frame path is measured while stationary.
       self.last_inference_ms = max(timings[1:])
       self.qualified = self.last_inference_ms <= MAX_YOLO_INFERENCE_MS
       _publish_state(active=False, status="awaiting_stationary_validation" if self.qualified else "insufficient_headroom",
