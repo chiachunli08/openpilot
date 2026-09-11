@@ -1,9 +1,16 @@
-"""Unclassified radar markers. Group mounting is experimental; columns are not lateral coordinates."""
+"""Display helpers for the experimental HKG corner-radar visualization.
+
+The corner-radar wire format and sensor mounting are still research data. These
+helpers only turn already-published display data into screen coordinates; they
+do not feed any radar target back into controls.
+"""
 import math
 from dataclasses import dataclass
 
 MAX_DISPLAY_AGE_SEC = 0.35
 MAX_DISPLAY_DISTANCE_M = 120.0
+MAX_SCENE_DISTANCE_M = 100.0
+MAX_SCENE_ABS_LATERAL_M = 8.0
 MAX_TARGETS_PER_GROUP = 3
 GROUP_POSITIONS = {0: (-1, 0), 1: (1, 0), 2: (-1, 1), 3: (1, 1)}
 
@@ -14,22 +21,98 @@ class DisplayCornerTarget:
   source_bus: int
   track_id: int
   distance_m: float
+  longitudinal_m: float
+  lateral_m: float
+  estimated_radial_speed_mps: float | None = None
 
 
 def select_display_targets(targets, message_age: float = 0.0) -> list[DisplayCornerTarget]:
   if not math.isfinite(message_age) or not 0 <= message_age <= MAX_DISPLAY_AGE_SEC:
     return []
+
   groups: dict[int, list[DisplayCornerTarget]] = {group: [] for group in GROUP_POSITIONS}
   for target in targets:
     group, bus = int(target.sensorGroup), int(target.sourceBus)
     distance, age = float(target.distance), float(target.ageSec) + message_age
+    longitudinal, lateral = float(target.longitudinal), float(target.lateral)
+    radial_speed = None
+    if bool(target.estimatedRadialSpeedValid):
+      value = float(target.estimatedRadialSpeed)
+      radial_speed = value if math.isfinite(value) else None
+
     if (group not in groups or not 0 <= bus < 128 or not target.candidateActive or
         not math.isfinite(distance) or not 0 < distance <= MAX_DISPLAY_DISTANCE_M or
+        not math.isfinite(longitudinal) or not math.isfinite(lateral) or
         not math.isfinite(age) or not 0 <= age <= MAX_DISPLAY_AGE_SEC):
       continue
-    groups[group].append(DisplayCornerTarget(group, bus, int(target.trackId), distance))
+
+    groups[group].append(DisplayCornerTarget(
+      sensor_group=group,
+      source_bus=bus,
+      track_id=int(target.trackId),
+      distance_m=distance,
+      longitudinal_m=longitudinal,
+      lateral_m=lateral,
+      estimated_radial_speed_mps=radial_speed,
+    ))
+
   return [target for group in groups.values()
           for target in sorted(group, key=lambda t: (t.distance_m, t.source_bus, t.track_id))[:MAX_TARGETS_PER_GROUP]]
+
+
+def scene_position(longitudinal_m: float, lateral_m: float, x: float, y: float,
+                   width: float, height: float) -> tuple[float, float] | None:
+  """Project a forward radar point into a stable camera-like HUD perspective.
+
+  This intentionally uses a conservative display projection rather than the
+  camera calibration matrix because the experimental corner sensor mounting is
+  not validated yet. It must not be used for control or sensor fusion.
+  """
+  if (not math.isfinite(longitudinal_m) or not math.isfinite(lateral_m) or
+      not 2.5 <= longitudinal_m <= MAX_SCENE_DISTANCE_M or
+      abs(lateral_m) > MAX_SCENE_ABS_LATERAL_M or width <= 0 or height <= 0):
+    return None
+
+  center_x = x + width * 0.5
+  horizon_y = y + height * 0.40
+  near_y = y + height * 0.90
+  depth = math.sqrt(min(max(longitudinal_m / MAX_SCENE_DISTANCE_M, 0.0), 1.0))
+  screen_y = near_y - depth * (near_y - horizon_y)
+
+  near_scale = 92.0
+  far_scale = 14.0
+  scale_ratio = min(max((longitudinal_m - 2.5) / (MAX_SCENE_DISTANCE_M - 2.5), 0.0), 1.0)
+  lateral_scale = near_scale + (far_scale - near_scale) * scale_ratio
+  # Radar y is left-positive, screen x is right-positive.
+  screen_x = center_x - lateral_m * lateral_scale
+
+  margin = 24.0
+  if not (x + margin <= screen_x <= x + width - margin and y + margin <= screen_y <= y + height - margin):
+    return None
+  return screen_x, screen_y
+
+
+def estimate_corner_object_velocity(target: DisplayCornerTarget, ego_speed_mps: float) -> tuple[float, float, float] | None:
+  """Return an approximate absolute velocity vector and speed for display only.
+
+  The only available velocity measurement is temporal range-rate. Treating that
+  radial value as the full relative vector is an approximation, so the UI marks
+  the resulting speed with a '~' prefix.
+  """
+  radial_speed = target.estimated_radial_speed_mps
+  if radial_speed is None or not math.isfinite(ego_speed_mps) or target.distance_m <= 0.1:
+    return None
+
+  ux = target.longitudinal_m / target.distance_m
+  uy = target.lateral_m / target.distance_m
+  rel_long = radial_speed * ux
+  rel_lat = radial_speed * uy
+  abs_long = ego_speed_mps + rel_long
+  abs_lat = rel_lat
+  speed = math.hypot(abs_long, abs_lat)
+  if not all(math.isfinite(value) for value in (abs_long, abs_lat, speed)) or speed > 70.0:
+    return None
+  return abs_long, abs_lat, speed
 
 
 def panel_bounds(x: float, width: float, side: int) -> tuple[float, float] | None:
