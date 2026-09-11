@@ -541,6 +541,16 @@ class CAR(Platforms):
     wmis={WMI.VOLKSWAGEN_USA_SUV, WMI.VOLKSWAGEN_EUROPE_CAR, WMI.VOLKSWAGEN_EUROPE_SUV},
     flags=VolkswagenFlags.MEB_GEN2,
   )
+  VOLKSWAGEN_ID_BUZZ_MK1 = VolkswagenMEBPlatformConfig(
+    [VWCarDocs("Volkswagen ID. Buzz Pro S LWB 2025-26")],
+    # Taiwan-spec Pro S LWB: 2,692 kg curb weight and 3,239 mm wheelbase.
+    # Steering ratio and center-to-front ratio retain the validated MEB defaults
+    # used by the manually selected ID.4 MK2 profile on this vehicle.
+    VolkswagenCarSpecs(mass=2692, wheelbase=3.239),
+    chassis_codes={"EB"},
+    wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN, WMI.VOLKSWAGEN_EUROPE_SUV},
+    flags=VolkswagenFlags.MEB_GEN2,
+  )
 
 
 def match_fw_to_car_fuzzy(live_fw_versions, vin, offline_fw_versions) -> set[str]:
@@ -559,7 +569,10 @@ def match_fw_to_car_fuzzy(live_fw_versions, vin, offline_fw_versions) -> set[str
 
   for platform in CAR:
     valid_ecus = set()
-    for ecu in offline_fw_versions[platform]:
+    # A platform can be manually selectable before vehicle-specific firmware
+    # versions have been collected. Do not claim another model's firmware as a
+    # fingerprint; skip those platforms until a real firmware sample is added.
+    for ecu in offline_fw_versions.get(platform, {}):
       addr = ecu[1:]
       if ecu[0] not in CHECK_FUZZY_ECUS:
         continue

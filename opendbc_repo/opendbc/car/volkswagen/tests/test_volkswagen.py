@@ -2,7 +2,7 @@ import random
 import re
 
 from opendbc.car.structs import CarParams
-from opendbc.car.volkswagen.values import CAR, FW_QUERY_CONFIG, WMI
+from opendbc.car.volkswagen.values import CAR, FW_QUERY_CONFIG, WMI, VolkswagenFlags
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
 Ecu = CarParams.Ecu
@@ -13,6 +13,15 @@ SPARE_PART_FW_PATTERN = re.compile(b'\xf1\x87(?P<gateway>[0-9][0-9A-Z]{2})(?P<un
 
 
 class TestVolkswagenPlatformConfigs:
+  def test_id_buzz_pro_s_lwb_profile(self):
+    config = CAR.VOLKSWAGEN_ID_BUZZ_MK1.config
+
+    assert config.specs.mass == 2692
+    assert config.specs.wheelbase == 3.239
+    assert config.flags & VolkswagenFlags.MEB_GEN2
+    assert config.chassis_codes == {"EB"}
+    assert config.wmis == {WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN, WMI.VOLKSWAGEN_EUROPE_SUV}
+
   def test_spare_part_fw_pattern(self, subtests):
     # Relied on for determining if a FW is likely VW
     for platform, ecus in FW_VERSIONS.items():
@@ -50,7 +59,7 @@ class TestVolkswagenPlatformConfigs:
 
             # Check a few FW cases - expected, unexpected
             for radar_fw in random.sample(all_radar_fw, 5) + [b'\xf1\x875Q0907572G \xf1\x890571', b'\xf1\x877H9907572AA\xf1\x890396']:
-              should_match = ((wmi in platform.config.wmis and chassis_code in platform.config.chassis_codes) and
+              should_match = ((platform in FW_VERSIONS and wmi in platform.config.wmis and chassis_code in platform.config.chassis_codes) and
                               radar_fw in all_radar_fw)
 
               live_fws = {(0x757, None): [radar_fw]}
