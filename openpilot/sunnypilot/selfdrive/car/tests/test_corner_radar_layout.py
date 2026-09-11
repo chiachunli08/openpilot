@@ -13,22 +13,23 @@ from openpilot.selfdrive.ui.sunnypilot.onroad.corner_radar_layout import (
 
 
 def target(**values):
-  defaults = dict(
-    sensorGroup=0,
-    sourceBus=1,
-    trackId=1,
-    distance=10.0,
-    longitudinal=9.5,
-    lateral=1.0,
-    ageSec=0.05,
-    candidateActive=True,
-    estimatedRadialSpeed=0.0,
-    estimatedRadialSpeedValid=False,
-  )
+  defaults = {
+    "sensorGroup": 0,
+    "sourceBus": 1,
+    "trackId": 1,
+    "distance": 10.0,
+    "longitudinal": 9.5,
+    "lateral": 1.0,
+    "ageSec": 0.05,
+    "candidateActive": True,
+    "estimatedRadialSpeed": 0.0,
+    "estimatedRadialSpeedValid": False,
+  }
   return SimpleNamespace(**(defaults | values))
 
 
-def display_target(group=0, distance=10.0, longitudinal=9.5, lateral=1.0, radial_speed=None):
+def display_target(group=0, distance=10.0, longitudinal=9.5, lateral=1.0,
+                   radial_speed: float | None = None):
   return DisplayCornerTarget(group, 1, 1, distance, longitudinal, lateral, radial_speed)
 
 
@@ -44,10 +45,10 @@ def test_multiple_nearest_targets_per_group():
 
 
 @pytest.mark.parametrize('values', [
-  dict(distance=0), dict(distance=float('nan')), dict(distance=121),
-  dict(longitudinal=float('nan')), dict(lateral=float('nan')),
-  dict(ageSec=-1), dict(ageSec=float('nan')), dict(ageSec=0.36),
-  dict(sourceBus=128), dict(sensorGroup=4), dict(candidateActive=False),
+  {"distance": 0}, {"distance": float('nan')}, {"distance": 121},
+  {"longitudinal": float('nan')}, {"lateral": float('nan')},
+  {"ageSec": -1}, {"ageSec": float('nan')}, {"ageSec": 0.36},
+  {"sourceBus": 128}, {"sensorGroup": 4}, {"candidateActive": False},
 ])
 def test_invalid_targets_are_hidden(values):
   assert select_display_targets([target(**values)]) == []
@@ -72,14 +73,18 @@ def test_frozen_message_ages_out_without_new_receive():
 @pytest.mark.parametrize('width', [1080, 1440, 1920, 2160])
 def test_panels_do_not_overlap_speed_or_either_blindspot_layout(width):
   for side in (-1, 1):
-    x, panel_width = panel_bounds(30, width, side)
+    bounds = panel_bounds(30, width, side)
+    assert bounds is not None
+    x, panel_width = bounds
     center = 30 + width / 2
     assert x >= 30 + 148
     assert x + panel_width <= 30 + width - 148
     assert x + panel_width <= center - 250 if side < 0 else x >= center + 250
     for group in ((0, 2) if side < 0 else (1, 3)):
       for column in range(3):
-        px, py = marker_position(display_target(group=group, distance=120, longitudinal=20), column, 30, width)
+        position = marker_position(display_target(group=group, distance=120, longitudinal=20), column, 30, width)
+        assert position is not None
+        px, py = position
         assert x + 12 <= px <= x + panel_width - 12
         assert 85 <= py <= 265
 
@@ -91,8 +96,11 @@ def test_small_viewport_hides_panels_instead_of_overlapping():
 
 def test_distance_moves_markers_in_separate_front_rear_regions():
   for group in range(4):
-    near = marker_position(display_target(group=group, distance=1), 0, 0, 2160)[1]
-    far = marker_position(display_target(group=group, distance=120), 0, 0, 2160)[1]
+    near_position = marker_position(display_target(group=group, distance=1), 0, 0, 2160)
+    far_position = marker_position(display_target(group=group, distance=120), 0, 0, 2160)
+    assert near_position is not None and far_position is not None
+    near = near_position[1]
+    far = far_position[1]
     assert far < near < 180 if group < 2 else 180 < near < far
 
 
