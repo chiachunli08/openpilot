@@ -9,7 +9,7 @@ from openpilot.system.ui.lib.scroll_panel import GuiScrollPanel
 from openpilot.system.ui.lib.wifi_manager import WifiManager, SecurityType, Network, MeteredType, normalize_ssid
 from openpilot.system.ui.widgets import DialogResult, Widget
 from openpilot.system.ui.widgets.button import ButtonStyle, Button
-from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
+from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog, alert_dialog
 from openpilot.system.ui.widgets.keyboard import Keyboard
 from openpilot.system.ui.widgets.label import gui_label
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -132,6 +132,12 @@ class AdvancedNetworkSettings(Widget):
     self._tethering_password_action = ButtonAction(lambda: tr("EDIT"))
     tethering_password_btn = ListItem(lambda: tr("Tethering Password"), action_item=self._tethering_password_action, callback=self._edit_tethering_password)
 
+    # Connected tethering clients
+    self._connected_devices_btn = button_item(lambda: tr("Connected Devices"),
+                                              lambda: str(len(self._wifi_manager.tethering_clients)),
+                                              callback=self._show_connected_devices)
+    self._connected_devices_btn.set_visible(False)
+
     # Roaming toggle
     roaming_enabled = self._params.get_bool("GsmRoaming")
     self._roaming_action = ToggleAction(initial_state=roaming_enabled)
@@ -156,6 +162,7 @@ class AdvancedNetworkSettings(Widget):
     items: list[Widget] = [
       tethering_btn,
       tethering_password_btn,
+      self._connected_devices_btn,
       text_item(lambda: tr("IP Address"), lambda: self._wifi_manager.ipv4_address),
       self._roaming_btn,
       self._apn_btn,
@@ -170,6 +177,7 @@ class AdvancedNetworkSettings(Widget):
     self._tethering_action.set_enabled(True)
     self._tethering_action.set_state(self._wifi_manager.is_tethering_active())
     self._tethering_password_action.set_enabled(True)
+    self._connected_devices_btn.set_visible(self._wifi_manager.is_tethering_active())
 
     if self._wifi_manager.is_tethering_active() or self._wifi_manager.ipv4_address == "":
       self._wifi_metered_action.set_enabled(False)
@@ -188,6 +196,14 @@ class AdvancedNetworkSettings(Widget):
 
   def _toggle_roaming(self):
     self._params.put_bool("GsmRoaming", self._roaming_action.get_state(), block=True)
+
+  def _show_connected_devices(self):
+    clients = self._wifi_manager.tethering_clients
+    if clients:
+      message = "\n".join(f"{client.ip_address}    {client.mac_address}" for client in clients)
+    else:
+      message = tr("No devices connected")
+    gui_app.push_widget(alert_dialog(message))
 
   def _edit_apn(self):
     def update_apn(result: DialogResult):

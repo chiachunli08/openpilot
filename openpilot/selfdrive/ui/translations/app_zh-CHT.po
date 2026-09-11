@@ -1452,3 +1452,11 @@ msgstr "強制使用原廠縱向控制"
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/vehicle/brands/toyota.py
 msgid "Stop and Go Hack (Alpha)"
 msgstr "走走停停修改功能（Alpha）"
+
+#: openpilot/system/ui/widgets/network.py
+msgid "Connected Devices"
+msgstr "已連線裝置"
+
+#: openpilot/system/ui/widgets/network.py
+msgid "No devices connected"
+msgstr "目前沒有裝置連線"

@@ -1265,3 +1265,11 @@ msgstr ""
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
 msgid "Neural Network Lateral Control (NNLC)"
 msgstr ""
+
+#: openpilot/system/ui/widgets/network.py
+msgid "Connected Devices"
+msgstr ""
+
+#: openpilot/system/ui/widgets/network.py
+msgid "No devices connected"
+msgstr ""
