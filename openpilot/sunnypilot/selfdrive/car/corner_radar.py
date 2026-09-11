@@ -1,8 +1,14 @@
-"""Conservative decoder for the unmerged EV6 corner-radar research format.
+"""Conservative decoders for HKG corner-radar display research.
 
-The wire format comes from commaai/openpilot#24221 at abcc844. It is not a
-Kia specification. In particular, activity/status bits, sensor mounting, and
-directly measured relative speed remain unknown.
+The raw 0x300/0x400/0x500/0x600 wire format comes from
+commaai/openpilot#24221 at abcc844. It is not a Kia specification. In
+particular, activity/status bits, sensor mounting, and directly measured
+relative speed remain unknown.
+
+For the EV6 HDA2 display path we also decode the stock ADRV 0x1EA left/right
+front object slots already documented in the local opendbc research helper.
+Those objects are accepted only from an original checksum-valid OEM frame and
+are display-only; they never feed controls or sensor fusion.
 """
 from __future__ import annotations
 
@@ -11,12 +17,27 @@ import statistics
 from collections import deque
 from dataclasses import asdict, dataclass, field
 
+from opendbc.sunnypilot.car.hyundai.factory_cluster import (
+  ADRV_1EA_CANDIDATE_LAYOUT,
+  ADRV_OBJECTS_ADDRESS,
+  TargetSlot,
+  valid_hkg_frame,
+)
+
 RESEARCH_COMMIT = "commaai/openpilot#24221@abcc844c00bddba9105d868d2ee40749e5ed2741"
 CANDIDATE_ADDRESSES = frozenset(address for base in (0x300, 0x400, 0x500, 0x600) for address in range(base, base + 8))
 PAYLOAD_BYTES = 64
 RECORD_BYTES = 8
 TRACK_TIMEOUT_NS = 350_000_000
 MAX_RAW_FRAMES = 256
+
+OEM_FRONT_TARGET_TIMEOUT_NS = 350_000_000
+OEM_FRONT_ACTIVE_DETECT_VALUES = (3, 4)
+OEM_FRONT_TRACK_ID_BASE = 0x10000
+OEM_FRONT_SLOTS = (
+  (TargetSlot.LEFT_FRONT, 0, 1.0, 0),
+  (TargetSlot.RIGHT_FRONT, 1, -1.0, 1),
+)
 
 
 @dataclass(frozen=True)
@@ -54,8 +75,92 @@ class RawCornerRadarFrame:
   timestamp_accepted: bool
 
 
+@dataclass(frozen=True)
+class OemFrontTarget:
+  timestamp_nanos: int
+  source_bus: int
+  track_id: int
+  sensor_group: int
+  slot: int
+  detect_state: int
+  distance_m: float
+  longitudinal_m: float
+  lateral_m: float
+
+
 def is_candidate_address(address: int) -> bool:
   return address in CANDIDATE_ADDRESSES
+
+
+def decode_oem_adrv_front_targets(timestamp_nanos: int, source_bus: int, address: int, data: bytes) -> list[OemFrontTarget]:
+  """Decode OEM-calculated LF/RF side objects from a checksum-valid stock 0x1EA.
+
+  The bit layout is still an EV6 research candidate, so this function is
+  intentionally fail-closed: only the object-present states already used by the
+  local factory-cluster helper and physically sane position values are exposed.
+  """
+  if timestamp_nanos <= 0 or not 0 <= source_bus < 128 or address != ADRV_OBJECTS_ADDRESS:
+    return []
+  if not valid_hkg_frame(address, data, ADRV_1EA_CANDIDATE_LAYOUT.length):
+    return []
+
+  targets = []
+  for target_slot, sensor_group, lateral_sign, slot_index in OEM_FRONT_SLOTS:
+    fields = ADRV_1EA_CANDIDATE_LAYOUT.fields[target_slot]
+    if fields.distance is None or fields.lateral is None:
+      continue
+
+    detect_state = int(round(fields.detect.decode(data)))
+    if detect_state not in OEM_FRONT_ACTIVE_DETECT_VALUES:
+      continue
+
+    longitudinal = float(fields.distance.decode(data))
+    lateral_magnitude = abs(float(fields.lateral.decode(data)))
+    lateral = lateral_sign * lateral_magnitude
+    if (not math.isfinite(longitudinal) or not math.isfinite(lateral) or
+        not 0.5 <= longitudinal <= 120.0 or lateral_magnitude > 8.0):
+      continue
+
+    targets.append(OemFrontTarget(
+      timestamp_nanos=timestamp_nanos,
+      source_bus=source_bus,
+      track_id=OEM_FRONT_TRACK_ID_BASE + sensor_group,
+      sensor_group=sensor_group,
+      slot=slot_index,
+      detect_state=detect_state,
+      distance_m=math.hypot(longitudinal, lateral),
+      longitudinal_m=longitudinal,
+      lateral_m=lateral,
+    ))
+  return targets
+
+
+class OemFrontTargetTracker:
+  """Latch only fresh OEM LF/RF objects; a valid clear frame clears immediately."""
+
+  def __init__(self):
+    self.targets: dict[int, OemFrontTarget] = {}
+
+  def ingest(self, timestamp_nanos: int, source_bus: int, address: int, data: bytes) -> bool:
+    if address != ADRV_OBJECTS_ADDRESS or timestamp_nanos <= 0 or not 0 <= source_bus < 128:
+      return False
+    if not valid_hkg_frame(address, data, ADRV_1EA_CANDIDATE_LAYOUT.length):
+      return False
+
+    decoded = decode_oem_adrv_front_targets(timestamp_nanos, source_bus, address, data)
+    present_groups = {target.sensor_group for target in decoded}
+    for target in decoded:
+      self.targets[target.sensor_group] = target
+    for group in (0, 1):
+      if group not in present_groups:
+        self.targets.pop(group, None)
+    return True
+
+  def expire(self, now_nanos: int) -> None:
+    self.targets = {
+      group: target for group, target in self.targets.items()
+      if 0 <= now_nanos - target.timestamp_nanos <= OEM_FRONT_TARGET_TIMEOUT_NS
+    }
 
 
 def decode_frame(timestamp_nanos: int, source_bus: int, address: int, data: bytes) -> list[CornerRadarRecord]:
