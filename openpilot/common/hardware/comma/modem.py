@@ -28,6 +28,9 @@ PPP_PORT = "/dev/modem_at1"
 CELLULAR_INTERFACE = "ppp0"
 TETHERING_INTERFACE = "wlan0"
 TETHERING_SUBNET = "192.168.43.0/24"
+CELLULAR_ROUTE_TABLE = "1000"
+CELLULAR_ROUTE_PRIORITY = "11000"
+TETHERING_ROUTE_PRIORITY = "11010"
 STATE_PATH = "/dev/shm/modem"
 AT_LOCK = "/dev/shm/modem.lock"  # shared with LPA
 AT_INIT = [
@@ -174,8 +177,13 @@ class PPPSession:
     self.cleanup_routes()
     cmds = [
       ["sudo", "ip", "route", "add", "default", "via", peer, "dev", "ppp0", "metric", "1000"],
-      ["sudo", "ip", "route", "add", "default", "via", peer, "dev", "ppp0", "table", "1000"],
-      ["sudo", "ip", "rule", "add", "from", ip, "table", "1000"],
+      ["sudo", "ip", "route", "add", "default", "via", peer, "dev", CELLULAR_INTERFACE, "table", CELLULAR_ROUTE_TABLE],
+      ["sudo", "ip", "rule", "add", "priority", CELLULAR_ROUTE_PRIORITY, "from", ip, "table", CELLULAR_ROUTE_TABLE],
+      # Forwarded hotspot packets keep their 192.168.43.x source until POSTROUTING.
+      # Route them through the PPP policy table explicitly instead of relying on
+      # whichever default route happens to be active in the main table.
+      ["sudo", "ip", "rule", "add", "priority", TETHERING_ROUTE_PRIORITY,
+       "from", TETHERING_SUBNET, "table", CELLULAR_ROUTE_TABLE],
     ]
     for cmd in cmds:
       r = subprocess.run(cmd, capture_output=True, text=True)
@@ -186,7 +194,22 @@ class PPPSession:
         return False
     logging.info(f"route set up for {ip} via {peer}")
     self.install_tethering_forwarding()
+    self.verify_tethering_route()
     self._peer = peer
+    return True
+
+  @staticmethod
+  def verify_tethering_route() -> bool:
+    """Verify that a forwarded hotspot packet resolves to the cellular uplink."""
+    r = subprocess.run([
+      "sudo", "ip", "-4", "route", "get", "1.1.1.1", "from", "192.168.43.2",
+      "iif", TETHERING_INTERFACE,
+    ], capture_output=True, text=True)
+    route = r.stdout.strip()
+    if r.returncode != 0 or f"dev {CELLULAR_INTERFACE}" not in route:
+      logging.warning(f"tethering policy route verification failed: {route or r.stderr.strip()}")
+      return False
+    logging.info(f"tethering policy route verified: {route}")
     return True
 
   @staticmethod
@@ -249,9 +272,9 @@ class PPPSession:
   @staticmethod
   def cleanup_routes():
     subprocess.run(["sudo", "ip", "route", "del", "default", "dev", "ppp0"], capture_output=True)
-    subprocess.run(["sudo", "ip", "route", "flush", "table", "1000"], capture_output=True)
+    subprocess.run(["sudo", "ip", "route", "flush", "table", CELLULAR_ROUTE_TABLE], capture_output=True)
     # rules don't have a flush; delete until none remain
-    while subprocess.run(["sudo", "ip", "rule", "del", "table", "1000"], capture_output=True).returncode == 0:
+    while subprocess.run(["sudo", "ip", "rule", "del", "table", CELLULAR_ROUTE_TABLE], capture_output=True).returncode == 0:
       pass
     subprocess.run(["sudo", "resolvectl", "revert", "ppp0"], capture_output=True)
     PPPSession.cleanup_tethering_forwarding()
