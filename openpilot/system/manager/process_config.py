@@ -3,6 +3,7 @@ import operator
 import platform
 
 from opendbc.car.structs import car
+from opendbc.car.hyundai.values import HyundaiFlags
 from openpilot.cereal import custom
 from openpilot.common.params import Params
 from openpilot.common.hardware import PC, COMMA_HARDWARE
@@ -94,8 +95,9 @@ def is_stock_model(started, params, CP: car.CarParams) -> bool:
 def mapd_ready(started: bool, params: Params, CP: car.CarParams) -> bool:
   return bool(os.path.exists(Paths.mapd_root()))
 
-def navigation_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and params.get_bool("NavigationEnabled")
+def hkg_corner_radar(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return (started and params.get_bool("HkgCornerRadarDetection") and CP.brand == "hyundai" and
+          bool(CP.flags & HyundaiFlags.CANFD))
 
 def uploader_ready(started: bool, params: Params, CP: car.CarParams) -> bool:
   if not params.get_bool("OnroadUploads"):
@@ -152,6 +154,7 @@ procs = [
   PythonProcess("maneuversd", "openpilot.tools.longitudinal_maneuvers.maneuversd", long_maneuver),
   PythonProcess("lateral_maneuversd", "openpilot.tools.lateral_maneuvers.lateral_maneuversd", lat_maneuver),
   PythonProcess("radard", "openpilot.selfdrive.controls.radard", only_onroad),
+  PythonProcess("corner_radard", "openpilot.sunnypilot.selfdrive.car.corner_radard", hkg_corner_radar),
   PythonProcess("hardwared", "openpilot.system.hardware.hardwared", always_run),
   PythonProcess("modem", "openpilot.common.hardware.comma.modem", always_run, enabled=COMMA_HARDWARE),
   PythonProcess("tombstoned", "openpilot.system.tombstoned", always_run, enabled=not PC),
@@ -182,7 +185,6 @@ procs += [
   # mapd
   NativeProcess("mapd", Paths.mapd_root(), ["bash", "-c", f"{MAPD_PATH} > /dev/null 2>&1"], mapd_ready),
   PythonProcess("mapd_manager", "openpilot.sunnypilot.mapd.mapd_manager", always_run),
-  PythonProcess("navigationd", "openpilot.sunnypilot.navd.navigationd", navigation_enabled),
 
   # locationd
   NativeProcess("locationd_llk", "openpilot/sunnypilot/selfdrive/locationd", ["./locationd"], only_onroad),

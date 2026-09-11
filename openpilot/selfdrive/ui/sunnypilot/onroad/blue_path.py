@@ -115,6 +115,7 @@ class DynamicBluePath:
   def draw_state(self, rect, path, state, now, project, z_offset, *, local_coordinates=False):
     # Imports stay here so trajectory/geometry tests need no graphics context.
     import pyray as rl
+    from openpilot.selfdrive.ui.ui_state import ui_state
     from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
     from openpilot.system.ui.lib.multilang import tr
     from openpilot.system.ui.widgets.label import gui_label
@@ -143,13 +144,15 @@ class DynamicBluePath:
     for ribbon, alpha in chevron_ribbons(points, self._phase, direction):
       draw_polygon(rect, ribbon, rl.Color(55, 170, 255, alpha))
 
-    # Debounce an appearing prediction; remove it immediately when it clears.
+    # The independent PredictedStopMarker owns stop-line persistence when enabled.
+    # Keep the legacy transient marker only when that option is disabled.
     if state.stopping:
       if self._stop_since is None:
         self._stop_since = now
     else:
       self._stop_since = None
-    if self._stop_since is not None and now - self._stop_since >= 0.3:
+    if (not ui_state.predicted_stop_marker and self._stop_since is not None and
+        now - self._stop_since >= 0.3):
       self._draw_stop_bar(rect, path, state.stop_distance, project, z_offset, offset)
       height = max(30.0, rect.height * 0.055)
       badge = rl.Rectangle(rect.x + rect.width * 0.30, rect.y + rect.height * 0.73, rect.width * 0.40, height)

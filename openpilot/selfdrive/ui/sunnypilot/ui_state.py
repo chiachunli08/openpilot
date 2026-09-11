@@ -37,7 +37,7 @@ class UIStateSP:
     self.sm_services_ext = [
       "modelManagerSP", "selfdriveStateSP", "longitudinalPlanSP", "backupManagerSP",
       "gpsLocation", "lateralTorqueParameters", "carStateSP", "liveMapDataSP", "carParamsSP", "lateralDelay",
-      "navInstruction", "navRoute",
+      "cornerRadarStateSP",
     ]
 
     self.sunnylink_state = SunnylinkState()
@@ -49,6 +49,9 @@ class UIStateSP:
     self.adjacent_lane_object_markers: bool = False
     self.model_runner_tinygrad: bool = False
     self.blindspot: bool = False
+    self.blindspot_display_style: int = 0
+    self.blindspot_edge_bars: bool = False
+    self.hkg_corner_radar: bool = False
     self.chevron_metrics = None
     self.custom_interactive_timeout: int = 0
     self.developer_ui = None
@@ -57,6 +60,7 @@ class UIStateSP:
     self.onroad_brightness: int = 0
     self.onroad_brightness_timer: int = 0
     self.onroad_brightness_timer_param: int = 0
+    self.predicted_stop_marker: bool = False
     self.rainbow_path: bool = False
     self.rainbow_mode_style: int = 0
     self.road_name_toggle: bool = False
@@ -167,13 +171,22 @@ class UIStateSP:
     # stock only counts the default big model's compiled pkl. a downloaded big bundle runs on the
     # chestnut just the same, so ChestnutState has to see it as available too.
     self.chestnut_compiled = self.chestnut_compiled or self.model_runner_tinygrad
-    self.blindspot = self.params.get_bool("BlindSpot")
+    blindspot_enabled = self.params.get_bool("BlindSpot")
+    self.blindspot_display_style = int(self.params.get("BlindSpotDisplayStyle", return_default=True))
+    self.blindspot = blindspot_enabled and self.blindspot_display_style == 0
+    self.blindspot_edge_bars = blindspot_enabled and self.blindspot_display_style == 1
+    self.hkg_corner_radar = self.params.get_bool("HkgCornerRadarDetection")
     self.chevron_metrics = self.params.get("ChevronInfo")
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
     self.developer_ui = self.params.get("DevUIInfo")
     self.hide_v_ego_ui = self.params.get_bool("HideVEgoUI")
+
+    prev_onroad_brightness = self.onroad_brightness
+    prev_onroad_brightness_timer_param = self.onroad_brightness_timer_param
     self.onroad_brightness = int(float(self.params.get("OnroadScreenOffBrightness", return_default=True)))
     self.onroad_brightness_timer_param = self.params.get("OnroadScreenOffTimer", return_default=True)
+
+    self.predicted_stop_marker = self.params.get_bool("PredictedStopMarker")
     self.rainbow_path = self.params.get_bool("RainbowMode")
     self.rainbow_mode_style = self.params.get("RainbowModeStyle", return_default=True)
     self.road_name_toggle = self.params.get_bool("RoadNameToggle")
@@ -195,6 +208,11 @@ class UIStateSP:
 
     if not self._sp_initialized:
       self._sp_initialized = True
+      self.reset_onroad_sleep_timer()
+    elif (self.onroad_brightness != prev_onroad_brightness or
+          self.onroad_brightness_timer_param != prev_onroad_brightness_timer_param):
+      # Brightness mode and delay are allowed to change while driving. Restart the timer so a newly
+      # enabled C3X night low-light mode never jumps straight into the sparse OLED view.
       self.reset_onroad_sleep_timer()
 
   def _enforce_constraints(self) -> None:
@@ -289,13 +307,16 @@ class DeviceSP:
         return max(30.0, cur_brightness)
       return cur_brightness
 
-    # 0: Auto (Default), 1: Auto (Dark), 2: Screen Off
+    # 0: Auto (Default), 1: Auto (Dark), 2: Screen Off, 23: C3X night low-light mode
     if _ui_state.onroad_brightness == OnroadBrightness.AUTO:
       return cur_brightness
     if _ui_state.onroad_brightness == OnroadBrightness.AUTO_DARK:
       return cur_brightness
     if _ui_state.onroad_brightness == OnroadBrightness.SCREEN_OFF:
       return 0.0
+    if _ui_state.onroad_brightness == OnroadBrightness.NIGHT_LOW_LIGHT:
+      # Keep sparse HUD pixels readable while limiting their peak output on the C3X OLED.
+      return 10.0
 
     # 3-22: 5% - 100%
     return float((_ui_state.onroad_brightness - 2) * 5)

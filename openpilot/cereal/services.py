@@ -75,8 +75,6 @@ _services: dict[str, tuple] = {
   "userBookmark": (True, 0., 1),
   "soundPressure": (True, 10., 10),
   "rawAudioData": (False, 20.),
-  "navInstruction": (True, 1., 1),
-  "navRoute": (True, 1., 1),
   "bookmarkButton": (True, 0., 1),
   "narrowRoadEncodeData": (False, 20., None, QueueSize.BIG),
   "cabinEncodeData": (False, 20., None, QueueSize.BIG),
@@ -94,6 +92,7 @@ _services: dict[str, tuple] = {
   "carStateSP": (True, 100., 10),
   "liveMapDataSP": (True, 1., 1),
   "modelDataV2SP": (True, 20., None, QueueSize.BIG),
+  "cornerRadarStateSP": (True, 20., 1, QueueSize.MEDIUM),
   "liveLocationKalman": (True, 20.),
 
   # debug

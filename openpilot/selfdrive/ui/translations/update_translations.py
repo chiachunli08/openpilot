@@ -26,6 +26,12 @@ def update_translations():
   # Keep the HKG steering strings in the generated translation catalog.
   files.append(os.path.relpath(UI_DIR / "sunnypilot/layouts/settings/steering.py", BASEDIR))
 
+  # Vehicle settings are brand-specific sunnypilot pages outside the base UI
+  # directories. Keep their labels, descriptions, and warning dialogs in the
+  # generated translation catalog.
+  vehicle_sources = UI_DIR.glob("sunnypilot/layouts/settings/vehicle/**/*.py")
+  files.extend(os.path.relpath(path, BASEDIR) for path in sorted(vehicle_sources))
+
   # The sunnylink settings, consent, and pairing pages live outside the base UI directories.
   sunnylink_sources = chain(UI_DIR.glob("sunnypilot/**/sunnylink*.py"),
                            UI_DIR.glob("sunnypilot/**/onboarding.py"))

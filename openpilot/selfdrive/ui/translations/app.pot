@@ -54,6 +54,14 @@ msgid "Enable Tethering"
 msgstr ""
 
 #: openpilot/system/ui/widgets/network.py
+msgid "Enable SIM Card"
+msgstr ""
+
+#: openpilot/system/ui/widgets/network.py
+msgid "Turn mobile data off, or reset the modem and re-read the SIM when enabled. Available while parked."
+msgstr ""
+
+#: openpilot/system/ui/widgets/network.py
 msgid "EDIT"
 msgstr ""
 
@@ -1264,4 +1272,12 @@ msgstr ""
 
 #: openpilot/selfdrive/ui/sunnypilot/layouts/settings/steering.py
 msgid "Neural Network Lateral Control (NNLC)"
+msgstr ""
+
+#: openpilot/system/ui/widgets/network.py
+msgid "Connected Devices"
+msgstr ""
+
+#: openpilot/system/ui/widgets/network.py
+msgid "No devices connected"
 msgstr ""

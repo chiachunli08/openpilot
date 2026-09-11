@@ -2642,7 +2642,7 @@ struct Event {
     carStateSP @114 :Custom.CarStateSP;
     liveMapDataSP @115 :Custom.LiveMapDataSP;
     modelDataV2SP @116 :Custom.ModelDataV2SP;
-    customReserved10 @136 :Custom.CustomReserved10;
+    cornerRadarStateSP @136 :Custom.CornerRadarStateSP;
     customReserved11 @137 :Custom.CustomReserved11;
     customReserved12 @138 :Custom.CustomReserved12;
     customReserved13 @139 :Custom.CustomReserved13;
@@ -2704,8 +2704,8 @@ struct Event {
     driverMonitoringStateDEPRECATED @71 :DriverMonitoringStateDEPRECATED;
     gpsNMEADEPRECATED @3 :GPSNMEAData;
     uploaderStateDEPRECATED @79 :UploaderState;
-    navInstruction @82 :NavInstruction;
-    navRoute @83 :NavRoute;
+    navInstructionDEPRECATED @82 :NavInstruction;
+    navRouteDEPRECATED @83 :NavRoute;
     navThumbnailDEPRECATED @84 :Thumbnail;
     gnssMeasurementsDEPRECATED @91 :GnssMeasurements;
     mapRenderStateDEPRECATED @105: MapRenderState;
