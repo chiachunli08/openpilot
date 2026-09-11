@@ -47,7 +47,7 @@ class OnroadBrightness(IntEnum):
   AUTO = 0
   AUTO_DARK = 1
   SCREEN_OFF = 2
-  # Internal sentinel used by the tici-only night low-light toggle. Normal brightness values remain 3-22.
+  # Internal sentinel used by the C3X/tizi-only night low-light toggle. Normal brightness values remain 3-22.
   NIGHT_LOW_LIGHT = 23
 
 
@@ -55,7 +55,7 @@ class DisplayLayout(Widget):
   def __init__(self):
     super().__init__()
     self._params = Params()
-    self._is_tici = HARDWARE.get_device_type() == "tici"
+    self._is_c3x = HARDWARE.get_device_type() == "tizi"
     self._brightness_before_night = OnroadBrightness.AUTO
 
     current_brightness = int(float(self._params.get("OnroadScreenOffBrightness", return_default=True)))
@@ -71,7 +71,7 @@ class DisplayLayout(Widget):
       title=lambda: display_tr("Onroad Brightness"),
       description="",
       min_value=0,
-      max_value=23 if self._is_tici else 22,
+      max_value=23 if self._is_c3x else 22,
       value_change_step=1,
       label_callback=lambda value: self.update_onroad_brightness(value),
       inline=True
@@ -120,7 +120,7 @@ class DisplayLayout(Widget):
 
     self._night_low_light_toggle = None
     self._night_low_light_delay = None
-    if self._is_tici:
+    if self._is_c3x:
       night_active = int(float(self._params.get("OnroadScreenOffBrightness", return_default=True))) == OnroadBrightness.NIGHT_LOW_LIGHT
       self._night_low_light_toggle = toggle_item_sp(
         title=lambda: display_tr("Reduce Night Driving Glare"),
@@ -178,7 +178,7 @@ class DisplayLayout(Widget):
     super()._update_state()
 
     brightness_val = int(float(self._params.get("OnroadScreenOffBrightness", return_default=True)))
-    night_active = self._is_tici and brightness_val == OnroadBrightness.NIGHT_LOW_LIGHT
+    night_active = self._is_c3x and brightness_val == OnroadBrightness.NIGHT_LOW_LIGHT
 
     # Keep the custom toggle synchronized with the shared brightness mode parameter.
     if self._night_low_light_toggle is not None:
