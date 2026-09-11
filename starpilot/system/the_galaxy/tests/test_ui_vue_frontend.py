@@ -136,7 +136,7 @@ def test_ui_ports_all_tool_views():
     "js/views/Logs.js": ["getErrorLogs", "tmuxSnapshot"],
     "js/components/TroubleshootPanel.js": ["getTroubleshoot", "resetTroubleshootSection", "GalaxyConfirm"],
     "js/views/Tuning.js": ["LateralTuningPanel"],
-    "js/views/Navigation.js": ["getNavigation", "setNavigation", "MapsPanel", "NavigationKeysPanel"],
+    "js/views/Navigation.js": ["NavigationDestinationPanel", "MapsPanel", "NavigationKeysPanel"],
     "js/views/ToolEmbed.js": ["/manage_maps", "/manage_navigation_keys"],
     "js/views/SystemTools.js": [
       "backupToggles", "restoreToggles", "getToggleProfiles", "saveToggleProfile", "loadToggleProfile", "getUpdateBranches", "factoryReset",
@@ -476,6 +476,10 @@ def test_ui_all_remaining_classic_tools_native_no_embed():
   tuning = _read("js/views/Tuning.js")
   assert "GalaxyEmbed" not in tuning and "LateralTuningPanel" in tuning
   assert _read("js/components/MapsPanel.js") and _read("js/components/NavigationKeysPanel.js")
+  destination = _read("js/components/NavigationDestinationPanel.js")
+  assert "mapboxSuggest" in destination and "mapboxRetrieve" in destination
+  assert "mapboxGeocode" in destination and "mapboxDirections" in destination
+  assert "ref=\"map\"" in destination and "setNavigation(this.destination)" in destination
   assert _read("js/components/LateralTuningPanel.js")
 
   # Shared API surface added for the second batch of ported pages.

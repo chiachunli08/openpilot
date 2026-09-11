@@ -185,6 +185,25 @@ export const api = {
 
   getNavigation() { return request("/api/navigation") },
   setNavigation(body) { return request("/api/navigation", { method: "POST", data: body }) },
+  getNavigationFavorites() { return request("/api/navigation/favorite", { cache: "no-store" }) },
+  mapboxSuggest(query, accessToken, sessionToken, context = {}) {
+    const params = new URLSearchParams({ access_token: accessToken, session_token: sessionToken, q: query, limit: "4", ...context })
+    return request(`https://api.mapbox.com/search/searchbox/v1/suggest?${params.toString()}`, { cache: "no-store" })
+  },
+  mapboxRetrieve(mapboxId, accessToken, sessionToken) {
+    const params = new URLSearchParams({ access_token: accessToken, session_token: sessionToken })
+    return request(`https://api.mapbox.com/search/searchbox/v1/retrieve/${encodeURIComponent(mapboxId)}?${params.toString()}`, { cache: "no-store" })
+  },
+  mapboxGeocode(query, accessToken, context = {}) {
+    const params = new URLSearchParams({ access_token: accessToken, q: query, ...context })
+    return request(`https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`, { cache: "no-store" })
+  },
+  mapboxDirections(from, to, accessToken) {
+    const origin = `${from.longitude},${from.latitude}`
+    const destination = `${to.longitude},${to.latitude}`
+    const params = new URLSearchParams({ geometries: "geojson", annotations: "congestion", overview: "full", alternatives: "true", access_token: accessToken })
+    return request(`https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${origin};${destination}?${params.toString()}`, { cache: "no-store" })
+  },
   getNavigationKeys() { return request("/api/navigation_key") },
   setNavigationKey(body) { return request("/api/navigation_key", { method: "POST", data: body }) },
   navigationFavorite(body) { return request("/api/navigation/favorite", { method: "POST", data: body }) },

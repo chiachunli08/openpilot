@@ -1834,7 +1834,7 @@ class TestLatControl:
     assert low_speed == pytest.approx(-0.2, abs=0.005)
     assert abs(high_speed_center - 0.2) < abs(low_speed - 0.2)
     assert high_speed_unwind > high_speed_wind > 0.1
-    assert abs(high_speed_direction_change - 0.3) > abs(high_speed_center - 0.2)
+    assert 0.2 < high_speed_direction_change < 0.3
 
   def test_genesis_g70_output_stabilizer_update_path(self, monkeypatch):
     calls = []

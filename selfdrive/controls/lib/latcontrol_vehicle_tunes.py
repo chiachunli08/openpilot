@@ -359,7 +359,7 @@ GENESIS_G70_OUTPUT_SMOOTHING_UNWIND_RC = 0.10
 GENESIS_G70_OUTPUT_SMOOTHING_UNWIND_PHASE = 0.04
 GENESIS_G70_OUTPUT_SMOOTHING_UNWIND_PHASE_WIDTH = 0.08
 GENESIS_G70_OUTPUT_SMOOTHING_DIRECTION_CHANGE_LAT = 0.45
-GENESIS_G70_OUTPUT_SMOOTHING_DIRECTION_CHANGE_RC = 0.055
+GENESIS_G70_OUTPUT_SMOOTHING_DIRECTION_CHANGE_RC = 0.16
 GENESIS_G70_ANGLE_OUTPUT_TAPER_MIN = 0.45
 GENESIS_G70_ANGLE_OUTPUT_TAPER_START = 70.0
 GENESIS_G70_ANGLE_OUTPUT_TAPER_WIDTH = 6.0
@@ -3483,7 +3483,7 @@ def get_genesis_g70_stabilized_output(output_torque: float, prev_output_torque: 
   changing_direction = (abs(desired_lateral_accel) >= GENESIS_G70_OUTPUT_SMOOTHING_DIRECTION_CHANGE_LAT and
                         prev_output_torque * desired_lateral_accel <= 0.0)
   if changing_direction:
-    response_time = min(response_time, GENESIS_G70_OUTPUT_SMOOTHING_DIRECTION_CHANGE_RC)
+    response_time = max(response_time, GENESIS_G70_OUTPUT_SMOOTHING_DIRECTION_CHANGE_RC)
 
   output_alpha = dt / (max(response_time, 0.0) + dt)
   smoothed_output = prev_output_torque + output_alpha * (output_torque - prev_output_torque)
