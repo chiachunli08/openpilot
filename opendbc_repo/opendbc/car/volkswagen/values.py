@@ -548,7 +548,7 @@ class CAR(Platforms):
     # used by the manually selected ID.4 MK2 profile on this vehicle.
     VolkswagenCarSpecs(mass=2692, wheelbase=3.239),
     chassis_codes={"EB"},
-    wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN, WMI.VOLKSWAGEN_EUROPE_SUV},
+    wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN},
     flags=VolkswagenFlags.MEB_GEN2,
   )
 

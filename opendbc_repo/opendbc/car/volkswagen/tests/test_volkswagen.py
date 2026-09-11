@@ -20,7 +20,7 @@ class TestVolkswagenPlatformConfigs:
     assert config.specs.wheelbase == 3.239
     assert config.flags & VolkswagenFlags.MEB_GEN2
     assert config.chassis_codes == {"EB"}
-    assert config.wmis == {WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN, WMI.VOLKSWAGEN_EUROPE_SUV}
+    assert config.wmis == {WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN}
 
   def test_spare_part_fw_pattern(self, subtests):
     # Relied on for determining if a FW is likely VW
