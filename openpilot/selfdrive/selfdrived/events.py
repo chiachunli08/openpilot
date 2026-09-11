@@ -43,10 +43,26 @@ class ET:
   OVERRIDE_LONGITUDINAL = 'overrideLongitudinal'
   NO_ENTRY = 'noEntry'
   WARNING = 'warning'
+  ALWAYS_LATERAL = 'alwaysLateral'
   USER_DISABLE = 'userDisable'
   SOFT_DISABLE = 'softDisable'
   IMMEDIATE_DISABLE = 'immediateDisable'
   PERMANENT = 'permanent'
+
+
+NON_DRIVING_GEARS = (car.CarState.GearShifter.neutral,
+                     car.CarState.GearShifter.park,
+                     car.CarState.GearShifter.reverse,
+                     car.CarState.GearShifter.unknown)
+
+
+def get_current_alert_types(current_alert_types: list[str], always_lateral: bool,
+                            lat_enabled: bool, gear_shifter) -> list[str]:
+  alert_types = current_alert_types.copy()
+  driving_gear = gear_shifter not in NON_DRIVING_GEARS
+  if ET.WARNING not in alert_types and always_lateral and lat_enabled and driving_gear:
+    alert_types.append(ET.ALWAYS_LATERAL)
+  return alert_types
 
 
 # get event name from enum
@@ -1098,6 +1114,10 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.radarCutin: {
      ET.WARNING: EngagementAlert(AudibleAlert.radarCutin),
   },
+  EventName.leadCarMoving: {
+     ET.WARNING: EngagementAlert(AudibleAlert.leadCarMoving),
+     ET.ALWAYS_LATERAL: EngagementAlert(AudibleAlert.leadCarMoving),
+  },
   EventName.audioRefuse: {
      ET.WARNING: EngagementAlert(AudibleAlert.refuse),
   },
@@ -1112,6 +1132,7 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   },
   EventName.trafficSignGreen: {
     ET.WARNING: EngagementAlert(AudibleAlert.trafficSignGreen),
+    ET.ALWAYS_LATERAL: EngagementAlert(AudibleAlert.trafficSignGreen),
     #ET.WARNING: Alert(
     #  "출발합니다.",
     #  "",
@@ -1119,6 +1140,11 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     #  Priority.LOW, VisualAlert.none, AudibleAlert.trafficSignGreen, 3.),
   },
   EventName.trafficSignChanged: {
+    ET.ALWAYS_LATERAL: Alert(
+      "신호가바뀌었어요.",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.trafficSignChanged, 1.),
     ET.WARNING: Alert(
       "신호가바뀌었어요.",
       "",

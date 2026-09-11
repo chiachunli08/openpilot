@@ -31,6 +31,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
   permanent @8 :Bool; # alerts presented regardless of openpilot state
   overrideLateral @10 :Bool;
   overrideLongitudinal @9 :Bool;
+  alwaysLateral @11 :Bool; # selected alerts presented while AlwaysLateral is enabled
 
   enum EventName @0x91f1992a1f77fb03 {
     canError @0;
@@ -142,6 +143,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     audioTurn @122;
     radarCutin @123;
     radarStationaryLead @124;
+    leadCarMoving @126;
     trafficSignGreen @100;
     trafficSignChanged @101;
     turningLeft @102;

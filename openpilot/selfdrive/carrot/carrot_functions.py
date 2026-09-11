@@ -7,6 +7,7 @@ import numpy as np
 from openpilot.common.realtime import DT_MDL
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import MyMovingAverage
+from openpilot.selfdrive.carrot.lead_departure import LeadDepartureDetector
 from openpilot.selfdrive.carrot.t_follow import ramp_t_follow
 from openpilot.selfdrive.selfdrived.events import Events
 
@@ -124,7 +125,7 @@ class CarrotPlanner:
 
     self.eco_over_speed = 2
     self.eco_target_speed = 0
-    
+
     self.autoNaviSpeedDecelRate = 1.5
 
     self.desireState = 0.0
@@ -141,6 +142,7 @@ class CarrotPlanner:
 
     self._stop_x_rl = None
     self.last_event_time = 0.0
+    self.lead_departure_detector = LeadDepartureDetector(DT_MDL)
 
   def _params_update(self):
     self.frame += 1
@@ -150,7 +152,7 @@ class CarrotPlanner:
       if myDrivingMode != self.myDrivingMode_last:
         self.myDrivingMode_disable_auto = True
       self.myDrivingMode_last = myDrivingMode
-      
+
       self.myDrivingModeAuto = self.params.get_int("MyDrivingModeAuto")
       if self.myDrivingModeAuto > 0 and not self.myDrivingMode_disable_auto:
         self.myDrivingMode = self.drivingModeDetector.get_mode()
@@ -189,7 +191,8 @@ class CarrotPlanner:
       self.params_count = 0
 
   def get_carrot_accel(self, v_ego):
-    cruiseMaxVals = [self.cruiseMaxVals0, self.cruiseMaxVals1, self.cruiseMaxVals2, self.cruiseMaxVals3, self.cruiseMaxVals4, self.cruiseMaxVals5, self.cruiseMaxVals6]
+    cruiseMaxVals = [self.cruiseMaxVals0, self.cruiseMaxVals1, self.cruiseMaxVals2, self.cruiseMaxVals3,
+                     self.cruiseMaxVals4, self.cruiseMaxVals5, self.cruiseMaxVals6]
     factor = self.myHighModeFactor if self.myDrivingMode == DrivingMode.High else self.mySafeFactor
     return np.interp(v_ego, A_CRUISE_MAX_BP_CARROT, cruiseMaxVals) * factor
 
@@ -442,7 +445,7 @@ class CarrotPlanner:
     return v_cruise_kph_apply
 
   def add_event(self, event_name):
-    now = time.time()
+    now = time.monotonic()
     if now - self.last_event_time > 5.0:
       self.events.add(event_name)
       self.last_event_time = now
@@ -481,7 +484,7 @@ class CarrotPlanner:
 
     v_cruise_kph = self.cruise_eco_control(v_ego_cluster_kph, v_cruise_kph)
     v_cruise_kph, atc_active = self._update_carrot_man(sm, v_ego_kph, v_cruise_kph)
-    
+
     #if atc_active and not self.atc_active and self.xState not in [XState.e2eStop, XState.e2eStopped, XState.lead]:
     #  if self.atcType in ["turn left", "turn right", "atc left", "atc right"]:
     #    self.xState = XState.e2ePrepare
@@ -588,6 +591,11 @@ class CarrotPlanner:
       else:
         self.xState = XState.e2eCruise
 
+    ego_stopped = carstate.standstill or v_ego < 0.1
+    if self.lead_departure_detector.update(ego_stopped, leadOne.status, leadOne.dRel, leadOne.vLead,
+                                           leadOne.vRel, leadOne.radarTrackId):
+      self.add_event(EventName.leadCarMoving)
+
     if self.trafficState in [TrafficState.off, TrafficState.green] or self.xState not in [XState.e2eStop, XState.e2eStopped]:
       stop_model_x = 1000.0
 
@@ -648,7 +656,6 @@ class DrivingModeDetector:
 
     def update_data(self, carstate, leadOne):
       my_speed = carstate.vEgo * CV.MS_TO_KPH
-      my_accel = carstate.aEgo
       lead_speed = 0
       lead_accel = 0
       distance = 200
@@ -672,7 +679,7 @@ class DrivingModeDetector:
 
       # ---- 디바운스 로직 ----
       if enter:
-        self.counter += 1  
+        self.counter += 1
       elif exit_:
         self.counter -= 1
 

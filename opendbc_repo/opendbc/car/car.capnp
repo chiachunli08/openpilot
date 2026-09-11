@@ -535,6 +535,7 @@ struct CarControl {
       nnff @34;
       radarCutin @35;
       radarStationaryLead @36;
+      leadCarMoving @37;
     }
   }
 

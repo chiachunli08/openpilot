@@ -29,18 +29,21 @@ class TestSoundd:
 
     assert resolve_sound_path(str(sound_dir), str(fallback_dir), "missing.wav") == str(prompt_path)
 
-  def test_radar_alert_sound_assets(self):
+  def test_custom_alert_sound_assets(self):
     expected = {
-      AudibleAlert.radarCutin: ("prompt.wav", 1.506),
+      AudibleAlert.radarCutin: ("prompt.wav", 1, 48000, 1.506),
+      AudibleAlert.leadCarMoving: ("prompt.wav", 1, 48000, 1.506),
+      AudibleAlert.trafficSignGreen: ("traffic_sign_green.wav", None, 16000, 1.2513125),
+      AudibleAlert.trafficSignChanged: ("traffic_sign_changed.wav", None, 16000, 1.3689375),
     }
     sound_dir = os.path.join(BASEDIR, "openpilot", "selfdrive", "assets", "sounds_eng")
 
-    for alert, (filename, duration) in expected.items():
-      assert sound_list[alert][:2] == (filename, 1)
+    for alert, (filename, play_count, sample_rate, duration) in expected.items():
+      assert sound_list[alert][:2] == (filename, play_count)
       with wave.open(os.path.join(sound_dir, filename), "rb") as sound:
         assert sound.getnchannels() == 1
         assert sound.getsampwidth() == 2
-        assert sound.getframerate() == 48000
+        assert sound.getframerate() == sample_rate
         assert abs(sound.getnframes() / sound.getframerate() - duration) < 0.001
 
   def test_completed_one_shot_alert_returns_to_none(self):
@@ -87,4 +90,3 @@ class TestSoundd:
     assert check_selfdrive_timeout_alert(sm)
 
   # TODO: add test with micd for checking that soundd actually outputs sounds
-

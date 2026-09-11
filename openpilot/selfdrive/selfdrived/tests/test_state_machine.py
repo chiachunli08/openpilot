@@ -1,7 +1,7 @@
-from openpilot.cereal import log
+from openpilot.cereal import car, log
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.selfdrived.state import StateMachine, SOFT_DISABLE_TIME
-from openpilot.selfdrive.selfdrived.events import Events, ET, EVENTS, NormalPermanentAlert
+from openpilot.selfdrive.selfdrived.events import Events, ET, EVENTS, NormalPermanentAlert, get_current_alert_types
 
 State = log.SelfdriveState.OpenpilotState
 
@@ -11,6 +11,7 @@ MAINTAIN_STATES = {State.enabled: (None,), State.disabled: (None,), State.softDi
 ALL_STATES = tuple(State.schema.enumerants.values())
 # The event types checked in DISABLED section of state machine
 ENABLE_EVENT_TYPES = (ET.ENABLE, ET.PRE_ENABLE, ET.OVERRIDE_LATERAL, ET.OVERRIDE_LONGITUDINAL)
+GearShifter = car.CarState.GearShifter
 
 
 def make_event(event_types):
@@ -19,6 +20,41 @@ def make_event(event_types):
     event[ev] = NormalPermanentAlert("alert")
   EVENTS[0] = event
   return 0
+
+
+class TestAlwaysLateralAlerts:
+  def test_adds_alert_type_while_disengaged(self):
+    alert_types = get_current_alert_types([ET.PERMANENT], True, True, GearShifter.drive)
+    assert alert_types == [ET.PERMANENT, ET.ALWAYS_LATERAL]
+
+  def test_requires_mode_and_lateral_enabled(self):
+    assert get_current_alert_types([ET.PERMANENT], False, True, GearShifter.drive) == [ET.PERMANENT]
+    assert get_current_alert_types([ET.PERMANENT], True, False, GearShifter.drive) == [ET.PERMANENT]
+
+  def test_requires_driving_gear(self):
+    for gear in (GearShifter.neutral, GearShifter.park, GearShifter.reverse, GearShifter.unknown):
+      assert get_current_alert_types([ET.PERMANENT], True, True, gear) == [ET.PERMANENT]
+
+  def test_does_not_duplicate_active_warning(self):
+    current_alert_types = [ET.PERMANENT, ET.WARNING]
+    alert_types = get_current_alert_types(current_alert_types, True, True, GearShifter.drive)
+    assert alert_types == current_alert_types
+    assert ET.ALWAYS_LATERAL not in alert_types
+
+  def test_only_expected_events_use_always_lateral_type(self):
+    always_lateral_events = {event for event, alerts in EVENTS.items() if ET.ALWAYS_LATERAL in alerts}
+    assert always_lateral_events == {
+      log.OnroadEvent.EventName.leadCarMoving,
+      log.OnroadEvent.EventName.trafficSignGreen,
+      log.OnroadEvent.EventName.trafficSignChanged,
+    }
+
+  def test_always_lateral_type_serializes(self):
+    events = Events()
+    events.add(log.OnroadEvent.EventName.leadCarMoving)
+    event, = events.to_msg()
+    assert event.warning
+    assert event.alwaysLateral
 
 
 class TestStateMachine:

@@ -17,7 +17,7 @@ from openpilot.common.gps import get_gps_location_service
 from openpilot.selfdrive.car.car_specific import CarSpecificEvents
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.camera_config import get_camera_packets
-from openpilot.selfdrive.selfdrived.events import Events, ET
+from openpilot.selfdrive.selfdrived.events import Events, ET, get_current_alert_types
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
@@ -528,15 +528,21 @@ class SelfdriveD:
     return CS
 
   def update_alerts(self, CS):
+    alert_types = get_current_alert_types(self.state_machine.current_alert_types,
+                                          self.params.get_bool("AlwaysLateral"),
+                                          CS.latEnabled, CS.gearShifter)
+
     clear_event_types = set()
-    if ET.WARNING not in self.state_machine.current_alert_types:
+    if ET.WARNING not in alert_types:
       clear_event_types.add(ET.WARNING)
+    if ET.ALWAYS_LATERAL not in alert_types:
+      clear_event_types.add(ET.ALWAYS_LATERAL)
     if self.enabled:
       clear_event_types.add(ET.NO_ENTRY)
 
     pers = LONGITUDINAL_PERSONALITY_MAP[self.personality]
-    alerts = self.events.create_alerts(self.state_machine.current_alert_types, [self.CP, CS, self.sm, self.is_metric,
-                                                                                self.state_machine.soft_disable_timer, pers])
+    alerts = self.events.create_alerts(alert_types, [self.CP, CS, self.sm, self.is_metric,
+                                                     self.state_machine.soft_disable_timer, pers])
     self.AM.add_many(self.sm.frame, alerts)
     self.AM.process_alerts(self.sm.frame, clear_event_types)
 
