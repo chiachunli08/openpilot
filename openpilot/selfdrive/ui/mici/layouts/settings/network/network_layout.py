@@ -91,9 +91,9 @@ class NetworkLayoutMici(NavScroller):
   def _update_state(self):
     super()._update_state()
 
-    # If not using prime SIM, show GSM settings and enable IPv4 forwarding
+    # If not using prime SIM, show GSM settings. NetworkManager's shared mode
+    # manages forwarding and NAT for tethering independently.
     show_cell_settings = ui_state.prime_state.get_type() in (PrimeType.NONE, PrimeType.LITE)
-    self._wifi_manager.set_ipv4_forward(show_cell_settings)
     self._roaming_btn.set_visible(show_cell_settings)
     self._apn_btn.set_visible(show_cell_settings)
     self._cellular_metered_btn.set_visible(show_cell_settings)
