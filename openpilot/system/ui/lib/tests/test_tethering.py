@@ -53,6 +53,7 @@ def test_disable_tethering_deactivates_hotspot(mocker):
 
 def test_forwarding_rules_include_nat_dns_and_mss_clamping(mocker):
   success = subprocess.CompletedProcess([], 0, "", "")
+  mocker.patch.object(WifiManager, "_find_executable", return_value="/usr/sbin/sysctl")
   run_privileged = mocker.patch.object(WifiManager, "_run_privileged", return_value=success)
   run_iptables = mocker.patch.object(WifiManager, "_run_iptables", return_value=success)
 
@@ -63,3 +64,29 @@ def test_forwarding_rules_include_nat_dns_and_mss_clamping(mocker):
   assert any("MASQUERADE" in rule for rule in rules)
   assert any("--dport" in rule and "53" in rule for rule in rules)
   assert any("--clamp-mss-to-pmtu" in rule for rule in rules)
+
+
+def test_find_executable_checks_sbin_when_path_is_restricted(mocker):
+  mocker.patch("openpilot.system.ui.lib.wifi_manager.shutil.which", return_value=None)
+  mocker.patch("openpilot.system.ui.lib.wifi_manager.os.path.isfile", side_effect=lambda path: path == "/usr/sbin/iptables")
+  mocker.patch("openpilot.system.ui.lib.wifi_manager.os.access", return_value=True)
+
+  assert WifiManager._find_executable(("iptables",)) == "/usr/sbin/iptables"
+
+
+def test_connected_clients_include_associated_stations(mocker):
+  wm = WifiManager.__new__(WifiManager)
+  wm._exit = True
+  wm._tethering_clients = []
+  mocker.patch.object(wm, "is_tethering_active", return_value=True)
+  mocker.patch.object(wm, "_find_executable", side_effect=lambda names: f"/usr/sbin/{names[0]}")
+  mocker.patch("openpilot.system.ui.lib.wifi_manager.subprocess.run",
+               return_value=subprocess.CompletedProcess([], 0, "192.168.43.23 dev wlan0 lladdr aa:bb:cc:dd:ee:ff REACHABLE\n", ""))
+  mocker.patch.object(wm, "_run_privileged",
+                      return_value=subprocess.CompletedProcess([], 0, "Station aa:bb:cc:dd:ee:ff (on wlan0)\n", ""))
+
+  wm._update_tethering_clients()
+
+  assert [(client.ip_address, client.mac_address) for client in wm.tethering_clients] == [
+    ("192.168.43.23", "aa:bb:cc:dd:ee:ff"),
+  ]

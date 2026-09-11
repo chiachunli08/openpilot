@@ -844,9 +844,24 @@ class WifiManager:
     return str(secrets['802-11-wireless-security'].get('psk', ('s', ''))[1])
 
   @staticmethod
+  def _find_executable(names: tuple[str, ...]) -> str | None:
+    for name in names:
+      executable = shutil.which(name)
+      if executable is not None:
+        return executable
+
+    for directory in ("/usr/sbin", "/sbin", "/usr/bin", "/bin"):
+      for name in names:
+        executable = os.path.join(directory, name)
+        if os.path.isfile(executable) and os.access(executable, os.X_OK):
+          return executable
+    return None
+
+  @staticmethod
   def _run_privileged(command: list[str]) -> subprocess.CompletedProcess[str] | None:
     if os.geteuid() != 0:
-      command = ["sudo", "-n", *command]
+      sudo = WifiManager._find_executable(("sudo",)) or "/usr/bin/sudo"
+      command = [sudo, "-n", *command]
 
     try:
       return subprocess.run(command, capture_output=True, text=True, timeout=5, check=False)
@@ -856,8 +871,7 @@ class WifiManager:
 
   @classmethod
   def _run_iptables(cls, table: str, arguments: list[str]) -> subprocess.CompletedProcess[str] | None:
-    iptables = next((binary for name in ("iptables", "iptables-nft", "iptables-legacy")
-                     if (binary := shutil.which(name)) is not None), None)
+    iptables = cls._find_executable(("iptables", "iptables-nft", "iptables-legacy"))
     if iptables is None:
       cloudlog.warning("No iptables implementation found; unable to configure tethering firewall")
       return None
@@ -896,7 +910,7 @@ class WifiManager:
         cls._remove_iptables_chain(table, builtin_chain, custom_chain)
       return
 
-    sysctl = shutil.which("sysctl")
+    sysctl = cls._find_executable(("sysctl",))
     if sysctl is None:
       cloudlog.warning("sysctl was not found; unable to enable IPv4 forwarding")
     else:
@@ -938,7 +952,7 @@ class WifiManager:
       self._tethering_clients = []
       return
 
-    ip = shutil.which("ip")
+    ip = self._find_executable(("ip",))
     if ip is None:
       return
 
@@ -947,7 +961,7 @@ class WifiManager:
     except (OSError, subprocess.TimeoutExpired):
       return
 
-    clients: list[TetheringClient] = []
+    neighbors: dict[str, str] = {}
     for line in result.stdout.splitlines():
       fields = line.split()
       if len(fields) < 5 or "lladdr" not in fields or fields[-1] in ("FAILED", "INCOMPLETE"):
@@ -956,8 +970,21 @@ class WifiManager:
       mac_index = fields.index("lladdr") + 1
       if not ip_address.startswith("192.168.43.") or mac_index >= len(fields):
         continue
-      clients.append(TetheringClient(ip_address, fields[mac_index]))
-    self._tethering_clients = sorted(clients, key=lambda client: tuple(int(part) for part in client.ip_address.split(".")))
+      neighbors[fields[mac_index].lower()] = ip_address
+
+    stations: set[str] = set()
+    iw = self._find_executable(("iw",))
+    if iw is not None:
+      station_result = self._run_privileged([iw, "dev", TETHERING_INTERFACE, "station", "dump"])
+      if station_result is not None and station_result.returncode == 0:
+        for line in station_result.stdout.splitlines():
+          fields = line.split()
+          if len(fields) >= 2 and fields[0] == "Station":
+            stations.add(fields[1].lower())
+
+    mac_addresses = stations | set(neighbors)
+    clients = [TetheringClient(neighbors.get(mac_address, "—"), mac_address) for mac_address in mac_addresses]
+    self._tethering_clients = sorted(clients, key=lambda client: (client.ip_address == "—", client.ip_address, client.mac_address))
 
   def set_tethering_active(self, active: bool):
     def worker():
