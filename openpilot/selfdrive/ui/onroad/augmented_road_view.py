@@ -77,12 +77,12 @@ class AugmentedRoadView(CameraView, AugmentedRoadViewSP):
       rect.height - 2 * UI_BORDER_SIZE,
     )
 
-    # C3X/tici OLED-only night mode. Leave the camera/model pipeline running, but stop drawing the
+    # C3X/tizi OLED-only night mode. Leave the camera/model pipeline running, but stop drawing the
     # bright road image and model graphics once the existing on-road brightness timer expires.
     # This preserves HUD/alert rendering while allowing most OLED pixels to remain black.
     night_low_light = (
       gui_app.sunnypilot_ui()
-      and HARDWARE.get_device_type() == "tici"
+      and HARDWARE.get_device_type() == "tizi"
       and ui_state.onroad_brightness == OnroadBrightness.NIGHT_LOW_LIGHT
       and ui_state.onroad_brightness_timer_expired
     )
