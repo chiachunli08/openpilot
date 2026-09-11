@@ -55,7 +55,7 @@ class CornerRadarIndicators:
     speed = int(round(speed_mps * self._speed_conversion()))
     prefix = "~" if approximate else ""
     label = f"{prefix}{speed}"
-    font_size = 31.0
+    font_size = 31
     measured = measure_text_cached(self._font, label, font_size)
     pad_x, pad_y = 9.0, 4.0
     bg = rl.Rectangle(x - measured.x / 2 - pad_x, y - measured.y / 2 - pad_y,
@@ -184,7 +184,7 @@ class CornerRadarIndicators:
       x, width = bounds
       rl.draw_rectangle_rounded(rl.Rectangle(x, 80, width, 205), 0.15, 6, rl.Color(0, 0, 0, 90))
       label = "RADAR*"
-      size = min(21.0, width / 4)
+      size = int(min(21, width / 4))
       measured = measure_text_cached(self._font, label, size)
       rl.draw_text_ex(self._font, label, rl.Vector2(x + (width - measured.x) / 2, 84), size, 0, yellow)
 
