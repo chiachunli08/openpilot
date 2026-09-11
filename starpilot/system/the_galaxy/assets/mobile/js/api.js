@@ -72,7 +72,7 @@ export const api = {
   getFlmWorkspace() { return requestOk("/api/flm/workspace", { cache: "no-store" }) },
   getFavoritesSlots() { return request("/api/favorites/slots", { cache: "no-store" }) },
   saveFavoritesSlots(slots) { return request("/api/favorites/slots", { method: "PUT", data: { slots } }) },
-  activateFavoriteAction(key) { return request("/api/favorites/action", { method: "POST", data: { key } }) },
+  activateFavoriteAction(key, value) { return request("/api/favorites/action", { method: "POST", data: { key, ...(value == null ? {} : { value }) } }) },
 
   getDeviceStatus() { return requestOk("/api/device/status") },
   getStats() { return requestOk("/api/stats") },
@@ -190,6 +190,11 @@ export const api = {
   navigationFavorite(body) { return request("/api/navigation/favorite", { method: "POST", data: body }) },
   deleteNavigationKey(type) { return request(`/api/navigation_key?type=${encodeURIComponent(type)}`, { method: "DELETE" }) },
 
+  async systemMonitor(signal) {
+    const response = await fetch("/api/system/monitor", { signal, cache: "no-store" })
+    if (!response.ok) throw new Error("System monitor unavailable")
+    return response.json()
+  },
   async backupToggles() {
     const res = await fetch("/api/toggles/backup", { method: "POST" })
     if (!res.ok) {
@@ -274,6 +279,10 @@ export const api = {
 
   getPlotsLive() { return request("/api/plots/live") },
   getGalaxySession() { return request("/api/galaxy/session") },
+
+  getTailscaleInstalled() { return request("/api/tailscale/installed", { cache: "no-store" }) },
+  setupTailscale() { return request("/api/tailscale/setup", { method: "POST" }) },
+  uninstallTailscale() { return request("/api/tailscale/uninstall", { method: "POST" }) },
 
   getThemeList() { return request("/api/themes/list") },
   getThemeDefault() { return request("/api/themes/default") },

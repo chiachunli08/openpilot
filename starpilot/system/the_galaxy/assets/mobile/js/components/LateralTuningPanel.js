@@ -1,6 +1,6 @@
 import { api, showSnackbar } from "../api.js"
 import { usePolling } from "../composables.js"
-import { GalaxyConfirm } from "./GalaxyModal.js"
+import { GalaxyConfirm, GalaxyPrompt } from "./GalaxyModal.js"
 import { GxNotice } from "./GxNotice.js"
 
 const MAX_ROUTES = 250
@@ -479,6 +479,11 @@ export const LateralTuningPanel = {
     startPending(kind, opts = {}) {
       this.pending = { kind, tuneId: opts.tuneId || "" }
       this.pendingName = opts.name || ""
+      this.$nextTick(() => {
+        const editor = this.$refs.pendingEditor
+        editor?.scrollIntoView({ behavior: "smooth", block: "center" })
+        editor?.querySelector("input")?.focus()
+      })
     },
     cancelPending() { this.pending = null; this.pendingName = "" },
     async confirmPending() {
@@ -519,6 +524,18 @@ export const LateralTuningPanel = {
     },
     async applySavedTune(tune) {
       await this.runWith(() => api.flmApplySavedTune(tune.tuneId), "Saved tune applied.")
+    },
+    async renameSavedTune(tune) {
+      if (!tune?.tuneId || this.busy) return
+      const name = await GalaxyPrompt({
+        title: "Rename Saved Tune",
+        message: `Choose a new name for “${tune.name || "Saved Tune"}”.`,
+        initialValue: tune.name || "",
+        placeholder: "Name this tune...",
+        confirmLabel: "Rename",
+      })
+      if (name === null) return
+      await this.runWith(() => api.flmRenameSavedTune(tune.tuneId, name), "Tune renamed.")
     },
     async submitTune(tune) {
       const ok = await GalaxyConfirm({
@@ -582,7 +599,34 @@ export const LateralTuningPanel = {
         </div>
       </section>
 
-      <div v-if="pending" class="gx-card" style="margin-top: var(--sp-3);">
+      <section class="gx-card" style="margin-top: var(--sp-3);">
+        <div class="gx-section__header">
+          <i class="bi bi-collection"></i>
+          <span class="gx-section__title">Saved Tunes</span>
+        </div>
+        <div style="padding: var(--sp-4);">
+          <p style="color: var(--text-muted); line-height:1.6; margin:0 0 var(--sp-3);">Save a working FLM trial, switch between setups, then use Revert Trial to return to the exact manual settings from before FLM.</p>
+          <div v-if="!workspace.savedTunes.length" class="gx-empty">No saved tunes yet. Apply a trial, then save it here.</div>
+          <div v-for="tune in workspace.savedTunes" :key="tune.tuneId" style="border-top:1px solid var(--glass-border); padding: var(--sp-2) 0;">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+              <div style="min-width:0;">
+                <strong>{{ tune.name || 'Saved Tune' }}<span v-if="tune.active" style="color:var(--primary);"> (Active)</span></strong>
+                <div class="gx-row__desc">{{ tune.carFingerprint || 'Unknown car' }}{{ tune.pathLabel ? ' / ' + tune.pathLabel : '' }}</div>
+                <div class="gx-row__desc">{{ tune.genericParamCount }} generic, {{ tune.frictionCurveCount }} friction curve, {{ tune.vehicleKnobCount }} knobs</div>
+                <div class="gx-row__desc">{{ fmtAge(tune.updatedAt) }}</div>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                <button type="button" class="gx-btn gx-btn--tonal" :disabled="busy || tune.active" @click="applySavedTune(tune)">{{ tune.active ? 'Active' : 'Apply' }}</button>
+                <button type="button" class="gx-btn gx-btn--text" :disabled="busy" @click="renameSavedTune(tune)">Rename</button>
+                <button type="button" class="gx-btn gx-btn--text" :disabled="busy || tune.active" style="color:var(--error);" @click="deleteSavedTune(tune)">Delete</button>
+                <button type="button" class="gx-btn gx-btn--text" :disabled="busy" @click="submitTune(tune)">Firestar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div v-if="pending" ref="pendingEditor" class="gx-card" style="margin-top: var(--sp-3);">
         <div style="padding: var(--sp-4); display:grid; gap:10px;">
           <div class="gx-section__header" style="padding:0 0 6px;">
             <i class="bi bi-pencil-square"></i>
@@ -768,32 +812,6 @@ export const LateralTuningPanel = {
         </div>
       </section>
 
-      <section class="gx-card" style="margin-top: var(--sp-3);">
-        <div class="gx-section__header">
-          <i class="bi bi-collection"></i>
-          <span class="gx-section__title">Saved Tunes</span>
-        </div>
-        <div style="padding: var(--sp-4);">
-          <p style="color: var(--text-muted); line-height:1.6; margin:0 0 var(--sp-3);">Save a working FLM trial, switch between setups, then use Revert Trial to return to the exact manual settings from before FLM.</p>
-          <div v-if="!workspace.savedTunes.length" class="gx-empty">No saved tunes yet. Apply a trial, then save it here.</div>
-          <div v-for="tune in workspace.savedTunes" :key="tune.tuneId" style="border-top:1px solid var(--glass-border); padding: var(--sp-2) 0;">
-            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
-              <div style="min-width:0;">
-                <strong>{{ tune.name || 'Saved Tune' }}<span v-if="tune.active" style="color:var(--primary);"> (Active)</span></strong>
-                <div class="gx-row__desc">{{ tune.carFingerprint || 'Unknown car' }}{{ tune.pathLabel ? ' / ' + tune.pathLabel : '' }}</div>
-                <div class="gx-row__desc">{{ tune.genericParamCount }} generic, {{ tune.frictionCurveCount }} friction curve, {{ tune.vehicleKnobCount }} knobs</div>
-                <div class="gx-row__desc">{{ fmtAge(tune.updatedAt) }}</div>
-              </div>
-              <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
-                <button type="button" class="gx-btn gx-btn--tonal" :disabled="busy || tune.active" @click="applySavedTune(tune)">{{ tune.active ? 'Active' : 'Apply' }}</button>
-                <button type="button" class="gx-btn gx-btn--text" :disabled="busy" @click="startPending('rename', { tuneId: tune.tuneId, name: tune.name })">Rename</button>
-                <button type="button" class="gx-btn gx-btn--text" :disabled="busy || tune.active" style="color:var(--error);" @click="deleteSavedTune(tune)">Delete</button>
-                <button type="button" class="gx-btn gx-btn--text" :disabled="busy" @click="submitTune(tune)">Firestar</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
     </div>
   `,
 }
