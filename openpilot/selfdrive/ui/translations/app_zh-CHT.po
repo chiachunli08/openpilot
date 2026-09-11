@@ -309,6 +309,14 @@ msgstr "啟用 SSH"
 msgid "Enable Tethering"
 msgstr "啟用網路共享"
 
+#: openpilot/system/ui/widgets/network.py
+msgid "Enable SIM Card"
+msgstr "啟用 SIM 卡"
+
+#: openpilot/system/ui/widgets/network.py
+msgid "Turn mobile data off, or reset the modem and re-read the SIM when enabled. Available while parked."
+msgstr "關閉行動數據，或重新啟用時重置數據機並重新讀取 SIM 卡。僅能於停車時操作。"
+
 #: openpilot/selfdrive/ui/layouts/settings/toggles.py
 msgid "Enable driver monitoring even when sunnypilot is not engaged."
 msgstr "即使 sunnypilot 未控制車輛，也持續啟用駕駛監控。"

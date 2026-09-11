@@ -1,4 +1,5 @@
 import atexit
+import glob
 import os
 import shutil
 import subprocess
@@ -957,7 +958,7 @@ class WifiManager:
       return
 
     try:
-      result = subprocess.run([ip, "neigh", "show", "dev", TETHERING_INTERFACE], capture_output=True, text=True, timeout=2, check=False)
+      result = subprocess.run([ip, "neigh", "show"], capture_output=True, text=True, timeout=2, check=False)
     except (OSError, subprocess.TimeoutExpired):
       return
 
@@ -972,15 +973,32 @@ class WifiManager:
         continue
       neighbors[fields[mac_index].lower()] = ip_address
 
+    # NetworkManager's shared dnsmasq lease survives even when a client has not
+    # generated enough traffic to remain in the kernel neighbor table.
+    for lease_path in glob.glob("/var/lib/NetworkManager/dnsmasq-*.leases"):
+      try:
+        with open(lease_path) as lease_file:
+          for line in lease_file:
+            fields = line.split()
+            if len(fields) >= 3 and fields[2].startswith("192.168.43."):
+              neighbors[fields[1].lower()] = fields[2]
+      except OSError:
+        continue
+
     stations: set[str] = set()
     iw = self._find_executable(("iw",))
     if iw is not None:
-      station_result = self._run_privileged([iw, "dev", TETHERING_INTERFACE, "station", "dump"])
-      if station_result is not None and station_result.returncode == 0:
-        for line in station_result.stdout.splitlines():
-          fields = line.split()
-          if len(fields) >= 2 and fields[0] == "Station":
-            stations.add(fields[1].lower())
+      interfaces = {TETHERING_INTERFACE}
+      dev_result = self._run_privileged([iw, "dev"])
+      if dev_result is not None and dev_result.returncode == 0:
+        interfaces.update(line.split()[1] for line in dev_result.stdout.splitlines() if line.strip().startswith("Interface "))
+      for interface in interfaces:
+        station_result = self._run_privileged([iw, "dev", interface, "station", "dump"])
+        if station_result is not None and station_result.returncode == 0:
+          for line in station_result.stdout.splitlines():
+            fields = line.split()
+            if len(fields) >= 2 and fields[0] == "Station":
+              stations.add(fields[1].lower())
 
     mac_addresses = stations | set(neighbors)
     clients = [TetheringClient(neighbors.get(mac_address, "—"), mac_address) for mac_address in mac_addresses]

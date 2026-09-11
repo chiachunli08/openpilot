@@ -122,6 +122,14 @@ class AdvancedNetworkSettings(Widget):
     self._prime_state = ui_state.prime_state
     self._cell_prime_types = (PrimeType.NONE, PrimeType.LITE)
 
+    # Resetting the modem can briefly interrupt the shared GNSS module, so this
+    # control is intentionally unavailable while driving.
+    sim_enabled = self._params.get_bool("GsmEnabled")
+    self._sim_action = ToggleAction(initial_state=sim_enabled, enabled=lambda: not ui_state.started)
+    self._sim_btn = ListItem(lambda: tr("Enable SIM Card"),
+                             description=lambda: tr("Turn mobile data off, or reset the modem and re-read the SIM when enabled. Available while parked."),
+                             action_item=self._sim_action, callback=self._toggle_sim)
+
     self._keyboard = Keyboard(max_text_size=MAX_PASSWORD_LENGTH, min_text_size=MIN_PASSWORD_LENGTH, show_password_toggle=True)
 
     # Tethering
@@ -164,6 +172,7 @@ class AdvancedNetworkSettings(Widget):
       tethering_password_btn,
       self._connected_devices_btn,
       text_item(lambda: tr("IP Address"), lambda: self._wifi_manager.ipv4_address),
+      self._sim_btn,
       self._roaming_btn,
       self._apn_btn,
       self._cellular_metered_btn,
@@ -196,6 +205,12 @@ class AdvancedNetworkSettings(Widget):
 
   def _toggle_roaming(self):
     self._params.put_bool("GsmRoaming", self._roaming_action.get_state(), block=True)
+
+  def _toggle_sim(self):
+    if ui_state.started:
+      self._sim_action.set_state(self._params.get_bool("GsmEnabled"))
+      return
+    self._params.put_bool("GsmEnabled", self._sim_action.get_state(), block=True)
 
   def _show_connected_devices(self):
     clients = self._wifi_manager.tethering_clients
@@ -280,9 +295,11 @@ class AdvancedNetworkSettings(Widget):
   def _update_state(self):
     self._wifi_manager.process_callbacks()
 
-    # If not using prime SIM, show GSM settings. NetworkManager's shared mode
-    # manages forwarding and NAT for tethering independently.
+    # If not using prime SIM, show GSM settings. The custom PPP modem process
+    # manages cellular forwarding and NAT independently of NetworkManager.
     show_cell_settings = self._prime_state.get_type() in self._cell_prime_types
+    self._sim_btn.set_visible(show_cell_settings)
+    self._sim_action.set_state(self._params.get_bool("GsmEnabled"))
     self._roaming_btn.set_visible(show_cell_settings)
     self._apn_btn.set_visible(show_cell_settings)
     self._cellular_metered_btn.set_visible(show_cell_settings)
