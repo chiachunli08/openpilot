@@ -1957,22 +1957,22 @@ _RUNTIME_DEFAULT_ZERO_OK_KEYS = {
 _TROUBLESHOOT_SECTION_DEFINITIONS = [
   {
     "id": "personality_settings",
-    "title": "Personality Profile Settings",
+    "title": "Longitudinal (Speed & Following) › Driving Personalities",
     "keys": _TROUBLESHOOT_PERSONALITY_KEYS,
   },
   {
     "id": "cem_settings",
-    "title": "CEM Settings",
+    "title": "Longitudinal (Speed & Following) › Longitudinal control mode",
     "keys": _TROUBLESHOOT_CEM_KEYS,
   },
   {
     "id": "advanced_lateral_tuning",
-    "title": "Advanced Lateral Tuning",
+    "title": "Lateral (Steering) › Advanced Lateral Tuning",
     "keys": _TROUBLESHOOT_ADVANCED_LATERAL_KEYS,
   },
   {
     "id": "advanced_longitudinal_tuning",
-    "title": "Advanced Longitudinal Tuning",
+    "title": "Longitudinal (Speed & Following) › Advanced Longitudinal Tuning",
     "keys": _TROUBLESHOOT_ADVANCED_LONGITUDINAL_KEYS,
   },
 ]
@@ -4514,6 +4514,45 @@ def _build_troubleshoot_payload():
     for section_definition in _TROUBLESHOOT_SECTION_DEFINITIONS
   ]
 
+  shown = {item['key'] for section in sections for item in section['items']}
+  registered = {key for key, *_ in starpilot_default_params}
+  for category in load_settings_catalog() or []:
+    groups = {}
+    for entry in category.get('params', []):
+      key = entry.get('key')
+      if key in shown or key not in registered or key.startswith('LaneCentering') or key == 'LaneCenterOffset':
+        continue
+      if (entry.get("requires_capability") == "HasRivianAngleHarness" and not _get_has_rivian_angle_harness()):
+        continue
+      if key == "TeslaWakeOnCAN" and not supports_tesla_can_wake(params):
+        continue
+      if _params_raw.get_key_flag(key) & ParamKeyFlag.DONT_LOG:
+        continue
+      parent = entry.get('parent_key')
+      title = category['name']
+      if parent:
+        title += ' › ' + str(layout_metadata.get(parent, {}).get('label', parent))
+      groups.setdefault(title, []).append(key)
+      shown.add(key)
+    for title, keys in groups.items():
+      section = _build_troubleshoot_section_payload({'id': 'catalog_' + keys[0], 'title': title, 'keys': keys},
+                                                    value_types, default_values, layout_metadata, learned_values)
+      section['resettable'] = False
+      sections.append(section)
+  for title, keys in [
+      ('Bluetooth Controllers', ['BluetoothEnabled', 'BluetoothDisconnectControllersOffroad', 'WheelControlsEnabled', 'ControllerActionSlots', 'WheelControlMappings']),
+      ('Longitudinal (Speed & Following) › Longitudinal control mode', ['ExperimentalMode', 'ConditionalExperimental', 'ConditionalChill', 'LongitudinalPersonality']),
+      ('Model Manager', ['Model', 'ActiveBigModel', 'ActiveSmallModel', 'ModelSortMode', 'UserFavorites'])]:
+    keys = [key for key in keys if key in registered and key not in shown
+            and not (_params_raw.get_key_flag(key) & ParamKeyFlag.DONT_LOG)]
+    if keys:
+      section = _build_troubleshoot_section_payload({'id': 'extra_' + keys[0], 'title': title, 'keys': keys},
+                                                    value_types, default_values, layout_metadata, learned_values)
+      section['resettable'] = False
+      sections.append(section)
+      shown.update(keys)
+  sections.sort(key=lambda section: section["title"])
+
   return _sanitize_json_value({
     "vehicleStatus": _build_vehicle_fault_status(),
     "snapshot": snapshot_items,
@@ -5167,6 +5206,8 @@ class GalaxySlugMiddleware:
 
 
 def setup(app):
+  from openpilot.starpilot.assets.model_sizes import ModelSizes
+  model_sizes = ModelSizes()
   if not isinstance(app.wsgi_app, GalaxySlugMiddleware):
     app.wsgi_app = GalaxySlugMiddleware(app.wsgi_app)
 
@@ -6908,7 +6949,9 @@ def setup(app):
     if params.get_bool("IsOnroad"):
       return jsonify({"error": "Cannot change active models while driving."}), 403
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("model"), str):
+      return jsonify({"error": "An explicit model string is required."}), 400
     profile = str(data.get("profile") or "").strip().lower()
     if profile not in ("small", "big"):
       return jsonify({"error": "Model profile must be 'small' or 'big'."}), 400
@@ -7550,7 +7593,9 @@ def setup(app):
       })
 
     models.sort(key=lambda model: (model["series"].lower(), model["label"].lower()))
-    return models
+    return model_sizes.annotate(models, MODELS_PATH,
+                                Path(__file__).resolve().parents[3] / "selfdrive/modeld/models/driving_tinygrad.pkl",
+                                artifact_metadata, model_accelerator_artifact_filename)
 
   @app.route("/api/routes", methods=["GET"])
   def list_routes():
