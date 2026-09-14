@@ -26,6 +26,7 @@ def test_ui_app_shell_files_exist():
     "js/params.js",
     "js/i18n.js",
     "js/components/AppShell.js",
+    "js/components/DevicePicker.js",
     "js/components/GalaxyModal.js",
     "js/components/GalaxySection.js",
     "js/components/GalaxyEmbed.js",
@@ -60,6 +61,25 @@ def test_ui_index_wires_vue_and_mount_point():
   assert '"vue": "/assets/vendor/vue/vue.esm-browser.js"' in index
   assert '<title>Galaxy</title>' in index
   assert 'apple-mobile-web-app-title" content="Galaxy"' in index
+
+
+def test_ui_device_picker_uses_gateway_directory_and_preserves_local_galaxy():
+  picker = _read("js/components/DevicePicker.js")
+  shell = _read("js/components/AppShell.js")
+  css = _read("css/material.css")
+  param_keys = (REPO_ROOT / "common/params_keys.h").read_text(encoding="utf-8")
+
+  assert 'fetch("/_gateway/devices"' in picker
+  assert 'method: "PUT"' in picker
+  assert "/name`" in picker
+  assert "Rename comma" in picker
+  assert "hasMultipleDevices" in picker
+  assert "window.location.assign(device.path)" in picker
+  assert shell.index('<DevicePicker />') > shell.index('v-for="(links, section) in NAV"')
+  assert '"GalaxyDeviceName", {PERSISTENT | DONT_LOG, STRING' in param_keys
+  assert "localStorage" not in picker
+  assert ".gx-drawer.open ~ .liquid-glass-nav" in css
+  assert "Local Galaxy instances do not have the gateway directory endpoint." in picker
 
 
 def test_ui_uses_same_backend_endpoints():
@@ -477,12 +497,13 @@ def test_ui_all_remaining_classic_tools_native_no_embed():
   assert "GalaxyEmbed" not in tuning and "LateralTuningPanel" in tuning
   assert _read("js/components/MapsPanel.js") and _read("js/components/NavigationKeysPanel.js")
   destination = _read("js/components/NavigationDestinationPanel.js")
+  assert '"./views/Navigation.js?v=nav-destination-2"' in _read("js/app.js")
+  assert '"../components/NavigationDestinationPanel.js?v=nav-destination-2"' in _read("js/views/Navigation.js")
   assert "mapboxSuggest" in destination and "mapboxRetrieve" in destination
   assert "mapboxGeocode" in destination and "mapboxDirections" in destination
   assert "ref=\"map\"" in destination and "setNavigation(this.destination)" in destination
-  assert "methods: {" in destination and "secondaryLabel," in destination
+  assert destination.count("methods: {") == 1 and "secondaryLabel," in destination
   assert _read("js/components/LateralTuningPanel.js")
-
   # Shared API surface added for the second batch of ported pages.
   for method in ["selectTestingGround",
                  "getSentryStatus", "getSentryEvents", "deleteSentryEvent", "sentryPushSubscribe",
@@ -512,6 +533,20 @@ def test_ui_all_remaining_classic_tools_native_no_embed():
   assert "inputRequired" in modal
   assert lateral.index('>Workspace status</span>') < lateral.index('>Saved Tunes</span>')
   assert lateral.index('>Saved Tunes</span>') < lateral.index('>Local Routes</span>')
+
+
+def test_navigation_requires_secret_key_before_starting_on_device_route():
+  destination = _read("js/components/NavigationDestinationPanel.js")
+  classic_destination = (REPO_ROOT / "starpilot/system/the_galaxy/assets/components/navigation/navigation_destination.js").read_text(encoding="utf-8")
+
+  assert 'mapboxSecret: ""' in destination
+  assert "hasRoutingKey()" in destination
+  assert "!query.trim() || !hasRoutingKey" in destination
+  assert "loadingRoute || !hasRoutingKey" in destination
+  assert "required for the comma to calculate the on-device route" in destination
+  assert "secret key lets your comma calculate the on-device route" in classic_destination
+  assert "if (!response.ok)" in classic_destination
+  assert 'result.message || "Failed to start navigation."' in classic_destination
 
 
 def test_ui_cameras_hub_vasm_and_pip_native_no_embed():
@@ -556,7 +591,11 @@ def test_ui_mobile_polish_regressions():
   assert "Automatically Install Updates" in system
   assert 'key: "AutomaticUpdates"' in system
   assert "!!fastStatus?.automaticUpdates" in system
-  assert "isOnroad || autoUpdateBusy || !!fastStatus?.running" in system
+  assert "isOnroad || autoUpdateBusy || updateInProgress" in system
+  assert "getGatewayDevices" in _read("js/api.js")
+  assert "rebootStorageScope" in system
+  assert "writeRebootMarker(this.rebootStorageScope" in system
+  assert "clearRebootMarker(this.rebootStorageScope" in system
 
   bluetooth = _read("js/components/BluetoothPanel.js")
   assert "methods: {\n    address," in bluetooth

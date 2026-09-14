@@ -16,6 +16,47 @@ function toPercent(value) {
   return Math.max(0, Math.min(100, n))
 }
 
+const CORE_UPDATE_BRANCHES = ["StarPilot", "Dom"]
+const REBOOT_PENDING_STORAGE_KEY = "galaxy-update-reboot-pending"
+const LOCAL_DEVICE_SCOPE = "local"
+const DEVICE_SLUG_RE = /^[A-Za-z0-9]{16}$/
+
+function rebootStorageKey(scope = LOCAL_DEVICE_SCOPE) {
+  const normalizedScope = String(scope || "").trim() || LOCAL_DEVICE_SCOPE
+  return REBOOT_PENDING_STORAGE_KEY + ":" + normalizedScope
+}
+
+function readRebootMarker(scope = LOCAL_DEVICE_SCOPE) {
+  try {
+    const raw = localStorage.getItem(rebootStorageKey(scope))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    const startedAt = Number(parsed?.startedAt)
+    return Number.isFinite(startedAt) && startedAt > 0 ? startedAt : null
+  } catch (e) {
+    return null
+  }
+}
+
+function writeRebootMarker(scope, startedAt) {
+  try { localStorage.setItem(rebootStorageKey(scope), JSON.stringify({ startedAt })) } catch (e) {}
+}
+
+function clearRebootMarker(scope) {
+  try { localStorage.removeItem(rebootStorageKey(scope)) } catch (e) {}
+}
+
+async function resolveDeviceScope() {
+  try {
+    const payload = await api.getGatewayDevices()
+    if (!payload) return LOCAL_DEVICE_SCOPE
+    return DEVICE_SLUG_RE.test(payload?.activeSlug || "") ? payload.activeSlug : LOCAL_DEVICE_SCOPE
+  } catch (e) {
+    // Direct/local Galaxy instances do not have the gateway directory endpoint.
+    return LOCAL_DEVICE_SCOPE
+  }
+}
+
 export const SystemTools = {
   name: "SystemTools",
   components: { GalaxySection, GxNotice, GalaxySelect, VersionHistoryPicker },
@@ -35,11 +76,20 @@ export const SystemTools = {
       versionNotice: "",
       versionGeneration: 0,
       branchLoading: true,
+      branchListFallback: false,
+      branchListError: "",
+      advancedVersionPickerOpen: false,
       otherBranchesOpen: false,
       branchBusy: false,
 
       isOnroad: false,
       fastStatus: null,
+      statusUnavailable: false,
+      rebootStorageScope: LOCAL_DEVICE_SCOPE,
+      rebootPending: false,
+      rebootStartedAt: 0,
+      rebootOfflineSeen: false,
+      reconnectedNotice: false,
       checkedForUpdates: false,
       busy: "",
       autoUpdateBusy: false,
@@ -51,14 +101,35 @@ export const SystemTools = {
     }
   },
   created() {
-    this.poll = usePolling(() => this.loadFastStatus(), {
-      interval: 1000,
-      enabled: () => !this.fastStatus || !!this.fastStatus.running,
+    this.rebootScopeCancelled = false
+    this.rebootReady = resolveDeviceScope().then((scope) => {
+      if (this.rebootScopeCancelled) return
+      this.rebootStorageScope = scope
+      const marker = readRebootMarker(scope)
+      this.rebootPending = !!marker
+      this.rebootStartedAt = marker || 0
+    }).finally(() => {
+      if (this.rebootScopeCancelled) return
+      this.poll = usePolling(() => this.loadFastStatus(), {
+        interval: 1000,
+        enabled: () => this.statusPollingNeeded,
+      })
+      this.poll.start()
     })
-    this.poll.start()
   },
-  mounted() { this.loadBranches(); this.loadProfiles(); this.loadTailscale() },
-  beforeUnmount() { this.poll?.destroy(); this.resetVersions() },
+  mounted() {
+    this.rebootReady.then(() => {
+      if (this.rebootScopeCancelled) return
+      this.loadBranches()
+      this.loadProfiles()
+      this.loadTailscale()
+    })
+  },
+  beforeUnmount() {
+    this.rebootScopeCancelled = true
+    this.poll?.destroy()
+    this.resetVersions()
+  },
   computed: {
     primaryBranchValue() {
       if (this.otherBranchesOpen) return "other:"
@@ -72,14 +143,17 @@ export const SystemTools = {
       return branches
     },
     branchSwitchBlocked() {
-      return this.branchLoading || this.isOnroad || !!this.fastStatus?.isOnroad || !!this.fastStatus?.running || !!this.busy
+      return this.branchLoading || this.isOnroad || !!this.fastStatus?.isOnroad || this.updateInProgress || !!this.busy
     },
+    statusRebooting() { return String(this.fastStatus?.stage || "").trim().toLowerCase() === "rebooting" },
+    updateInProgress() { return !!this.fastStatus?.running || this.statusRebooting || this.rebootPending },
+    statusPollingNeeded() { return !this.fastStatus || this.updateInProgress || this.rebootPending },
     versionChoices() { return this.targetBranch === "StarPilot" ? releaseVersions(this.versionCommits) : this.versionCommits },
     installVersionBlocked() {
       return this.branchSwitchBlocked || this.branchBusy || !this.branches.includes(this.targetBranch) ||
         (this.versionMode === "earlier" && (this.versionLoading || !/^[a-f0-9]{40}$/.test(this.selectedCommit) || !this.versionChoices.some(commit => commit.sha === this.selectedCommit)))
     },
-    updateAvailable() { return this.checkedForUpdates && !!this.fastStatus?.updateAvailable && !this.fastStatus?.running },
+    updateAvailable() { return this.checkedForUpdates && !!this.fastStatus?.updateAvailable && !this.updateInProgress },
     factoryResetStatus() {
       const s = this.fastStatus
       if (!s || String(s?.lastMode || "").trim() !== "factory-reset") return null
@@ -102,15 +176,33 @@ export const SystemTools = {
     async loadBranches() {
       try {
         const data = await api.getUpdateBranches()
-        this.branches = Array.isArray(data?.branches) ? data.branches : []
-        this.currentBranch = data?.currentBranch || ""
+        const branches = [...new Set(data.branches.map(branch => String(branch || "").trim()).filter(Boolean))]
+        if (!branches.length) throw new Error("No update branches were returned.")
+        this.branches = branches
+        this.currentBranch = String(data?.currentBranch || "").trim()
+        this.branchListFallback = false
+        this.branchListError = ""
         if (!this.targetBranch) {
           this.targetBranch = this.currentBranch
           this.otherBranchesOpen = !!this.targetBranch && !["StarPilot", "Dom"].includes(this.targetBranch)
         }
         this.isOnroad = !!data?.isOnroad
       } catch (e) {
-        showSnackbar("Failed to load update info.", "error")
+        this.branchListError = e?.message || "Update branch list unavailable."
+        try {
+          if (!this.fastStatus) await this.loadFastStatus({ throwOnError: true })
+        } catch (statusError) {
+          this.fastStatus = null
+        }
+        const current = String(this.fastStatus?.branch || this.currentBranch || "").trim()
+        this.currentBranch = current
+        this.branches = [...new Set([current, ...CORE_UPDATE_BRANCHES].filter(Boolean))]
+        this.branchListFallback = true
+        if (!this.targetBranch) {
+          this.targetBranch = current || "Dom"
+          this.otherBranchesOpen = !!this.targetBranch && !CORE_UPDATE_BRANCHES.includes(this.targetBranch)
+        }
+        showSnackbar("Could not refresh the full branch list. Standard branches are still available.", "error")
       } finally {
         this.branchLoading = false
       }
@@ -119,12 +211,41 @@ export const SystemTools = {
       try {
         const status = await api.getUpdateFastStatus()
         if (!status) throw new Error("Update status unavailable")
+        const stage = String(status.stage || "").trim().toLowerCase()
+        if (stage === "rebooting" && !this.rebootPending) {
+          this.rebootPending = true
+          this.rebootStartedAt = Date.now()
+          writeRebootMarker(this.rebootStartedAt)
+        }
+        const pendingAge = this.rebootStartedAt ? Date.now() - this.rebootStartedAt : 0
+        const deviceReturned = this.rebootPending && !status.running && stage !== "rebooting" &&
+          (this.statusUnavailable || pendingAge >= 30_000)
+        const updateFailed = this.rebootPending && stage === "error"
         this.fastStatus = status
+        this.statusUnavailable = false
         this.isOnroad = !!status.isOnroad
+        if (deviceReturned) this.clearRebootPending()
+        else if (updateFailed) this.clearRebootPending(false)
       } catch (e) {
-        this.fastStatus = null
+        this.statusUnavailable = true
+        if (this.rebootPending) this.rebootOfflineSeen = true
+        else this.fastStatus = null
         if (throwOnError) throw e
       }
+    },
+    markRebootPending() {
+      this.rebootPending = true
+      this.rebootStartedAt = Date.now()
+      this.rebootOfflineSeen = false
+      this.reconnectedNotice = false
+      writeRebootMarker(this.rebootStorageScope, this.rebootStartedAt)
+    },
+    clearRebootPending(showNotice = true) {
+      this.rebootPending = false
+      this.rebootStartedAt = 0
+      this.rebootOfflineSeen = false
+      clearRebootMarker(this.rebootStorageScope)
+      if (showNotice) this.reconnectedNotice = true
     },
     async backupToggles() {
       try {
@@ -202,6 +323,7 @@ export const SystemTools = {
       if (!(await GalaxyConfirm({ title: "Reset toggles to default?", message: "This resets all toggles to their default values and reboots.", confirmLabel: "Reset", danger: true }))) return
       try {
         await api.resetTogglesDefault()
+        this.markRebootPending()
         showSnackbar("Resetting toggles to default... rebooting.")
       } catch (e) {
         showSnackbar("Reset failed.", "error")
@@ -321,6 +443,7 @@ export const SystemTools = {
           return
         }
         const result = await api.installUpdateVersion(branch, commit)
+        this.markRebootPending()
         showSnackbar(result?.message || `Installing ${version} on ${branch}...`)
         await this.loadFastStatus()
       } catch (e) {
@@ -330,13 +453,13 @@ export const SystemTools = {
       }
     },
     async checkUpdates() {
-      if (this.busy) return
+      if (this.busy || this.updateInProgress) return
       this.busy = "check"
       try {
         await this.loadFastStatus({ throwOnError: true })
         this.checkedForUpdates = true
         const st = this.fastStatus
-        if (st?.running) showSnackbar("An update is already running.")
+        if (this.updateInProgress) showSnackbar("An update is already running.")
         else if (st?.updateAvailable) showSnackbar(st?.message || "Update available.")
         else showSnackbar(st?.message || "No update available — you're up to date.")
       } catch (e) {
@@ -346,7 +469,7 @@ export const SystemTools = {
       }
     },
     async setAutomaticUpdates(enabled) {
-      if (this.autoUpdateBusy || this.isOnroad || this.fastStatus?.running || !this.fastStatus) return
+      if (this.autoUpdateBusy || this.isOnroad || this.updateInProgress || !this.fastStatus) return
       const previous = !!this.fastStatus.automaticUpdates
       this.autoUpdateBusy = true
       this.fastStatus = { ...this.fastStatus, automaticUpdates: !!enabled }
@@ -362,7 +485,7 @@ export const SystemTools = {
     },
     async applyFastUpdate() {
       if (this.busy || this.isOnroad) return
-      if (this.fastStatus?.running) { showSnackbar("Fast update is already running."); return }
+      if (this.updateInProgress) { showSnackbar("Fast update is already running."); return }
       if (!this.checkedForUpdates || !this.updateAvailable) {
         showSnackbar("No update available. Run \"Check for Updates\" first.", "error")
         return
@@ -378,7 +501,7 @@ export const SystemTools = {
       await this.runUpdate("fast")
     },
     async runUpdate(action) {
-      if (this.busy) return
+      if (this.busy || this.updateInProgress) return
       this.busy = action
       try {
         if (action === "rollback") {
@@ -394,6 +517,7 @@ export const SystemTools = {
         }
         const fn = action === "fast" ? api.updateFast : action === "recover" ? api.updateRecover : api.updateRollback
         const payload = await fn()
+        this.markRebootPending()
         showSnackbar(payload?.message || "Update started.")
         await this.loadFastStatus()
       } catch (e) {
@@ -406,6 +530,7 @@ export const SystemTools = {
       if (!(await GalaxyConfirm({ title: "Factory reset (SAVE ME)?", message: "This wipes params, backups, themes, models, maps, and route data, then reboots. This cannot be undone.", confirmLabel: "Factory Reset", danger: true }))) return
       try {
         await api.factoryReset()
+        this.markRebootPending()
         showSnackbar("SAVE ME initiated — factory resetting...")
         await this.loadFastStatus()
       } catch (e) {
@@ -476,22 +601,26 @@ export const SystemTools = {
           <div v-if="branchLoading" class="gx-loading">Loading update info...</div>
           <template v-else>
             <GxNotice v-if="isOnroad" text="Updates and branch switching are only available while offroad." style="margin-bottom:12px;" />
+            <GxNotice v-if="rebootPending" tone="info" icon="bi-arrow-repeat gx-spin" title="Device rebooting"
+              :text="statusUnavailable ? 'The device is temporarily offline. Galaxy will keep checking until it reconnects.' : 'The update is complete. Waiting for the device to reconnect…'" />
+            <GxNotice v-else-if="reconnectedNotice" tone="info" icon="bi-check-circle-fill" title="Device reconnected"
+              text="Galaxy is connected again and the update status is current." />
 
             <div v-if="fastStatus" class="gx-card" style="margin-bottom:12px;">
               <div class="gx-section__header">
                 <i class="bi bi-arrow-repeat"></i>
                 <span class="gx-section__title">Update Status</span>
-                <span v-if="fastStatus.running" class="gx-chip" style="background:var(--primary);color:var(--on-primary);">{{ fastStatus.progressPercent }}%</span>
+                <span v-if="updateInProgress" class="gx-chip" style="background:var(--primary);color:var(--on-primary);">{{ rebootPending || statusRebooting ? 'Reconnecting…' : fastStatus.progressPercent + '%' }}</span>
                 <span v-else-if="updateAvailable" class="gx-chip" style="background:var(--warning);color:var(--black);">Update available</span>
                 <span v-else-if="checkedForUpdates" class="gx-chip">Up to date</span>
                 <span v-else class="gx-chip">Not checked</span>
               </div>
               <div style="padding: var(--sp-3); display:grid; gap:6px;">
                 <div class="gx-row" style="border-top:none; min-height:0; padding:4px 0;"><span class="gx-row__label">Installed branch</span><span class="gx-row__value">{{ fastStatus.branch || currentBranch || '—' }}</span></div>
-                <div v-if="fastStatus.running" class="gx-row" style="border-top:none; min-height:0; padding:4px 0;"><span class="gx-row__label">Stage</span><span class="gx-row__value">{{ fastStatus.stage }} · {{ fastStatus.progressLabel }}</span></div>
+                <div v-if="updateInProgress && !rebootPending" class="gx-row" style="border-top:none; min-height:0; padding:4px 0;"><span class="gx-row__label">Stage</span><span class="gx-row__value">{{ fastStatus.stage }} · {{ fastStatus.progressLabel }}</span></div>
                 <div class="gx-row" style="border-top:none; min-height:0; padding:4px 0;"><span class="gx-row__label">Local</span><span class="gx-row__value" style="font-family:monospace;">{{ shortCommit(fastStatus.localCommit) }}</span></div>
                 <div class="gx-row" style="border-top:none; min-height:0; padding:4px 0;"><span class="gx-row__label">Remote</span><span class="gx-row__value" style="font-family:monospace;">{{ shortCommit(fastStatus.remoteCommit) }}</span></div>
-                <div v-if="fastStatus.running" class="gx-update-progress" role="progressbar" aria-label="Update progress"
+                <div v-if="updateInProgress && !rebootPending" class="gx-update-progress" role="progressbar" aria-label="Update progress"
                   :aria-valuenow="Math.round(fastStatus.progressPercent || 0)" aria-valuemin="0" aria-valuemax="100">
                   <div class="gx-update-progress__track">
                     <div class="gx-update-progress__fill" :class="{ 'gx-update-progress__fill--error': fastStatus.stage === 'error' }"
@@ -504,7 +633,8 @@ export const SystemTools = {
                   <small v-if="fastStatus.progressDetail">{{ fastStatus.progressDetail }}</small>
                 </div>
                 <div v-if="fastStatus.message" class="gx-note">{{ fastStatus.message }}</div>
-                <div v-if="fastStatus.warning && (fastStatus.running || fastStatus.updateAvailable)" class="gx-note gx-note--danger">{{ fastStatus.warning }}</div>
+                <div v-if="statusUnavailable" class="gx-note">Waiting for the device to reconnect. The last update status is being kept on screen.</div>
+                <div v-if="fastStatus.warning && (updateInProgress || fastStatus.updateAvailable)" class="gx-note gx-note--danger">{{ fastStatus.warning }}</div>
                 <div v-if="fastStatus.agnosUpdate?.available && fastStatus.agnosUpdate?.warnings?.length" style="margin-top:4px;">
                   <div v-for="w in fastStatus.agnosUpdate.warnings" :key="w" class="gx-note gx-note--danger"><i class="bi bi-exclamation-triangle-fill"></i> {{ w }}</div>
                 </div>
@@ -519,7 +649,7 @@ export const SystemTools = {
                 </div>
                 <label class="gx-switch">
                   <input type="checkbox" :checked="!!fastStatus?.automaticUpdates"
-                    :disabled="!fastStatus || isOnroad || autoUpdateBusy || !!fastStatus?.running"
+                    :disabled="!fastStatus || isOnroad || autoUpdateBusy || updateInProgress"
                     @change="setAutomaticUpdates($event.target.checked)" />
                   <span class="gx-switch__track"></span>
                   <span class="gx-switch__thumb"></span>
@@ -527,15 +657,21 @@ export const SystemTools = {
               </div>
             </div>
 
-            <div class="gx-card" style="margin-bottom:12px;">
-              <div class="gx-section__header"><i class="bi bi-git-branch"></i><span class="gx-section__title">Install a Version</span></div>
-              <div style="padding: var(--sp-3);">
+            <details class="gx-card" style="margin-bottom:12px;" @toggle="advancedVersionPickerOpen = $event.target.open">
+              <summary class="gx-section__header" style="list-style:none;">
+                <i class="bi bi-sliders"></i><span class="gx-section__title">Advanced update options</span>
+                <i class="bi" :class="advancedVersionPickerOpen ? 'bi-chevron-up' : 'bi-chevron-down'" aria-hidden="true"></i>
+              </summary>
+              <div v-if="advancedVersionPickerOpen">
+                <div class="gx-section__header" style="cursor:default;"><i class="bi bi-git-branch"></i><span class="gx-section__title">Install a Version</span></div>
+                <div style="padding: var(--sp-3);">
+                  <p class="gx-note" style="margin-top:0; overflow-wrap:anywhere;">Most people should stay on the latest version. Use this only to install a specific branch or historical version while troubleshooting.</p>
                 <p class="gx-note" style="margin-top:0; overflow-wrap:anywhere;">Installed branch: <strong>{{ currentBranch || 'Unknown' }}</strong></p>
                 <GalaxySelect id="gx-primary-branch" class="gx-field gx-field--full" aria-label="Target branch"
                   :value="primaryBranchValue" :disabled="branchSwitchBlocked || branchBusy" @change="onPrimaryBranchSelect">
                   <option value="" disabled>Select a branch</option>
-                  <option value="StarPilot" data-collapsed-label="StarPilot" data-description="Stable releases. Recommended for most users." :disabled="!branches.includes('StarPilot')">StarPilot — Release</option>
-                  <option value="Dom" data-collapsed-label="Dom" data-description="Latest features and fixes under development. Updates regularly and may introduce bugs." :disabled="!branches.includes('Dom')">Dom — Development</option>
+                  <option value="StarPilot" data-collapsed-label="StarPilot" data-description="Stable releases. Recommended for most users.">StarPilot — Release</option>
+                  <option value="Dom" data-collapsed-label="Dom" data-description="Latest features and fixes under development. Updates regularly and may introduce bugs.">Dom — Development</option>
                   <option value="other:">Other branches…</option>
                 </GalaxySelect>
                 <div v-if="otherBranchesOpen" style="margin-top:var(--sp-3); padding-left:var(--sp-3); border-left:2px solid var(--outline-variant);">
@@ -547,7 +683,7 @@ export const SystemTools = {
                     <option v-for="b in otherBranches" :key="b" :value="b">{{ b === currentBranch ? b + ' (current)' : b }}</option>
                   </GalaxySelect>
                 </div>
-                <p v-if="!branchLoading && !branches.length" class="gx-note">No branch list available. Reload when connected to check available branches.</p>
+                <p v-if="branchListFallback" class="gx-note">The full branch list is temporarily unavailable. Standard branches are shown; selecting a version still verifies it with the device.</p>
                 <div v-if="targetBranch" style="margin-top:var(--sp-3); display:grid; gap:8px; min-width:0;">
                   <label for="gx-version-mode" class="gx-row__label">Version</label>
                   <GalaxySelect id="gx-version-mode" class="gx-field gx-field--full" aria-label="Version" :value="versionMode"
@@ -570,23 +706,24 @@ export const SystemTools = {
                   <p>Pinned version: <strong>{{ fastStatus.versionPin.branch }} · {{ shortCommit(fastStatus.versionPin.commit) }}</strong><br>Automatic updates were paused at installation.</p>
                   <button type="button" class="gx-btn gx-btn--tonal" :disabled="branchSwitchBlocked || branchBusy || !branches.includes(fastStatus.versionPin.branch)" @click="returnToLatest">Return to Latest</button>
                 </div>
+                </div>
               </div>
-            </div>
+            </details>
 
             <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
-              <button type="button" class="gx-btn gx-btn--tonal" :disabled="!!busy || isOnroad || !!fastStatus?.running" @click="checkUpdates">
+              <button type="button" class="gx-btn gx-btn--tonal" :disabled="!!busy || isOnroad || updateInProgress" @click="checkUpdates">
                 <i v-if="busy === 'check'" class="bi bi-arrow-repeat gx-spin"></i>
                 <i v-else class="bi bi-search"></i> {{ busy === 'check' ? 'Checking...' : 'Check for Updates' }}
               </button>
               <button v-if="updateAvailable" type="button" class="gx-btn" :disabled="!!busy || isOnroad" @click="applyFastUpdate">
                 <i class="bi bi-arrow-up-circle"></i> {{ busy === 'fast' ? 'Updating...' : 'Update Now' }}
               </button>
-              <button type="button" class="gx-btn gx-btn--tonal" :disabled="!!busy || isOnroad" @click="runUpdate('recover')">Recover</button>
-              <button type="button" class="gx-btn gx-btn--tonal" :disabled="!!busy || isOnroad" @click="runUpdate('rollback')">Rollback</button>
+              <button type="button" class="gx-btn gx-btn--tonal" :disabled="!!busy || isOnroad || updateInProgress" @click="runUpdate('recover')">Recover</button>
+              <button type="button" class="gx-btn gx-btn--tonal" :disabled="!!busy || isOnroad || updateInProgress" @click="runUpdate('rollback')">Rollback</button>
             </div>
             <p class="gx-note">Check for Updates scans for a newer commit. Use <strong>Update Now</strong> to install it.</p>
             <p class="gx-note"><strong>Recover</strong> continues an update that was interrupted (for example, by power loss mid-install). <strong>Rollback</strong> returns the device to the previously installed version if the current one has a problem.</p>
-            <p v-if="checkedForUpdates && !updateAvailable && !fastStatus?.running" class="gx-note">
+            <p v-if="checkedForUpdates && !updateAvailable && !updateInProgress" class="gx-note">
               The device is up to date. Update becomes available only after a check finds a newer commit.
             </p>
           </template>
