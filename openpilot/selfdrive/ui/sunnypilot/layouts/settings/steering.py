@@ -97,6 +97,11 @@ class SteeringLayout(Widget):
       title=lambda: tr("HKG Low-Speed Steering Torque (Experimental)"),
       description=self._hkg_low_speed_torque_description,
     )
+    self._hkg_natural_steering_toggle = toggle_item_sp(
+      param="HkgNaturalSteering",
+      title=lambda: tr("HKG Natural Steering (Experimental)"),
+      description=self._hkg_natural_steering_description,
+    )
     self._nnlc_toggle = toggle_item_sp(
       param="NeuralNetworkLateralControl",
       title=lambda: tr("Neural Network Lateral Control (NNLC)"),
@@ -116,6 +121,7 @@ class SteeringLayout(Widget):
       self._torque_control_toggle,
       self._torque_customization_button,
       self._hkg_low_speed_torque_toggle,
+      self._hkg_natural_steering_toggle,
       LineSeparatorSP(40),
       self._nnlc_toggle,
     ]
@@ -138,6 +144,24 @@ class SteeringLayout(Widget):
       status = tr("Unavailable for this vehicle. Requires compatible HKG CAN-FD torque steering.")
     else:
       status = tr("Compatible HKG CAN-FD vehicle detected.")
+    return f"<b>{status}</b><br><br>{description}"
+
+  @staticmethod
+  def _hkg_natural_steering_description():
+    description = tr(
+      "Applies a progressive torque S-curve between the lateral controller request and the existing steering torque limiter. " +
+      "Small corrections use slower torque buildup while larger turns progressively allow more response. Turn-in, corner hold, " +
+      "unwind, and left/right direction reversals are shaped for smoother steering. Maximum torque, driver-torque limits, rate " +
+      "limits, and Panda safety limits are unchanged. Requires HKG Low-Speed Steering Torque. Default: off; applies next drive."
+    )
+    if ui_state.CP is None:
+      status = tr("Start the vehicle to check vehicle compatibility.")
+    elif not supports_low_speed_torque(ui_state.CP):
+      status = tr("Unavailable for this vehicle. Requires compatible HKG CAN-FD torque steering.")
+    elif not ui_state.params.get_bool("HkgLowSpeedTorque"):
+      status = tr("Enable HKG Low-Speed Steering Torque first.")
+    else:
+      status = tr("Ready. Natural steering shaping will apply on the next drive.")
     return f"<b>{status}</b><br><br>{description}"
 
   def _update_state(self):
@@ -166,7 +190,11 @@ class SteeringLayout(Widget):
     self._nnlc_toggle.action_item.set_enabled(ui_state.is_offroad() and torque_allowed and not enforce_torque_enabled and not jerk_aware_enabled)
     self._torque_control_toggle.action_item.set_enabled(ui_state.is_offroad() and torque_allowed and not nnlc_enabled)
     self._torque_customization_button.action_item.set_enabled(self._torque_control_toggle.action_item.get_state())
-    self._hkg_low_speed_torque_toggle.action_item.set_enabled(ui_state.is_offroad() and supports_low_speed_torque(ui_state.CP))
+    hkg_torque_supported = supports_low_speed_torque(ui_state.CP)
+    hkg_low_speed_enabled = self._hkg_low_speed_torque_toggle.action_item.get_state()
+    self._hkg_low_speed_torque_toggle.action_item.set_enabled(ui_state.is_offroad() and hkg_torque_supported)
+    self._hkg_natural_steering_toggle.action_item.set_enabled(ui_state.is_offroad() and hkg_torque_supported and hkg_low_speed_enabled)
+    self._hkg_natural_steering_toggle.set_description(self._hkg_natural_steering_description())
 
   def _render(self, rect):
     if self._current_panel == PanelType.LANE_CHANGE:
