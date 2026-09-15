@@ -166,8 +166,7 @@ class SteeringLayout(Widget):
     self._nnlc_toggle.action_item.set_enabled(ui_state.is_offroad() and torque_allowed and not enforce_torque_enabled and not jerk_aware_enabled)
     self._torque_control_toggle.action_item.set_enabled(ui_state.is_offroad() and torque_allowed and not nnlc_enabled)
     self._torque_customization_button.action_item.set_enabled(self._torque_control_toggle.action_item.get_state())
-    hkg_torque_supported = supports_low_speed_torque(ui_state.CP)
-    self._hkg_low_speed_torque_toggle.action_item.set_enabled(ui_state.is_offroad() and hkg_torque_supported)
+    self._hkg_low_speed_torque_toggle.action_item.set_enabled(ui_state.is_offroad() and supports_low_speed_torque(ui_state.CP))
 
   def _render(self, rect):
     if self._current_panel == PanelType.LANE_CHANGE:
