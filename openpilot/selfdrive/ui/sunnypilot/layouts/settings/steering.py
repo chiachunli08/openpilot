@@ -149,10 +149,12 @@ class SteeringLayout(Widget):
   @staticmethod
   def _hkg_natural_steering_description():
     description = tr(
-      "Applies a progressive torque S-curve between the lateral controller request and the existing steering torque limiter. " +
-      "Small corrections use slower torque buildup while larger turns progressively allow more response. Turn-in, corner hold, " +
-      "unwind, and left/right direction reversals are shaped for smoother steering. Maximum torque, driver-torque limits, rate " +
-      "limits, and Panda safety limits are unchanged. Requires HKG Low-Speed Steering Torque. Default: off; applies next drive."
+      "Applies a speed-adaptive dynamic nonlinear torque response between the lateral controller and the existing steering torque limiter. " +
+      "At low speed it allows stronger, faster progressive steering for parking, hairpins, and tight turns. As speed rises, torque response " +
+      "becomes increasingly gentle, small correction deadband grows, and opposite-direction requests require longer confirmation to suppress " +
+      "controller hunting and side-wind steering oscillation. Turn-in, corner hold, unwind, and direction reversals remain S-curve shaped. " +
+      "Maximum torque, vehicle rate limits, driver-torque protection, EPS fault prevention, and Panda safety limits are unchanged. Requires " +
+      "HKG Low-Speed Steering Torque. Default: off; applies next drive."
     )
     if ui_state.CP is None:
       status = tr("Start the vehicle to check vehicle compatibility.")
