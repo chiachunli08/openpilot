@@ -1,0 +1,70 @@
+name: Sync carrot-meb with upstream carrot-wip
+
+on:
+  schedule:
+    # 17:00 UTC = 01:00 Taipei every day
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-carrot-meb
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'chiachunli08/openpilot'
+    name: Merge upstream carrot-wip into carrot-meb
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out carrot-meb with full history
+        uses: actions/checkout@v4
+        with:
+          ref: carrot-meb
+          fetch-depth: 0
+          submodules: false
+          lfs: false
+
+      - name: Merge upstream carrot-wip and preserve existing commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/geniuth/openpilot.git
+          git fetch --no-tags upstream refs/heads/carrot-wip:refs/remotes/upstream/carrot-wip
+
+          old_head="$(git rev-parse HEAD)"
+          upstream_head="$(git rev-parse refs/remotes/upstream/carrot-wip)"
+          {
+            echo "## carrot-meb sync"
+            echo "Previous carrot-meb: $old_head"
+            echo "Upstream carrot-wip: $upstream_head"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if git merge-base --is-ancestor "$upstream_head" HEAD; then
+            echo "Already up to date. All carrot-meb commits were preserved." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! git merge --no-edit "$upstream_head"; then
+            {
+              echo "Merge failed. Remote carrot-meb was not modified; manual resolution is required."
+              echo "Conflicted paths:"
+              git diff --name-only --diff-filter=U
+            } >> "$GITHUB_STEP_SUMMARY"
+            git merge --abort || true
+            echo "::error::Upstream merge failed. Resolve manually; no commits were overwritten."
+            exit 1
+          fi
+
+          # Verify that neither side was lost before publishing the merge.
+          git merge-base --is-ancestor "$old_head" HEAD
+          git merge-base --is-ancestor "$upstream_head" HEAD
+
+          # A concurrent push is rejected safely; never rewrite carrot-meb history.
+          git push origin HEAD:refs/heads/carrot-meb
+          echo "Synced successfully: $(git rev-parse HEAD). Existing commit SHAs were preserved." >> "$GITHUB_STEP_SUMMARY"
