@@ -1,9 +1,11 @@
 from aiohttp import web
 
 from . import (
+  bluetooth,
   carrot_navi,
   cars,
   dashcam,
+  egpu_model,
   intro,
   mapbox_tokens,
   params,
@@ -24,11 +26,13 @@ from . import (
   web_sound,
   web_settings,
   ws,
+  xiaoge,
   youtube_live,
 )
 
 
 def register_all(app: web.Application) -> None:
+  bluetooth.register(app)
   static.register(app)
   intro.register(app)
   carrot_navi.register(app)
@@ -46,8 +50,10 @@ def register_all(app: web.Application) -> None:
   system.register(app)
   terminal.register(app)
   dashcam.register(app)
+  egpu_model.register(app)
   screenrecord.register(app)
   tools.register(app)
+  xiaoge.register(app)
   mapbox_tokens.register(app)
   youtube_live.register(app)
   vision_test.register(app)

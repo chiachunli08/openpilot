@@ -6,5 +6,7 @@ import "./web_settings/render.js";
 import "./web_settings/drive_layout.js";
 import "./web_settings/controller.js";
 import "./notifications.js";
+import "./egpu_model.js";
+import "./bluetooth.js";
 import "./runtime.js";
 import "./settings_qr.js";
