@@ -307,7 +307,11 @@ def _param_str(params, key, default=""):
 
 
 def _alert(controls_state):
-  """controlsState에서 Android HUD에 필요한 openpilot 이벤트 알림을 추출한다."""
+  """openpilot 이벤트 알림을 뽑는다.
+
+  alertText1/alertSize 도 controlsState 최상위에서 사라져 selfdriveState 로
+  옮겨졌다. 호출부에서 selfdriveState 를 넘긴다.
+  """
   text1 = str(_field(controls_state, "alertText1", "") or "")
   text2 = str(_field(controls_state, "alertText2", "") or "")
   if not (text1 or text2):
@@ -523,6 +527,48 @@ def _lead(radar_state, name):
   }
 
 
+def _limit_or_zero(value, no_limit):
+  """감속 제한값. no_limit 이상이면 제한이 없다는 뜻이라 0 으로 접는다."""
+  v = int(_finite(value, 0))
+  return v if 0 < v < no_limit else 0
+
+
+def _others(radar_state, limit=4):
+  """자차선 앞차를 뺀 나머지 검출 차량.
+
+  leadOne/leadTwo 는 자차선만 보므로 HUD 가 옆 차선 차를 그릴 수 없다.
+  radarState 의 leadLeft/leadRight/leadsCenter 를 같이 실어 보낸다.
+  중복이 있을 수 있어 거리와 횡위치가 비슷하면 하나로 본다.
+  """
+  taken = []
+  for name in ("leadOne", "leadTwo"):
+    lead = _lead(radar_state, name)
+    if lead:
+      taken.append((lead["d"], lead["y"]))
+
+  out = []
+  candidates = []
+  for name in ("leadLeft", "leadRight"):
+    candidates.append(_field(radar_state, name, None))
+  candidates.extend(list(_field(radar_state, "leadsCenter", []) or []))
+
+  for lead in candidates:
+    if len(out) >= limit or not bool(_field(lead, "status", False)):
+      continue
+    d = round(max(0.0, _finite(_field(lead, "dRel", 0.0))), 1)
+    y = round(_finite(_field(lead, "yRel", 0.0)), 2)
+    if any(abs(d - td) < 2.0 and abs(y - ty) < 1.0 for td, ty in taken):
+      continue
+    taken.append((d, y))
+    out.append({
+      "d": d,
+      "y": y,
+      "v": round(_finite(_field(lead, "vRel", 0.0)) * 3.6, 1),
+      "a": round(_finite(_field(lead, "aLeadK", 0.0)), 2),
+    })
+  return out
+
+
 def _gear_step(car_state):
   step = int(_finite(_field(car_state, "gearStep", 0)))
   return step if 1 <= step <= 8 else 0
@@ -555,11 +601,17 @@ def _apply_speed(car_control):
   return max(0, int(round(apply_max))), source[:8]
 
 
-def _set_speed(controls_state, car_control):
+def _set_speed(car_state, car_control):
+  """크루즈 설정속도(km/h).
+
+  예전에는 controlsState.vCruise 를 읽었는데, 그 필드는 deprecated 그룹으로
+  들어가 최상위에서 사라졌다. _field 가 조용히 기본값을 돌려주는 바람에 늘 0 이
+  나가서 HUD 에 설정속도가 한 번도 뜨지 않았다. 지금은 carState 에 있다.
+  """
   smoother = _field(car_control, "sccSmoother", None)
   value = _field(smoother, "cruiseMaxSpeed", None)
   if value is None:
-    value = _field(controls_state, "vCruiseCluster", _field(controls_state, "vCruise", 0.0))
+    value = _field(car_state, "vCruiseCluster", _field(car_state, "vCruise", 0.0))
   return max(0, int(round(_finite(value))))
 
 
@@ -1098,15 +1150,32 @@ def _packet(sm, noo_enabled, path_offset=0.0):
     "gpsInfo": gps_info,
     "layout": REMOTE_LAYOUT,
     "speed": int(round(_finite(_field(car, "vEgoCluster", _field(car, "vEgo", 0.0))) * 3.6)),
-    "set": _set_speed(controls, sm["carControl"]),
+    "set": _set_speed(car, sm["carControl"]),
     "applySpeed": apply_speed,
     "applySource": apply_source,
-    "enabled": bool(_field(controls, "enabled", False)),
+    # controlsState.enabled 는 deprecated 그룹으로 옮겨져 최상위에 없다.
+    # _field 가 조용히 기본값 False 를 돌려주는 바람에 인게이지 중에도 계속
+    # False 가 나갔다(HUD 경로 띠가 늘 해제 색). 이미 구독 중인 carControl 을 쓴다.
+    "enabled": bool(_field(sm["carControl"], "enabled", False)),
     "gear": _gear(car),
     "gearStep": _gear_step(car),
     "gap": gap if 1 <= gap <= 4 else 0,
     "drivingMode": mode,
     "limit": max(0, int(_finite(_field(road, "nRoadLimitSpeed", 0)))),
+    # 커브/내비 감속. carrotMan 이 이미 계산해 둔 값을 그대로 내보낸다.
+    #   vTurnSpeed  시야 커브에서 낼 수 있는 속도(km/h). 0 이면 커브 없음.
+    #   turnInfo    다음 경로 안내. 1 좌회전 2 우회전 3 좌차선변경
+    #               4 우차선변경 5 로터리 6 톨게이트 7 도착/유턴. -1 이면 없음.
+    #   turnDist    그 지점까지 남은 거리(m).
+    #   desiredSpeed / desiredSource  최종 목표속도와 그 이유.
+    # carrot 은 "제한 없음"을 250(vTurnSpeed) 과 크루즈 최대치(desiredSpeed)로
+    # 표현한다. 그대로 보내면 HUD 에 "VT 250 / 200" 이 늘 떠 있는다. 규약을
+    # 아는 이쪽에서 0 으로 접어 보내고, 앱은 0 이면 안 그린다.
+    "vTurnSpeed": _limit_or_zero(_field(road, "vTurnSpeed", 0), 250),
+    "turnInfo": int(_finite(_field(road, "xTurnInfo", -1), -1)),
+    "turnDist": max(0, int(_finite(_field(road, "xDistToTurn", 0)))),
+    "desiredSpeed": _limit_or_zero(_field(road, "desiredSpeed", 0), 200),
+    "desiredSource": str(_field(road, "desiredSource", "") or ""),
     "camera": max(0, cam_speed),
     "cameraDist": max(0, cam_dist),
     "cameraSection": bool(camera_section),
@@ -1221,7 +1290,7 @@ def _packet(sm, noo_enabled, path_offset=0.0):
     # 카메라 roadEdges/laneLines 로 추정한 도로 내 자차 위치. 화면 배치에만
     # 사용하며 조향 제어에는 절대 되먹이지 않는다.
     "lanePosition": lane_position,
-    "alert": _alert(controls),
+    "alert": _alert(sm["selfdriveState"]),
     "navi": navi,
     # 날씨 조회 전용 저정밀 좌표(소수점 2자리). navi.scene.pos 는 위에서 제거되고
     # TMAP 안내가 꺼져 있으면 navi 자체가 비므로, 별도 최상위 키로 내보낸다.
@@ -1237,6 +1306,10 @@ def _packet(sm, noo_enabled, path_offset=0.0):
     "laneR": int(_finite(_field(car, "rightLaneLine", -1), -1)),
     "lead": _lead(sm["radarState"], "leadOne"),
     "lead2": _lead(sm["radarState"], "leadTwo"),
+    # 옆 차선 차량. leadOne/leadTwo 는 자차선 앞차만이라 HUD 에 한두 대밖에
+    # 안 그려진다. radarState 는 좌우 차선의 앞차도 따로 내보내므로 그대로 쓴다.
+    # 이미 구독 중인 서비스라 추가 비용이 없다.
+    "others": _others(sm["radarState"]),
     # UI only: controls continue to consume radarState exactly as before.
   }
 
@@ -1250,7 +1323,8 @@ def main():
   signal.signal(signal.SIGTERM, lambda *_: running.__setitem__(0, False))
   sm = messaging.SubMaster(["carState", "carControl", "controlsState", "deviceState",
                             "modelV2", "radarState", "longitudinalPlan", "carrotMan",
-                            "liveCalibration", "lateralPlan", "gpsLocationExternal"])
+                            "liveCalibration", "lateralPlan", "gpsLocationExternal",
+                            "selfdriveState"])
   sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
   sock.setblocking(False)
