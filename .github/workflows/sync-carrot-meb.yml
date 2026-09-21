@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: sync-carrot-meb
@@ -20,9 +20,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Check GitHub App configuration
+        env:
+          APP_CLIENT_ID: ${{ vars.CARROT_SYNC_APP_CLIENT_ID }}
+          APP_KEY_CONFIGURED: ${{ secrets.CARROT_SYNC_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [[ -z "$APP_CLIENT_ID" || "$APP_KEY_CONFIGURED" != "true" ]]; then
+            echo "::error::Configure CARROT_SYNC_APP_CLIENT_ID and CARROT_SYNC_APP_PRIVATE_KEY before running this workflow."
+            exit 1
+          fi
+
+      # The built-in GITHUB_TOKEN cannot push upstream changes to .github/workflows.
+      # Install this App only on chiachunli08/openpilot with Contents and Workflows write.
+      - name: Create repository-scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CARROT_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CARROT_SYNC_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-workflows: write
+
       - name: Check out carrot-meb with full history
         uses: actions/checkout@v4
         with:
+          token: ${{ steps.app-token.outputs.token }}
           ref: carrot-meb
           fetch-depth: 0
           submodules: false
@@ -66,5 +88,9 @@ jobs:
           git merge-base --is-ancestor "$upstream_head" HEAD
 
           # A concurrent push is rejected safely; never rewrite carrot-meb history.
-          git push origin HEAD:refs/heads/carrot-meb
+          if ! git push origin HEAD:refs/heads/carrot-meb; then
+            echo "Push failed. Remote carrot-meb was not modified; inspect the Git output above." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Could not publish the merge; no branch history was rewritten."
+            exit 1
+          fi
           echo "Synced successfully: $(git rev-parse HEAD). Existing commit SHAs were preserved." >> "$GITHUB_STEP_SUMMARY"
