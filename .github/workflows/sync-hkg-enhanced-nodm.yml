@@ -24,7 +24,7 @@ on:
     - cron: "17 18 * * *"
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 concurrency:
@@ -45,12 +45,24 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global --add safe.directory '*'
 
+      # The built-in GITHUB_TOKEN cannot push changes to .github/workflows.
+      # Use the repository-scoped App (Contents + Workflows write) so upstream
+      # workflow changes can be published too.
+      - name: Create repository-scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ vars.CARROT_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CARROT_SYNC_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-workflows: write
+
       - name: Checkout hkg-enhanced-nodm
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: hkg-enhanced-nodm
           fetch-depth: 2
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Fetch TonyBinheWu hkg-enhanced
         run: |
