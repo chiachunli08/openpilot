@@ -1,0 +1,292 @@
+name: sync-hkg-enhanced-nodm
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_cherrypick:
+        description: "Force re-apply (cherry-pick) NoDM commit even if upstream has not changed"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      test_notify:
+        description: "Send a test notification (does not modify the branch)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  schedule:
+    # Daily at 18:17 UTC (Taiwan 02:17)
+    - cron: "17 18 * * *"
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-hkg-enhanced-nodm
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: sync with TonyBinheWu/sunnypilot@hkg-enhanced
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.repository == 'chiachunli08/openpilot'
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global --add safe.directory '*'
+
+      - name: Checkout hkg-enhanced-nodm
+        uses: actions/checkout@v4
+        with:
+          ref: hkg-enhanced-nodm
+          fetch-depth: 2
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch TonyBinheWu hkg-enhanced
+        run: |
+          git remote remove hkg 2>/dev/null || true
+          git remote add hkg https://github.com/TonyBinheWu/sunnypilot.git
+          git fetch hkg hkg-enhanced
+
+      - name: Resolve SHAs
+        id: resolve
+        run: |
+          CURRENT_HEAD="$(git rev-parse HEAD)"
+          CURRENT_BASE="$(git rev-parse HEAD^)"
+          UPSTREAM_SHA="$(git rev-parse hkg/hkg-enhanced)"
+
+          echo "CURRENT_HEAD=$CURRENT_HEAD" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_BASE=$CURRENT_BASE" >> "$GITHUB_OUTPUT"
+          echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "CURRENT_HEAD=$CURRENT_HEAD"
+            echo "CURRENT_BASE=$CURRENT_BASE"
+            echo "UPSTREAM_SHA=$UPSTREAM_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify HEAD is the expected NoDM commit
+        run: |
+          EXPECTED_SUBJECT="m3: disable driver monitoring (staging-chestnut fork)"
+          ACTUAL_SUBJECT="$(git log -1 --format=%s HEAD)"
+
+          if [ "$ACTUAL_SUBJECT" != "$EXPECTED_SUBJECT" ]; then
+            echo "::error::Unexpected commit subject on hkg-enhanced-nodm."
+            echo "::error::Expected: $EXPECTED_SUBJECT"
+            echo "::error::Actual:   $ACTUAL_SUBJECT"
+            echo "::error::Refusing to modify the branch because someone may have"
+            echo "::error::added commits other than the NoDM patch."
+            exit 1
+          fi
+
+          echo "OK: HEAD subject matches expected NoDM commit."
+
+      - name: Check if upstream has advanced
+        id: check
+        run: |
+          FORCE="${{ inputs.force_cherrypick || 'false' }}"
+          if [ "$FORCE" = "true" ]; then
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Forced run requested: will re-apply NoDM on top of upstream snapshot."
+          elif [ "${{ steps.resolve.outputs.CURRENT_BASE }}" = "${{ steps.resolve.outputs.UPSTREAM_SHA }}" ]; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "Branch is already up to date with TonyBinheWu/sunnypilot@hkg-enhanced."
+            echo "No new commit will be created."
+          else
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Upstream advanced; will re-apply NoDM on top of the new snapshot."
+          fi
+
+      - name: Rebase NoDM onto new upstream snapshot
+        id: rebase
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+
+          NODM_COMMIT="${{ steps.resolve.outputs.CURRENT_HEAD }}"
+          UPSTREAM_SHA="${{ steps.resolve.outputs.UPSTREAM_SHA }}"
+
+          echo "Resetting branch to upstream snapshot $UPSTREAM_SHA..."
+          git reset --hard "$UPSTREAM_SHA"
+
+          echo "Cherry-picking NoDM commit $NODM_COMMIT..."
+          if ! git cherry-pick "$NODM_COMMIT"; then
+            echo "::error::Cherry-pick failed. Likely upstream modified code touched"
+            echo "::error::by the NoDM patch. Branch hkg-enhanced-nodm is left"
+            echo "::error::untouched on the remote so a human can resolve manually."
+            git cherry-pick --abort || true
+            exit 1
+          fi
+
+          NEW_HEAD="$(git rev-parse HEAD)"
+          NEW_SUBJECT="$(git log -1 --format=%s HEAD)"
+
+          if [ "$NEW_SUBJECT" != "m3: disable driver monitoring (staging-chestnut fork)" ]; then
+            echo "::error::Cherry-pick produced a commit with unexpected subject:"
+            echo "::error::$NEW_SUBJECT"
+            exit 1
+          fi
+
+          echo "NEW_HEAD=$NEW_HEAD" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "NEW_HEAD=$NEW_HEAD"
+            echo "NEW_SUBJECT=$NEW_SUBJECT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push to hkg-enhanced-nodm
+        if: steps.check.outputs.needs_update == 'true' && success()
+        run: |
+          set -euo pipefail
+
+          OLD_HEAD="${{ steps.resolve.outputs.CURRENT_HEAD }}"
+
+          echo "Pushing with --force-with-lease (lease=$OLD_HEAD)..."
+          git push \
+            --force-with-lease=refs/heads/hkg-enhanced-nodm:$OLD_HEAD \
+            origin HEAD:hkg-enhanced-nodm
+
+      - name: Notify on successful sync
+        if: steps.check.outputs.needs_update == 'true' && success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const oldBase = '${{ steps.resolve.outputs.CURRENT_BASE }}';
+            const newBase = '${{ steps.resolve.outputs.UPSTREAM_SHA }}';
+            const oldHead = '${{ steps.resolve.outputs.CURRENT_HEAD }}';
+            const newHead = '${{ steps.rebase.outputs.NEW_HEAD }}';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const trackerLabel = 'sync-hkg-enhanced-nodm-log';
+
+            const short = (sha) => (sha && sha.length >= 7) ? sha.substring(0, 7) : sha;
+            const lines = [
+              '@chiachunli08 \u2705 `hkg-enhanced-nodm` 成功同步到新的 TonyBinheWu/sunnypilot@hkg-enhanced snapshot。',
+              '',
+              '| 項目 | SHA |',
+              '| --- | --- |',
+              `| 舊 hkg-enhanced snapshot | \`${short(oldBase)}\` |`,
+              `| 新 hkg-enhanced snapshot | \`${short(newBase)}\` |`,
+              `| 舊 NoDM commit | \`${short(oldHead)}\` |`,
+              `| 新 NoDM commit (新 HEAD) | \`${short(newHead)}\` |`,
+              '',
+              '```text',
+              `TonyBinheWu/sunnypilot@hkg-enhanced (old) ${short(oldBase)}`,
+              '         \u2193 advanced',
+              `TonyBinheWu/sunnypilot@hkg-enhanced (new) ${short(newBase)}`,
+              '         \u2502',
+              `         \u2514\u2500\u2500 NoDM (new HEAD)        ${short(newHead)}`,
+              '               \u2191',
+              '         hkg-enhanced-nodm',
+              '```',
+              '',
+              `Run: ${runUrl}`,
+              '',
+              '_由 sync-hkg-enhanced-nodm workflow 自動產生。_',
+            ];
+            const body = lines.join('\n');
+
+            const list = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: trackerLabel,
+              state: 'open',
+              per_page: 1,
+            });
+            let issueNumber;
+            if (list.data.length > 0) {
+              issueNumber = list.data[0].number;
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'sync-hkg-enhanced-nodm log',
+                body: [
+                  'Tracking issue for `hkg-enhanced-nodm` syncs.',
+                  '',
+                  'Each successful sync against a new `TonyBinheWu/sunnypilot@hkg-enhanced` snapshot appends a comment that @mentions `@chiachunli08`.',
+                  'GitHub will deliver an email to that account based on your notification settings (Watch \u2192 Participating / @mentions).',
+                ].join('\n'),
+                labels: [trackerLabel],
+              });
+              issueNumber = created.data.number;
+              core.info(`Created tracking issue #${issueNumber}`);
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body,
+            });
+            core.setOutput('issue_number', issueNumber);
+            core.info(`Notification posted on issue #${issueNumber}`);
+
+      - name: Send test notification
+        if: github.event_name == 'workflow_dispatch' && inputs.test_notify == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const trackerLabel = 'sync-hkg-enhanced-nodm-log';
+            const body = [
+              '@chiachunli08 \ud83d\ude9a _test notification_ from `sync-hkg-enhanced-nodm`.',
+              '',
+              `Run: ${runUrl}`,
+              '',
+              '_If you received this email, GitHub \u2192 email delivery is wired up correctly. No branch state was modified._',
+            ].join('\n');
+
+            const list = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: trackerLabel,
+              state: 'open',
+              per_page: 1,
+            });
+            let issueNumber;
+            if (list.data.length > 0) {
+              issueNumber = list.data[0].number;
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'sync-hkg-enhanced-nodm log',
+                body: 'Tracking issue. See `sync-hkg-enhanced-nodm` workflow for details.',
+                labels: [trackerLabel],
+              });
+              issueNumber = created.data.number;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body,
+            });
+            core.info(`Test notification posted on issue #${issueNumber}`);
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## sync-hkg-enhanced-nodm"
+            echo ""
+            echo "- Upstream SHA: \`${{ steps.resolve.outputs.UPSTREAM_SHA }}\`"
+            echo "- Previous base: \`${{ steps.resolve.outputs.CURRENT_BASE }}\`"
+            echo "- Previous NoDM commit: \`${{ steps.resolve.outputs.CURRENT_HEAD }}\`"
+            if [ "${{ steps.check.outputs.needs_update }}" = "true" ]; then
+              echo "- New HEAD: \`$(git rev-parse HEAD)\`"
+              echo "- Action: rebased onto new upstream and re-applied NoDM."
+            else
+              echo "- Action: no-op (already up to date)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
