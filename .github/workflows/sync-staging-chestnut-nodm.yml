@@ -140,6 +140,15 @@ jobs:
 
       - name: Push to staging-chestnut-nodm
         if: steps.check.outputs.needs_update == 'true' && success()
+        env:
+          # New upstream snapshots can reference Git LFS objects (e.g. the
+          # big_*_tinygrad.pkl models) that already exist in the upstream
+          # HuggingFace LFS store. This runner has no HuggingFace credentials,
+          # so the git-lfs pre-push hook would abort the push while trying to
+          # "upload" objects that are already there. Skipping the LFS upload is
+          # safe because every referenced object is already available upstream
+          # and .lfsconfig points clones at that same store.
+          GIT_LFS_SKIP_PUSH: "1"
         run: |
           set -euo pipefail
 
